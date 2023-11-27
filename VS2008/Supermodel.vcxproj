@@ -341,6 +341,7 @@ xcopy /D /Y "$(ProjectDir)..\Assets\*" "$(TargetDir)Assets"</Command>
     <ClCompile Include="..\Src\Model3\DriveBoard\BillBoard.cpp" />
     <ClCompile Include="..\Src\Model3\DriveBoard\DriveBoard.cpp" />
     <ClCompile Include="..\Src\Model3\DriveBoard\JoystickBoard.cpp" />
+    <ClCompile Include="..\Src\Model3\DriveBoard\SimWheelBoard.cpp" />
     <ClCompile Include="..\Src\Model3\DriveBoard\SkiBoard.cpp" />
     <ClCompile Include="..\Src\Model3\DriveBoard\WheelBoard.cpp" />
     <ClCompile Include="..\Src\Model3\DSB.cpp" />
@@ -519,6 +520,7 @@ xcopy /D /Y "$(ProjectDir)..\Assets\*" "$(TargetDir)Assets"</Command>
     <ClInclude Include="..\Src\Model3\DriveBoard\BillBoard.h" />
     <ClInclude Include="..\Src\Model3\DriveBoard\DriveBoard.h" />
     <ClInclude Include="..\Src\Model3\DriveBoard\JoystickBoard.h" />
+    <ClInclude Include="..\Src\Model3\DriveBoard\SimWheelBoard.h" />
     <ClInclude Include="..\Src\Model3\DriveBoard\SkiBoard.h" />
     <ClInclude Include="..\Src\Model3\DriveBoard\WheelBoard.h" />
     <ClInclude Include="..\Src\Model3\DSB.h" />
