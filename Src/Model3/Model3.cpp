@@ -224,6 +224,7 @@
 #include "DriveBoard/JoystickBoard.h"
 #include "DriveBoard/SkiBoard.h"
 #include "DriveBoard/WheelBoard.h"
+#include "DriveBoard/SimWheelBoard.h"
 #include "Game.h"
 #include "ROMSet.h"
 #ifdef NET_BOARD
@@ -2988,7 +2989,13 @@ bool CModel3::LoadGame(const Game &game, const ROMSet &rom_set)
   // Drive board (if present)
   if (game.driveboard_type == Game::DRIVE_BOARD_WHEEL && rom_set.get_rom("driveboard_program").size)
   {
-    DriveBoard = new CWheelBoard(m_config);
+    if (m_config["SimulateDrive"].ValueAs<bool>()) {
+        DriveBoard = new CSimWheelBoard(m_config);
+        ((CSimWheelBoard*)DriveBoard)->GetGame(game);
+    }
+    else
+        DriveBoard = new CWheelBoard(m_config);
+
     if (DriveBoard->Init(driveROM))
       return FAIL;
   }

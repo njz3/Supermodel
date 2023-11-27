@@ -1723,6 +1723,8 @@ static ParsedCommandLine ParseCommandLine(int argc, char **argv)
 #endif
     { "-no-force-feedback",   { "ForceFeedback",    false } },
     { "-force-feedback",      { "ForceFeedback",    true } },
+    { "-simulate-driveboard", { "SimulateDrive",    true } },
+    { "-emulate-driveboard",  { "SimulateDrive",    false } },
     { "-dump-textures",       { "DumpTextures",     true } },
   };
   for (int i = 1; i < argc; i++)
