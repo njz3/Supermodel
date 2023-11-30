@@ -306,6 +306,8 @@ protected:
     UINT8 m_readMode;
     UINT8 m_wheelCenter;
     UINT8 m_cockpitCenter;
+    UINT8 m_cockpitPosition;
+    bool m_cockpitClutch;
     UINT8 m_echoVal;
 
     const UINT8* m_rom;     // 32k ROM

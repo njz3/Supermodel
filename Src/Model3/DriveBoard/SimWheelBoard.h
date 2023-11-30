@@ -21,9 +21,9 @@
  **/
 
 /*
- * WheelBoard.h
+ * SimWheelBoard.h
  *
- * Header for the CWheelBoard (force feedback emulation for wheel) class.
+ * Header for the CSimWheelBoard (force feedback simulation for wheel) class.
  */
 
 #ifndef INCLUDED_SIMWHEELBOARD_H
@@ -247,4 +247,4 @@ private:
   uint8_t ReadADCChannel4();
 };
 
-#endif  // INCLUDED_WHEELBOARD_H
+#endif  // INCLUDED_SIMWHEELBOARD_H

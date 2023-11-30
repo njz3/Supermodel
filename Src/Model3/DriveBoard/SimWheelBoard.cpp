@@ -279,13 +279,13 @@ UINT8 CSimWheelBoard::TxScud(void)
         case 0x3:
             tx = m_wheelCenter; break;                    // Wheel center
         case 0x4:
-            tx = 0x80; break;                             // Cockpit banking center
+            tx = m_cockpitCenter; break;                  // Cockpit banking center
         case 0x5:
             tx = (UINT8)m_inputs->steering->value; break; // Wheel position
         case 0x6:
-            tx = 0x80; break;                             // Cockpit banking position
+            tx = m_cockpitPosition; break;                // Cockpit banking position
         case 0x7:
-            tx = m_echoVal; break;      // Init status/echo test
+            tx = m_echoVal; break;                        // Init status/echo test
         default:
             tx = 0xFF;
             break;
@@ -323,13 +323,13 @@ UINT8 CSimWheelBoard::TxSRally2(void)
         case 0x3:
             tx = m_wheelCenter; break;                    // Wheel center
         case 0x4:
-            tx = 0x80; break;                             // Cockpit banking center
+            tx = m_cockpitCenter; break;                  // Cockpit banking center
         case 0x5:
             tx = (UINT8)m_inputs->steering->value; break; // Wheel position
         case 0x6:
-            tx = 0x80; break;                             // Cockpit banking position
+            tx = m_cockpitPosition; break;                // Cockpit banking position
         case 0x7:
-            tx = m_echoVal; break;      // Init status/echo test
+            tx = m_echoVal; break;                        // Init status/echo test
         default:
             tx = 0xFF;
             break;
@@ -367,13 +367,13 @@ UINT8 CSimWheelBoard::TxLeMans(void)
         case 0x3:
             tx = m_wheelCenter; break;                    // Wheel center
         case 0x4:
-            tx = 0x80; break;                             // Cockpit banking center
+            tx = m_cockpitCenter; break;                  // Cockpit banking center
         case 0x5:
             tx = (UINT8)m_inputs->steering->value; break; // Wheel position
         case 0x6:
-            tx = 0x80; break;                             // Cockpit banking position
+            tx = m_cockpitPosition; break;                // Cockpit banking position
         case 0x7:
-            tx = m_echoVal; break;      // Init status/echo test
+            tx = m_echoVal; break;                        // Init status/echo test
         default:
             tx = 0xFF;
             break;
@@ -476,12 +476,13 @@ void CSimWheelBoard::RxCmdScud(UINT8 cmd)
         case 0:  SendStopAll();                                    break;  // 0x80 Stop motor
         case 1:  SendConstantForce(20);                            break;  // 0x81 Roll wheel right
         case 2:  SendConstantForce(-20);                           break;  // 0x82 Roll wheel left
-        case 3:  /* Ignore - no clutch */                          break;  // 0x83 Clutch on
-        case 4:  /* Ignore - no clutch */                          break;  // 0x84 Clutch off
+        case 3:  m_cockpitClutch = true;                           break;  // 0x83 Clutch on
+        case 4:  m_cockpitClutch = false;                          break;  // 0x84 Clutch off
         case 5:  m_wheelCenter = (UINT8)m_inputs->steering->value; break;  // 0x85 Set wheel center position
-        case 6:  /* Ignore */                                      break;  // 0x86 Set cockpit banking position
+        case 6:  m_cockpitCenter = 0x80;                           break;  // 0x86 Set cockpit banking position
         case 7:  /* Ignore */                                      break;  // 0x87 Lamp on/off
         }
+        break;
     case 0x9: // 0x90-9F ??? Don't appear to have any effect with Scud Race ROM
         /* TODO */
         break;
