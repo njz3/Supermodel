@@ -206,12 +206,14 @@ void CSimWheelBoard::Reset(void)
   if (!m_config["ForceFeedback"].ValueAsDefault<bool>(false))
     Disable();
 
-  if (IsGame("daytona2") || IsGame("scud") || IsGame("eca"))
-      m_gameType = DriveBoardType::Model3A;
-  else if (IsGame("lemans24"))
+  if (IsGame("lemans24"))
       m_gameType = DriveBoardType::Model2C;
+  else if(IsGame("dirtdvls") || IsGame("scud") || IsGame("eca") || IsGame("daytona2"))
+      m_gameType = DriveBoardType::Model3A;
   else if (IsGame("srally2"))
       m_gameType = DriveBoardType::Model3B;
+  else if (IsGame("dayto2pe"))
+      m_gameType = DriveBoardType::Model3C;
   else
   {
       ErrorLog("Game not recognized or supported");
@@ -315,7 +317,7 @@ UINT8 CSimWheelBoard::TxSRally2(void)
         switch (m_readMode)
         {
         case 0x0:
-            tx = m_statusFlags; break;                     // Status flags
+            tx = m_statusFlags; break;                    // Status flags
         case 0x1:
             tx = m_dip1; break;                           // DIP switch 1 value
         case 0x2:
@@ -405,6 +407,7 @@ UINT8 CSimWheelBoard::SimulateRead(void)
         tx = TxLeMans();
         break;
     case DriveBoardType::Model3A:
+    case DriveBoardType::Model3C:
         tx = TxScud();
         break;
     case DriveBoardType::Model3B:
@@ -474,8 +477,8 @@ void CSimWheelBoard::RxCmdScud(UINT8 cmd)
         switch (val & 0x7)
         {
         case 0:  SendStopAll();                                    break;  // 0x80 Stop motor
-        case 1:  SendConstantForce(20);                            break;  // 0x81 Roll wheel right
-        case 2:  SendConstantForce(-20);                           break;  // 0x82 Roll wheel left
+        case 1:  SendConstantForce(20);                        break;  // 0x81 Roll wheel right
+        case 2:  SendConstantForce(-20);                       break;  // 0x82 Roll wheel left
         case 3:  m_cockpitClutch = true;                           break;  // 0x83 Clutch on
         case 4:  m_cockpitClutch = false;                          break;  // 0x84 Clutch off
         case 5:  m_wheelCenter = (UINT8)m_inputs->steering->value; break;  // 0x85 Set wheel center position
@@ -525,23 +528,27 @@ void CSimWheelBoard::RxCmdSRally2(UINT8 cmd)
     UINT8 type = cmd >> 4;
     UINT8 val = cmd & 0xF;
 
-    if (cmd > 0 && cmd < 0x3F) {
-        // 01 :low torque
+    if (cmd >= 0 && cmd <= 0x3F) {
+        // 00 :low torque
         // 3D: max torque
-        SendConstantForce(-(INT8)cmd);
-    } else if (cmd > 0x40 && cmd < 0x7F) {
-        // 41 :low torque
+        INT8 trq = (INT8) (-(cmd+1)*127.0f/(float)0x3f);
+        SendConstantForce(trq);
+    } else if (cmd >= 0x40 && cmd <= 0x7F) {
+        // 40 :low torque
         // 7D: max torque
-        SendConstantForce((INT8)cmd - 0x40);
+        INT8 trq = (INT8)(((cmd+1) - 0x40) * 127.0f / (float)0x3f);
+        SendConstantForce(trq);
     }
     else {
 
         switch (type)
         {
+            /*
         case 0: // Centering (spring)
             // Enable auto-centering (0x1 = weakest, 0xF = strongest)
             SendSelfCenter(0x80);
             break;
+            */
         case 8: // 0x80-8F Test Mode
             switch (val & 0x7)
             {
@@ -578,7 +585,7 @@ void CSimWheelBoard::RxCmdSRally2(UINT8 cmd)
                     SendStopAll();
                     break;
                 case 0x7:
-                    SendSelfCenter(0x80);
+                    //SendSelfCenter(0x80);
                     break;
                 }
                 m_boardMode = val;
@@ -613,6 +620,7 @@ void CSimWheelBoard::SimulateWrite(UINT8 cmd)
         RxCmdLeMans(cmd);
         break;
     case DriveBoardType::Model3A:
+    case DriveBoardType::Model3C:
         RxCmdScud(cmd);
         break;
     case DriveBoardType::Model3B:
@@ -760,6 +768,8 @@ void CSimWheelBoard::IOWrite8(UINT32 portNum, UINT8 data)
 
 void CSimWheelBoard::ProcessEncoderCmd(void)
 {
+  // FFB process in Write()
+  /*
   if (m_prev42Out != m_port42Out || m_prev46Out != m_port46Out)
   {
     //DebugLog("46 [%02X] / 42 [%02X]\n", m_port46Out, m_port42Out);
@@ -854,10 +864,10 @@ void CSimWheelBoard::ProcessEncoderCmd(void)
         //DebugLog("Unknown = 46 [%02X] / 42 [%02X]\n", m_port46Out, m_port42Out);
         break;
     }
-
     m_prev42Out = m_port42Out;
     m_prev46Out = m_port46Out;
   }
+  */
 }
 
 
@@ -876,6 +886,7 @@ void CSimWheelBoard::SendStopAll(void)
   m_lastVibrate    = 0;
 }
 
+// Null torque at 0, and between -127 (not 128) and 127
 void CSimWheelBoard::SendConstantForce(INT8 val)
 {
   if (val == m_lastConstForce)
@@ -901,7 +912,8 @@ void CSimWheelBoard::SendConstantForce(INT8 val)
 
   ForceFeedbackCmd ffCmd;
   ffCmd.id = FFConstantForce;
-  ffCmd.force = (float)val / (val >= 0 ? 127.0f : 128.0f);
+  if (val < -127) val = -127;
+  ffCmd.force = (float)val / (127.0f);
 
   m_inputs->steering->SendForceFeedbackCmd(ffCmd);
 
@@ -993,6 +1005,7 @@ uint8_t CSimWheelBoard::ReadADCChannel4()
 CSimWheelBoard::CSimWheelBoard(const Util::Config::Node &config)
   : CDriveBoard(config)
 {
+    // Dip switch settings for force feedback strength are on DS bank 1 on the Drive Control Bd. All off = weak and all on = strong.
   m_dip1 = 0xCF;
   m_dip2 = 0xFF;
 

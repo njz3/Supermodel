@@ -904,6 +904,7 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Model3, CInputs *In
   bool        quit = false;
   bool        paused = false;
   bool        dumpTimings = false;
+  bool        runSingle = false;
 
   // Initialize and load ROMs
   if (OKAY != Model3->Init())
@@ -1002,6 +1003,7 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Model3, CInputs *In
   quit = false;
   paused = false;
   dumpTimings = false;
+
 #ifdef DEBUG
   if (dynamic_cast<CModel3GraphicsState *>(Model3))
   {
@@ -1074,10 +1076,12 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Model3, CInputs *In
 
       puts("Model 3 reset.");
     }
-    else if (Inputs->uiPause->Pressed())
+    else if (Inputs->uiPause->Pressed() || runSingle)
     {
       // Toggle emulator paused flag
       paused = !paused;
+      if (runSingle)
+          runSingle = false;
 
       if (paused)
       {
@@ -1096,6 +1100,16 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Model3, CInputs *In
       // Send paused value as output
       if (Outputs != NULL)
         Outputs->SetValue(OutputPause, paused);
+    }
+    else if (paused && Inputs->uiNextFrame->Pressed())
+    {
+        // Run a single frame
+        paused = false;
+        runSingle = true;
+
+        Model3->ResumeThreads();
+        SetAudioEnabled(true);
+        SDL_SetWindowTitle(s_window, baseTitleStr);
     }
     else if (Inputs->uiFullScreen->Pressed())
     {

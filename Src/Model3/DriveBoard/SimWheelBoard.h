@@ -48,9 +48,14 @@ enum class DriveBoardState : UINT8
 enum class DriveBoardType
 {
 	unknown,
+	// 838-11967 + EPR-18261: Lemans, Indy500, Touring Car
 	Model2C,
+	// 838-12898 + EPR-19338A: Scud, ECA, DirtDevils, Daytona BOTE
 	Model3A,
+	// 838-13366(same as 12898) + EPR-20512: SegaRally2, Nascar
 	Model3B,
+	// 838-13481(same as 12898) + EPR-20985: Daytona 2 PE?
+	Model3C,
 };
 
 /*

@@ -88,6 +88,7 @@ public:
   CSwitchInput  *uiExit;
   CSwitchInput  *uiReset;
   CSwitchInput  *uiPause;
+  CSwitchInput  *uiNextFrame;
   CSwitchInput  *uiFullScreen;
   CSwitchInput  *uiSaveState;
   CSwitchInput  *uiChangeSlot;
