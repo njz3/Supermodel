@@ -49,6 +49,7 @@ CInputs::CInputs(CInputSystem *system)
 	uiExit             = AddSwitchInput("UIExit",             "Exit UI",               Game::INPUT_UI, "KEY_ESCAPE");
 	uiReset            = AddSwitchInput("UIReset",            "Reset",                 Game::INPUT_UI, "KEY_ALT+KEY_R");
 	uiPause            = AddSwitchInput("UIPause",            "Pause",                 Game::INPUT_UI, "KEY_ALT+KEY_P");
+	uiNextFrame        = AddSwitchInput("UINextFrame",        "NextFrame",             Game::INPUT_UI, "KEY_ALT+KEY_K");
 	uiFullScreen       = AddSwitchInput("UIFullScreen",       "Toggle Fullscreen",     Game::INPUT_UI, "KEY_ALT+KEY_RETURN");
 	uiSaveState        = AddSwitchInput("UISaveState",        "Save State",            Game::INPUT_UI, "KEY_F5");
 	uiChangeSlot       = AddSwitchInput("UIChangeSlot",       "Change Save Slot",      Game::INPUT_UI, "KEY_F6");
