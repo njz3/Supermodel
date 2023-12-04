@@ -353,7 +353,6 @@
         <input type="common" />
         <input type="vehicle" />
         <input type="shiftupdown" />
-        <input type="handbrake" />
         <input type="viewchange" />
       </inputs>
       <encryption_key>0x29290f17</encryption_key>
@@ -428,7 +427,6 @@
         <input type="common" />
         <input type="vehicle" />
         <input type="shiftupdown" />
-        <input type="handbrake" />
         <input type="viewchange" />
       </inputs>
       <encryption_key>0x29290f17</encryption_key>
@@ -461,7 +459,6 @@
         <input type="common" />
         <input type="vehicle" />
         <input type="shiftupdown" />
-        <input type="handbrake" />
         <input type="viewchange" />
       </inputs>
       <encryption_key>0x29290f17</encryption_key>
@@ -494,7 +491,6 @@
         <input type="common" />
         <input type="vehicle" />
         <input type="shiftupdown" />
-        <input type="handbrake" />
         <input type="viewchange" />
       </inputs>
       <encryption_key>0x29290f17</encryption_key>
@@ -527,7 +523,6 @@
         <input type="common" />
         <input type="vehicle" />
         <input type="shiftupdown" />
-        <input type="handbrake" />
         <input type="viewchange" />
       </inputs>
       <encryption_key>0x29290f17</encryption_key>
@@ -1648,7 +1643,7 @@
     <roms>
       <patches>
         <!-- Prevent "rolling start" scrolling glitch -->
-        <patch region="crom" bits="32" offset="0x14E3F0" value="0x20B201E0" />
+        <patch region="crom" bits="32" offset="0x14E424" value="0x20B201E0" />
       </patches>
       <region name="crom" stride="8" chunk_size="2" byte_swap="true">
         <file offset="0" name="epr-20095a.20" crc32="0x58C7E393" />
