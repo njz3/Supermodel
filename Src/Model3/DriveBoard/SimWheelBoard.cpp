@@ -83,7 +83,7 @@ void CSimWheelBoard::SaveState(CBlockFile *SaveState)
 
 void CSimWheelBoard::LoadState(CBlockFile *SaveState)
 {
-  if (SaveState->FindBlock("SimWheelBoard") != OKAY)
+  if (SaveState->FindBlock("SimWheelBoard") != Result::OKAY)
   {
     // Fall back to old "DriveBoad" state format
     LoadLegacyState(SaveState);
@@ -117,7 +117,7 @@ void CSimWheelBoard::LoadState(CBlockFile *SaveState)
 // Load save states created prior to DriveBoard refactor of SVN 847
 void CSimWheelBoard::LoadLegacyState(CBlockFile *SaveState)
 {
-  if (SaveState->FindBlock("DriveBoard") != OKAY)
+  if (SaveState->FindBlock("DriveBoard") != Result::OKAY)
   {
     // No wheel board or legacy drive board data found
     ErrorLog("Unable to load wheel drive board state. Save state file is corrupt.");
