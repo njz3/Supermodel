@@ -50,10 +50,6 @@ int	PolyHeader::NumPolysTotal()
 
 int	PolyHeader::NumTrianglesTotal()
 {
-	if (header[6] == 0) {
-		return 0;			// no poly data
-	}
-
 	UINT32* start = header;	// save start address
 
 	int count = (NumVerts() == 4) ? 2 : 1;
@@ -152,7 +148,7 @@ bool PolyHeader::DoubleSided()
 
 bool PolyHeader::LastPoly() 
 {
-	if ((header[1] & 4) > 0 || header[6] == 0) {
+	if ((header[1] & 4) > 0) {
 		return true;
 	}
 
@@ -296,22 +292,19 @@ int PolyHeader::X()
 
 int PolyHeader::Y()
 {
-	//=======
+	//====
 	int y;
-	int page;
-	//=======
+	//====
 
-	if (Page()) {
-		page = 1024;
-	}
-	else {
-		page = 0;
-	}
-
-	y = (32 * (header[5] & 0x1F) + page);	// if we hit 2nd page add 1024 to y coordinate
+	y = 32 * (header[5] & 0x1F);	// if we hit 2nd page add 1024 to y coordinate
 	y &= 2047;
 
 	return y;
+}
+
+float PolyHeader::TextureNP()
+{
+	return (float)(header[5] >> 8);
 }
 
 //

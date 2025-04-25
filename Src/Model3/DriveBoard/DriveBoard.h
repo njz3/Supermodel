@@ -49,7 +49,7 @@ public:
    * Returns:
    *    Drive board type.
    */
-  virtual Game::DriveBoardType GetType(void);
+  virtual Game::DriveBoardType GetType(void) const;
 
   /*
    * IsAttached(void):
@@ -58,7 +58,7 @@ public:
    *    True if the drive board is "attached" and should be emulated,
    *    otherwise false.
    */
-  virtual bool IsAttached(void);
+  virtual bool IsAttached(void) const;
 
   /*
    * IsSimulated(void):
@@ -67,7 +67,7 @@ public:
    *    True if the drive board is being simulated rather than actually
    *    emulated, otherwise false.
    */
-  virtual bool IsSimulated(void);
+  virtual bool IsSimulated(void) const;
 
   /*
    * GetDIPSwitches(dip1, dip2):
@@ -78,8 +78,8 @@ public:
    *    dip1  Reference of variable to store DIP switch 1 to.
    *    dip2  DIP switch 2.
    */
-  virtual void GetDIPSwitches(UINT8 &dip1, UINT8 &dip2);
-  virtual void GetDIPSwitches(UINT8& dip1);
+  virtual void GetDIPSwitches(UINT8 &dip1, UINT8 &dip2) const;
+  virtual void GetDIPSwitches(UINT8& dip1) const;
 
   /*
    * SetDIPSwitches(dip1, dip2):
@@ -99,7 +99,7 @@ public:
    * Returns:
    *    Strength of the force feedback based on drive board DIP switches (1-8).
    */
-  virtual unsigned GetForceFeedbackStrength(void);
+  virtual unsigned GetForceFeedbackStrength(void) const;
 
   /*
    * SetForceFeedbackStrength(strength):
@@ -153,7 +153,7 @@ public:
    *    FAIL if the drive board could not be initialized (prints own error
    *    message), otherwise OKAY.
    */
-  virtual bool Init(const UINT8 *romPtr);
+  virtual Result Init(const UINT8 *romPtr);
 
   /*
    * Init(void):
@@ -162,7 +162,7 @@ public:
    * before other members. This initializer is provided in case a CDriveBoard
    * object or pointer is needed but no drive board actually exists.
    */
-  bool Init(void);
+  Result Init(void);
 
   /*
    * AttachInputs(InputsPtr, gameInputFlags):
@@ -277,7 +277,7 @@ protected:
   virtual void Disable(void);
 
   // Whether disabled and/or not attached -- used to determine whether to carry out emulation
-  bool IsDisabled(void);
+  bool IsDisabled(void) const;
 
   // Attempt to load drive board data from old save states (prior to drive board refactor)
   void LoadLegacyState(const LegacyDriveBoardState &state, CBlockFile *SaveState);

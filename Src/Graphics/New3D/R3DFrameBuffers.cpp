@@ -39,7 +39,7 @@ R3DFrameBuffers::~R3DFrameBuffers()
 	}
 }
 
-bool R3DFrameBuffers::CreateFBO(int width, int height)
+Result R3DFrameBuffers::CreateFBO(int width, int height)
 {
 	m_width = width;
 	m_height = height;
@@ -59,37 +59,33 @@ bool R3DFrameBuffers::CreateFBO(int width, int height)
 	// depth/stencil attachment
 	glGenRenderbuffers(1, &m_renderBufferID);
 	glBindRenderbuffer(GL_RENDERBUFFER, m_renderBufferID);
-	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
-	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, m_renderBufferID);
-	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, m_renderBufferID);
+	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH32F_STENCIL8, width, height);
+	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, m_renderBufferID);
 
 	// check setup was successful
 	auto fboStatus = glCheckFramebufferStatus(GL_FRAMEBUFFER);
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);	//created R3DFrameBuffers now disable it
 
-	CreateFBODepthCopy(width, height);
-
-	return (fboStatus == GL_FRAMEBUFFER_COMPLETE);
+	return ((CreateFBODepthCopy(width, height) == Result::OKAY) && (fboStatus == GL_FRAMEBUFFER_COMPLETE)) ? Result::OKAY : Result::FAIL;
 }
 
-bool R3DFrameBuffers::CreateFBODepthCopy(int width, int height)
+Result R3DFrameBuffers::CreateFBODepthCopy(int width, int height)
 {
 	glGenFramebuffers(1, &m_frameBufferIDCopy);
 	glBindFramebuffer(GL_FRAMEBUFFER, m_frameBufferIDCopy);
 
 	glGenRenderbuffers(1, &m_renderBufferIDCopy);
 	glBindRenderbuffer(GL_RENDERBUFFER, m_renderBufferIDCopy);
-	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
-	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, m_renderBufferIDCopy);
-	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, m_renderBufferIDCopy);
+	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH32F_STENCIL8, width, height);
+	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, m_renderBufferIDCopy);
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 	// check setup was successful
 	auto fboStatus = glCheckFramebufferStatus(GL_FRAMEBUFFER);
 
-	return (fboStatus == GL_FRAMEBUFFER_COMPLETE);
+	return (fboStatus == GL_FRAMEBUFFER_COMPLETE) ? Result::OKAY : Result::FAIL;
 }
 
 void R3DFrameBuffers::StoreDepth()
@@ -139,8 +135,8 @@ GLuint R3DFrameBuffers::CreateTexture(int width, int height)
 	GLuint texId;
 	glGenTextures(1, &texId);
 	glBindTexture(GL_TEXTURE_2D, texId);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0);
@@ -194,12 +190,9 @@ void R3DFrameBuffers::SetFBO(Layer layer)
 
 void R3DFrameBuffers::AllocShaderBase()
 {
-	const char *vertexShader = R"glsl(
+	static const char *vertexShader = R"glsl(
 
 	#version 410 core
-
-	// outputs
-	out vec2 fsTexCoord;
 
 	void main(void)
 	{
@@ -208,42 +201,38 @@ void R3DFrameBuffers::AllocShaderBase()
 										vec4( 1.0, -1.0, 0.0, 1.0),
 										vec4( 1.0,  1.0, 0.0, 1.0));
 
-		fsTexCoord = (vertices[gl_VertexID % 4].xy + 1.0) / 2.0;
-		gl_Position = vertices[gl_VertexID % 4];	
+		gl_Position = vertices[gl_VertexID % 4];
 	}
 
 	)glsl";
 
-	const char *fragmentShader = R"glsl(
+	static const char *fragmentShader = R"glsl(
 
 	#version 410 core
 
 	// inputs
 	uniform sampler2D tex1;			// base tex
-	in vec2 fsTexCoord;
 
 	// outputs
 	out vec4 fragColor;
 
 	void main()
 	{
-		fragColor = texture(tex1, fsTexCoord);
+		ivec2 tc = ivec2(gl_FragCoord.xy /*-vec2(0.5)*/);
+		fragColor = texelFetch(tex1, tc, 0);
 	}
 
 	)glsl";
 
 	m_shaderBase.LoadShaders(vertexShader, fragmentShader);
-	m_shaderBase.uniformLoc[0] = m_shaderTrans.GetUniformLocation("tex1");
+	m_shaderBase.uniformLoc[0] = m_shaderBase.GetUniformLocation("tex1");
 }
 
 void R3DFrameBuffers::AllocShaderTrans()
 {
-	const char *vertexShader = R"glsl(
+	static const char *vertexShader = R"glsl(
 
 	#version 410 core
-
-	// outputs
-	out vec2 fsTexCoord;
 
 	void main(void)
 	{
@@ -252,29 +241,27 @@ void R3DFrameBuffers::AllocShaderTrans()
 										vec4( 1.0, -1.0, 0.0, 1.0),
 										vec4( 1.0,  1.0, 0.0, 1.0));
 
-		fsTexCoord = (vertices[gl_VertexID % 4].xy + 1.0) / 2.0;
 		gl_Position = vertices[gl_VertexID % 4];
 	}
 
 	)glsl";
 
-	const char *fragmentShader = R"glsl(
+	static const char *fragmentShader = R"glsl(
 
 	#version 410 core
 
 	uniform sampler2D tex1;			// trans layer 1
 	uniform sampler2D tex2;			// trans layer 2
 
-	in vec2 fsTexCoord;
-
 	// outputs
 	out vec4 fragColor;
 
 	void main()
 	{
-		vec4 colTrans1 = texture(tex1, fsTexCoord);
-		vec4 colTrans2 = texture(tex2, fsTexCoord);
-			
+		ivec2 tc = ivec2(gl_FragCoord.xy /*-vec2(0.5)*/);
+		vec4 colTrans1 = texelFetch(tex1, tc, 0);
+		vec4 colTrans2 = texelFetch(tex2, tc, 0);
+
 		// if both transparency layers overlap, the result is opaque
 		if (colTrans1.a * colTrans2.a > 0.0) {
 			vec3 mixCol = mix(colTrans1.rgb, colTrans2.rgb, (colTrans2.a + (1.0 - colTrans1.a)) / 2.0);
@@ -298,7 +285,6 @@ void R3DFrameBuffers::AllocShaderTrans()
 
 void R3DFrameBuffers::Draw()
 {
-	SetFBO		(Layer::none);						// make sure to draw on the back buffer
 	glViewport	(0, 0, m_width, m_height);			// cover the entire screen
 	glDisable	(GL_DEPTH_TEST);					// disable depth testing / writing
 	glDisable	(GL_CULL_FACE);

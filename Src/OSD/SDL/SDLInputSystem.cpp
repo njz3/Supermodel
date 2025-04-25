@@ -168,16 +168,22 @@ SDLKeyMapStruct CSDLInputSystem::s_keyMap[] =
   { "UNDO",           SDL_SCANCODE_UNDO }
 };
 
-CSDLInputSystem::CSDLInputSystem(const Util::Config::Node& config)
+CSDLInputSystem::CSDLInputSystem(const Util::Config::Node& config, bool useGameController)
   : CInputSystem("SDL"),
+    m_config(config),
+    m_useGameController(useGameController),
     m_keyState(nullptr),
     m_mouseX(0),
     m_mouseY(0),
     m_mouseZ(0),
+    m_mouseWheelDir(0),
     m_mouseButtons(0),
-    m_config(config)
+    sdlConstForceMax(0),
+    sdlSelfCenterMax(0),
+    sdlFrictionMax(0),
+    sdlVibrateMax(0)
 {
-  //
+  memset(&eff, 0, sizeof(SDL_HapticEffect));
 }
 
 CSDLInputSystem::~CSDLInputSystem()
@@ -200,7 +206,19 @@ void CSDLInputSystem::OpenJoysticks()
   for (int joyNum = 0; joyNum < numJoys; joyNum++)
   {
     numHapticAxes = 0;
-    SDL_Joystick *joystick = SDL_JoystickOpen(joyNum);
+
+    SDL_GameController *gamepad = nullptr;
+    SDL_Joystick *joystick = nullptr;
+
+    if (m_useGameController)
+    {
+	gamepad = SDL_GameControllerOpen(joyNum);
+	joystick = SDL_GameControllerGetJoystick(gamepad);
+    } else
+    {
+	joystick = SDL_JoystickOpen(joyNum);
+    }
+
     if (joystick == nullptr)
     {
       ErrorLog("Unable to open joystick device %d with SDL - skipping joystick.\n", joyNum + 1);
@@ -210,10 +228,24 @@ void CSDLInputSystem::OpenJoysticks()
     // Gather joystick details (name, num POVs & buttons and which axes are available)
     JoyDetails joyDetails;
     hapticInfo hapticDatas;
-    const char *pName = SDL_JoystickName(joystick);
-    strncpy(joyDetails.name, pName, MAX_NAME_LENGTH);
-    joyDetails.name[MAX_NAME_LENGTH] = '\0';
-    joyDetails.numAxes = SDL_JoystickNumAxes(joystick);
+
+    if (m_useGameController)
+    {
+      const char *pName = SDL_GameControllerName(gamepad);
+      strncpy(joyDetails.name, pName, MAX_NAME_LENGTH);
+      joyDetails.name[MAX_NAME_LENGTH] = '\0';
+      joyDetails.numAxes = 6;
+      joyDetails.numPOVs = 4;
+      joyDetails.numButtons = 16;
+    } else
+    {
+      const char *pName = SDL_JoystickName(joystick);
+      strncpy(joyDetails.name, pName, MAX_NAME_LENGTH);
+      joyDetails.name[MAX_NAME_LENGTH] = '\0';
+      joyDetails.numAxes = SDL_JoystickNumAxes(joystick);
+      joyDetails.numPOVs = SDL_JoystickNumHats(joystick);
+      joyDetails.numButtons = SDL_JoystickNumButtons(joystick);
+    }
 
     if (SDL_JoystickIsHaptic(joystick))
         joyDetails.hasFFeedback = true;
@@ -275,8 +307,6 @@ void CSDLInputSystem::OpenJoysticks()
       char *axisName = joyDetails.axisName[axisNum];
       strcpy(axisName, CInputSystem::GetDefaultAxisName(axisNum));
     }
-    joyDetails.numPOVs = SDL_JoystickNumHats(joystick);
-    joyDetails.numButtons = SDL_JoystickNumButtons(joystick);
 
     if (joyDetails.hasFFeedback && hapticDatas.SDLhaptic != NULL && numHapticAxes > 0) // not a pad but wheel or joystick
     {
@@ -288,7 +318,7 @@ void CSDLInputSystem::OpenJoysticks()
       // constant effect
       if (possibleEffect & SDL_HAPTIC_CONSTANT)
       {
-        SDL_memset(&eff, 0, sizeof(SDL_HapticEffect));
+        memset(&eff, 0, sizeof(SDL_HapticEffect));
         eff.type = SDL_HAPTIC_CONSTANT;
         eff.periodic.direction.type = SDL_HAPTIC_CARTESIAN;
         eff.constant.direction.dir[0] = 0;
@@ -303,7 +333,7 @@ void CSDLInputSystem::OpenJoysticks()
       // vibration effect
       if (possibleEffect & SDL_HAPTIC_SINE)
       {
-        SDL_memset(&eff, 0, sizeof(SDL_HapticEffect));
+        memset(&eff, 0, sizeof(SDL_HapticEffect));
         eff.type = SDL_HAPTIC_SINE;
         eff.periodic.direction.type = SDL_HAPTIC_CARTESIAN;
         eff.constant.length = 500;
@@ -318,7 +348,7 @@ void CSDLInputSystem::OpenJoysticks()
       // spring effect
       if (possibleEffect & SDL_HAPTIC_SPRING)
       {
-        SDL_memset(&eff, 0, sizeof(SDL_HapticEffect));
+        memset(&eff, 0, sizeof(SDL_HapticEffect));
         eff.type = SDL_HAPTIC_SPRING;
         eff.periodic.direction.type = SDL_HAPTIC_CARTESIAN;
         eff.condition.delay = 0;
@@ -335,7 +365,7 @@ void CSDLInputSystem::OpenJoysticks()
       // friction effect
       if (possibleEffect & SDL_HAPTIC_FRICTION)
       {
-        SDL_memset(&eff, 0, sizeof(SDL_HapticEffect));
+        memset(&eff, 0, sizeof(SDL_HapticEffect));
         eff.type = SDL_HAPTIC_FRICTION;
         eff.periodic.direction.type = SDL_HAPTIC_CARTESIAN;
         eff.condition.delay = 0;
@@ -365,7 +395,11 @@ void CSDLInputSystem::OpenJoysticks()
       }
     }
 
-    m_joysticks.push_back(joystick);
+    if (m_useGameController)
+        m_gamepads.push_back(gamepad);
+    else
+        m_joysticks.push_back(joystick);
+
     m_joyDetails.push_back(joyDetails);
     m_SDLHapticDatas.push_back(hapticDatas);
   }
@@ -374,7 +408,7 @@ void CSDLInputSystem::OpenJoysticks()
 void CSDLInputSystem::CloseJoysticks()
 {
   // Close all previously opened joysticks
-  for (size_t i = 0; i < m_joysticks.size(); i++)
+  for (int i = 0; i < GetNumJoysticks(); i++)
   {
     JoyDetails joyDetails = m_joyDetails[i];
     if (joyDetails.hasFFeedback)
@@ -390,11 +424,19 @@ void CSDLInputSystem::CloseJoysticks()
 
       SDL_HapticClose(m_SDLHapticDatas[i].SDLhaptic);
     }
-    SDL_Joystick *joystick = m_joysticks[i];
-    SDL_JoystickClose(joystick);
+
+    if (m_useGameController)
+    {
+      SDL_GameController *gamepad = m_gamepads[i];
+      SDL_GameControllerClose(gamepad);
+      m_gamepads.clear();
+    } else {
+      SDL_Joystick *joystick = m_joysticks[i];
+      SDL_JoystickClose(joystick);
+      m_joysticks.clear();
+    }
   }
 
-  m_joysticks.clear();
   m_joyDetails.clear();
   m_SDLHapticDatas.clear();
 }
@@ -402,13 +444,22 @@ void CSDLInputSystem::CloseJoysticks()
 bool CSDLInputSystem::InitializeSystem()
 {
   // Make sure joystick subsystem is initialized and joystick events are enabled
-  if (SDL_InitSubSystem(SDL_INIT_JOYSTICK | SDL_INIT_HAPTIC) != 0)
+  if (m_useGameController)
   {
-    ErrorLog("Unable to initialize SDL joystick subsystem (%s).\n", SDL_GetError());
-
-    return false;
+    if (SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER | SDL_INIT_HAPTIC) != 0)
+    {
+        ErrorLog("Unable to initialize SDL joystick subsystem (%s).\n", SDL_GetError());
+        return false;
+    }
+    SDL_GameControllerEventState(SDL_ENABLE);
+  } else {
+    if (SDL_InitSubSystem(SDL_INIT_JOYSTICK | SDL_INIT_HAPTIC) != 0)
+    {
+        ErrorLog("Unable to initialize SDL joystick subsystem (%s).\n", SDL_GetError());
+        return false;
+    }
+    SDL_JoystickEventState(SDL_ENABLE);
   }
-  SDL_JoystickEventState(SDL_ENABLE);
 
   // Open attached joysticks
   OpenJoysticks();
@@ -432,14 +483,14 @@ const char *CSDLInputSystem::GetKeyName(int keyIndex)
   return s_keyMap[keyIndex].keyName;
 }
 
-bool CSDLInputSystem::IsKeyPressed(int kbdNum, int keyIndex)
+bool CSDLInputSystem::IsKeyPressed(int kbdNum, int keyIndex) const
 {
   // Get SDL key for given index and check if currently pressed
   SDL_Keycode sdlKey = s_keyMap[keyIndex].sdlKey;
   return !!m_keyState[sdlKey];
 }
 
-int CSDLInputSystem::GetMouseAxisValue(int mseNum, int axisNum)
+int CSDLInputSystem::GetMouseAxisValue(int mseNum, int axisNum) const
 {
   // Return value for given mouse axis
   switch (axisNum)
@@ -451,13 +502,13 @@ int CSDLInputSystem::GetMouseAxisValue(int mseNum, int axisNum)
   }
 }
 
-int CSDLInputSystem::GetMouseWheelDir(int mseNum)
+int CSDLInputSystem::GetMouseWheelDir(int mseNum) const
 {
   // Return wheel value
   return m_mouseWheelDir;
 }
 
-bool CSDLInputSystem::IsMouseButPressed(int mseNum, int butNum)
+bool CSDLInputSystem::IsMouseButPressed(int mseNum, int butNum) const
 {
   // Return value for given mouse button
   switch (butNum)
@@ -471,34 +522,90 @@ bool CSDLInputSystem::IsMouseButPressed(int mseNum, int butNum)
   }
 }
 
-int CSDLInputSystem::GetJoyAxisValue(int joyNum, int axisNum)
+int CSDLInputSystem::GetJoyAxisValue(int joyNum, int axisNum) const
 {
   // Get raw joystick axis value for given joystick from SDL (values range from -32768 to 32767)
-  SDL_Joystick *joystick = m_joysticks[joyNum];
-  return SDL_JoystickGetAxis(joystick, axisNum);
+  if (m_useGameController)
+  {
+    SDL_GameController *gamepad = m_gamepads[joyNum];
+    switch (axisNum) {
+      case AXIS_X:  return SDL_GameControllerGetAxis(gamepad, SDL_CONTROLLER_AXIS_LEFTX);
+      case AXIS_Y:  return SDL_GameControllerGetAxis(gamepad, SDL_CONTROLLER_AXIS_LEFTY);
+      case AXIS_Z:  return SDL_GameControllerGetAxis(gamepad, SDL_CONTROLLER_AXIS_TRIGGERLEFT);
+      case AXIS_RX: return SDL_GameControllerGetAxis(gamepad, SDL_CONTROLLER_AXIS_RIGHTX);
+      case AXIS_RY: return SDL_GameControllerGetAxis(gamepad, SDL_CONTROLLER_AXIS_RIGHTY);
+      case AXIS_RZ: return SDL_GameControllerGetAxis(gamepad, SDL_CONTROLLER_AXIS_TRIGGERRIGHT);
+      default:      return 0;
+    }
+  } else {
+    SDL_Joystick *joystick = m_joysticks[joyNum];
+    return SDL_JoystickGetAxis(joystick, axisNum);
+  }
 }
 
-bool CSDLInputSystem::IsJoyPOVInDir(int joyNum, int povNum, int povDir)
+bool CSDLInputSystem::IsJoyPOVInDir(int joyNum, int povNum, int povDir) const
 {
   // Get current joystick POV-hat value for given joystick and POV number from SDL and check if pointing in required direction
-  SDL_Joystick *joystick = m_joysticks[joyNum];
-  int hatVal = SDL_JoystickGetHat(joystick, povNum);
-  switch (povDir)
+  if (m_useGameController)
   {
-    case POV_UP:    return !!(hatVal & SDL_HAT_UP);
-    case POV_DOWN:  return !!(hatVal & SDL_HAT_DOWN);
-    case POV_LEFT:  return !!(hatVal & SDL_HAT_LEFT);
-    case POV_RIGHT: return !!(hatVal & SDL_HAT_RIGHT);
-    default:        return false;
+    SDL_GameController *gamepad = m_gamepads[joyNum];
+    switch (povDir)
+    {
+      case POV_UP:    return SDL_GameControllerGetButton(gamepad, SDL_CONTROLLER_BUTTON_DPAD_UP);
+      case POV_DOWN:  return SDL_GameControllerGetButton(gamepad, SDL_CONTROLLER_BUTTON_DPAD_DOWN);
+      case POV_LEFT:  return SDL_GameControllerGetButton(gamepad, SDL_CONTROLLER_BUTTON_DPAD_LEFT);
+      case POV_RIGHT: return SDL_GameControllerGetButton(gamepad, SDL_CONTROLLER_BUTTON_DPAD_RIGHT);
+      default:        return false;
+    }
+    return false;
+  } else {
+    SDL_Joystick *joystick = m_joysticks[joyNum];
+    int hatVal = SDL_JoystickGetHat(joystick, povNum);
+    switch (povDir)
+    {
+      case POV_UP:    return !!(hatVal & SDL_HAT_UP);
+      case POV_DOWN:  return !!(hatVal & SDL_HAT_DOWN);
+      case POV_LEFT:  return !!(hatVal & SDL_HAT_LEFT);
+      case POV_RIGHT: return !!(hatVal & SDL_HAT_RIGHT);
+      default:        return false;
+    }
+    return false;
   }
-  return false;
 }
 
-bool CSDLInputSystem::IsJoyButPressed(int joyNum, int butNum)
+bool CSDLInputSystem::IsJoyButPressed(int joyNum, int butNum) const
 {
   // Get current joystick button state for given joystick and button number from SDL
-  SDL_Joystick *joystick = m_joysticks[joyNum];
-  return !!SDL_JoystickGetButton(joystick, butNum);
+  if (m_useGameController)
+  {
+    SDL_GameController *gamepad = m_gamepads[joyNum];
+    switch (butNum)
+    {
+      case 0:  return SDL_GameControllerGetButton(gamepad, SDL_CONTROLLER_BUTTON_A);
+      case 1:  return SDL_GameControllerGetButton(gamepad, SDL_CONTROLLER_BUTTON_B);
+      case 2:  return SDL_GameControllerGetButton(gamepad, SDL_CONTROLLER_BUTTON_X);
+      case 3:  return SDL_GameControllerGetButton(gamepad, SDL_CONTROLLER_BUTTON_Y);
+      case 4:  return SDL_GameControllerGetButton(gamepad, SDL_CONTROLLER_BUTTON_LEFTSHOULDER);
+      case 5:  return SDL_GameControllerGetButton(gamepad, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER);
+      case 6:  return SDL_GameControllerGetButton(gamepad, SDL_CONTROLLER_BUTTON_BACK);
+      case 7:  return SDL_GameControllerGetButton(gamepad, SDL_CONTROLLER_BUTTON_START);
+      case 8:  return SDL_GameControllerGetButton(gamepad, SDL_CONTROLLER_BUTTON_LEFTSTICK);
+      case 9:  return SDL_GameControllerGetButton(gamepad, SDL_CONTROLLER_BUTTON_RIGHTSTICK);
+      case 10: return SDL_GameControllerGetButton(gamepad, SDL_CONTROLLER_BUTTON_PADDLE1);
+      case 11: return SDL_GameControllerGetButton(gamepad, SDL_CONTROLLER_BUTTON_PADDLE2);
+      case 12: return SDL_GameControllerGetButton(gamepad, SDL_CONTROLLER_BUTTON_GUIDE);
+      case 13: return SDL_GameControllerGetButton(gamepad, SDL_CONTROLLER_BUTTON_PADDLE3);
+      case 14: return SDL_GameControllerGetButton(gamepad, SDL_CONTROLLER_BUTTON_PADDLE4);
+      case 15: return SDL_GameControllerGetButton(gamepad, SDL_CONTROLLER_BUTTON_MISC1);
+      case 16: return SDL_GameControllerGetButton(gamepad, SDL_CONTROLLER_BUTTON_TOUCHPAD);
+    }
+    return false;
+  }
+  else
+  {
+    SDL_Joystick *joystick = m_joysticks[joyNum];
+    return !!SDL_JoystickGetButton(joystick, butNum);
+  }
 }
 
 bool CSDLInputSystem::ProcessForceFeedbackCmd(int joyNum, int axisNum, ForceFeedbackCmd ffCmd)
@@ -547,22 +654,25 @@ bool CSDLInputSystem::ProcessForceFeedbackCmd(int joyNum, int axisNum, ForceFeed
     return true;
 }
 
-int CSDLInputSystem::GetNumKeyboards()
+int CSDLInputSystem::GetNumKeyboards() const
 {
   // Return ANY_KEYBOARD as SDL 1.2 cannot handle multiple keyboards
   return ANY_KEYBOARD;
 }
 
-int CSDLInputSystem::GetNumMice()
+int CSDLInputSystem::GetNumMice() const
 {
   // Return ANY_MOUSE as SDL 1.2 cannot handle multiple mice
   return ANY_MOUSE;
 }
 
-int CSDLInputSystem::GetNumJoysticks()
+int CSDLInputSystem::GetNumJoysticks() const
 {
   // Return number of joysticks found
-  return (int)m_joysticks.size();
+  if (m_useGameController)
+    return (int)m_gamepads.size();
+  else
+    return (int)m_joysticks.size();
 }
 
 const KeyDetails *CSDLInputSystem::GetKeyDetails(int kbdNum)
@@ -639,7 +749,7 @@ void CSDLInputSystem::StopAllEffect(int joyNum)
 void CSDLInputSystem::StopConstanteforce(int joyNum)
 {
   // stop constante effect or rumble constant effect
-  SDL_memset(&eff, 0, sizeof(SDL_HapticEffect));
+  memset(&eff, 0, sizeof(SDL_HapticEffect));
   eff.type = SDL_HAPTIC_CONSTANT;
   eff.periodic.direction.type = SDL_HAPTIC_CARTESIAN;
   eff.constant.direction.dir[0] = 0;
@@ -660,7 +770,7 @@ void CSDLInputSystem::StopConstanteforce(int joyNum)
 void CSDLInputSystem::StopVibrationforce(int joyNum)
 {
   // stop vibration-rumble effect
-  SDL_memset(&eff, 0, sizeof(SDL_HapticEffect));
+  memset(&eff, 0, sizeof(SDL_HapticEffect));
   eff.type = SDL_HAPTIC_SINE;
   eff.periodic.direction.type = SDL_HAPTIC_CARTESIAN;
   eff.constant.length = 500;
@@ -682,7 +792,7 @@ void CSDLInputSystem::StopVibrationforce(int joyNum)
 void CSDLInputSystem::StopSpringforce(int joyNum)
 {
   // stop spring effect
-  SDL_memset(&eff, 0, sizeof(SDL_HapticEffect));
+  memset(&eff, 0, sizeof(SDL_HapticEffect));
   eff.type = SDL_HAPTIC_SPRING;
   eff.periodic.direction.type = SDL_HAPTIC_CARTESIAN;
   eff.condition.delay = 0;
@@ -702,7 +812,7 @@ void CSDLInputSystem::StopSpringforce(int joyNum)
 void CSDLInputSystem::StopFrictionforce(int joyNum)
 {
   // stop friction effect
-  SDL_memset(&eff, 0, sizeof(SDL_HapticEffect));
+  memset(&eff, 0, sizeof(SDL_HapticEffect));
   eff.type = SDL_HAPTIC_FRICTION;
   eff.periodic.direction.type = SDL_HAPTIC_CARTESIAN;
   eff.condition.delay = 0;
@@ -721,7 +831,7 @@ void CSDLInputSystem::StopFrictionforce(int joyNum)
 
 void CSDLInputSystem::VibrationEffect(float strength, int joyNum)
 {
-  SDL_memset(&eff, 0, sizeof(SDL_HapticEffect));
+  memset(&eff, 0, sizeof(SDL_HapticEffect));
   eff.type = SDL_HAPTIC_SINE;
   eff.constant.direction.type = SDL_HAPTIC_CARTESIAN;
   eff.periodic.delay = 0;
@@ -747,7 +857,7 @@ void CSDLInputSystem::VibrationEffect(float strength, int joyNum)
 
 void CSDLInputSystem::ConstantForceEffect(float force, int dir, int length, int joyNum)
 {
-  SDL_memset(&eff, 0, sizeof(SDL_HapticEffect));
+  memset(&eff, 0, sizeof(SDL_HapticEffect));
   eff.type = SDL_HAPTIC_CONSTANT;
   eff.constant.direction.type = SDL_HAPTIC_CARTESIAN;
   eff.constant.direction.dir[0] = 0; // in cartesian mode dir on x set 0 on y set 1
@@ -773,8 +883,7 @@ void CSDLInputSystem::ConstantForceEffect(float force, int dir, int length, int 
 
 void CSDLInputSystem::SpringForceEffect(float force, int joyNum)
 {
-  SDL_memset(&eff, 0, sizeof(SDL_HapticEffect));
-
+  memset(&eff, 0, sizeof(SDL_HapticEffect));
   eff.type = SDL_HAPTIC_SPRING;
   eff.constant.direction.type = SDL_HAPTIC_CARTESIAN;
   eff.condition.delay = 0;
@@ -795,8 +904,7 @@ void CSDLInputSystem::SpringForceEffect(float force, int joyNum)
 
 void CSDLInputSystem::FrictionForceEffect(float force, int joyNum)
 {
-  SDL_memset(&eff, 0, sizeof(SDL_HapticEffect));
-
+  memset(&eff, 0, sizeof(SDL_HapticEffect));
   eff.type = SDL_HAPTIC_FRICTION;
   eff.constant.direction.type = SDL_HAPTIC_CARTESIAN;
   eff.condition.delay = 0;
@@ -821,7 +929,7 @@ void CSDLInputSystem::FrictionForceEffect(float force, int joyNum)
 // if it hasn't -> pad
 bool CSDLInputSystem::HasBasicForce(SDL_Haptic* hap)
 {
-  SDL_memset(&eff, 0, sizeof(SDL_HapticEffect));
+  memset(&eff, 0, sizeof(SDL_HapticEffect));
   eff.type = SDL_HAPTIC_CONSTANT;
   eff.periodic.direction.type = SDL_HAPTIC_CARTESIAN;
   eff.constant.direction.dir[0] = 0;

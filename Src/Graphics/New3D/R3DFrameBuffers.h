@@ -2,7 +2,6 @@
 #define FBO_H
 
 #include <GL/glew.h>
-#include "VBO.h"
 #include "GLSLShader.h"
 #include "Model.h"
 
@@ -16,7 +15,7 @@ public:
 
 	void	Draw();					// draw and composite the transparent layers
 	
-	bool	CreateFBO(int width, int height);
+	Result	CreateFBO(int width, int height);
 	void	DestroyFBO();
 
 	void	BindTexture(Layer layer);
@@ -26,7 +25,7 @@ public:
 
 private:
 
-	bool	CreateFBODepthCopy(int width, int height);
+	Result	CreateFBODepthCopy(int width, int height);
 	GLuint	CreateTexture(int width, int height);
 	void	AllocShaderTrans();
 	void	AllocShaderBase();
