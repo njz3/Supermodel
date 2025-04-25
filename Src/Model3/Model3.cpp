@@ -821,7 +821,7 @@ void CModel3::WriteSecurity(unsigned reg, UINT32 data)
  Unknown PCI devices are handled here.
 ******************************************************************************/
 
-UINT32 CModel3::ReadPCIConfigSpace(unsigned device, unsigned reg, unsigned bits, unsigned offset)
+UINT32 CModel3::ReadPCIConfigSpace(unsigned device, unsigned reg, unsigned bits, unsigned offset) const
 {
   if ((bits==8) || (bits==16))
   {
@@ -839,6 +839,7 @@ UINT32 CModel3::ReadPCIConfigSpace(unsigned device, unsigned reg, unsigned bits,
     default:
       break;
     }
+    break;
   default:
     break;
   }
@@ -869,7 +870,7 @@ void CModel3::SetCROMBank(unsigned idx)
   DebugLog("CROM bank setting: %d (%02X), PC=%08X, LR=%08X\n", idx, cromBankReg, ppc_get_pc(), ppc_get_lr());
 }
 
-UINT8 CModel3::ReadSystemRegister(unsigned reg)
+UINT8 CModel3::ReadSystemRegister(unsigned reg) const
 {
   switch (reg&0x3F)
   {
@@ -1016,9 +1017,9 @@ UINT8 CModel3::Read8(UINT32 addr)
     break;
 
   // 53C810 SCSI
-  case 0xC0:  // only on Step 1.0
+  case 0xC0:  // only on Step 1.x
 #ifndef NET_BOARD
-    if (m_game.stepping != "1.0")
+    if (m_stepping > 0x15 || SCSI.GetBaseAddress() != 0xC0)
     {
       //printf("Model3 : Read8 %x\n", addr);
       break;
@@ -1050,7 +1051,7 @@ UINT8 CModel3::Read8(UINT32 addr)
       break;
     }
   }
-  else if (m_game.stepping != "1.0") break;
+  else if (m_stepping > 0x15 || SCSI.GetBaseAddress() != 0xC0) break;
 #endif
   case 0xF9:
   case 0xC1:
@@ -1145,13 +1146,13 @@ UINT16 CModel3::Read16(UINT32 addr)
     if (addr < 0xF1120000)
     {
       // Tile generator accesses its RAM as little endian, no adjustment needed here
-      uint16_t data = TileGen.ReadRAM16(addr&0x1FFFFF);
+      data = TileGen.ReadRAM16(addr&0x1FFFFF);
       return FLIPENDIAN16(data);
     }
     break;
 
 #ifdef NET_BOARD
-  case 0xc0: // spikeout call this
+  case 0xc0: // spikeout calls this
   // interesting : poking @4 master to same value as slave (0x100) or simply !=0 -> connected and go in game, but freeze (prints comm error) as soon as players appear after the gate
   // sort of sync ack ? who writes this 16b value ?
   {
@@ -1166,6 +1167,7 @@ UINT16 CModel3::Read16(UINT32 addr)
       break;
     }
   }
+  break;
 #endif
   // Unknown
   default:
@@ -1310,9 +1312,9 @@ UINT32 CModel3::Read32(UINT32 addr)
     break;
 
   // 53C810 SCSI
-  case 0xC0:  // only on Step 1.0
+  case 0xC0:  // only on Step 1.x
 #ifndef NET_BOARD
-    if (m_game.stepping != "1.0") // check for Step 1.0
+    if (m_stepping > 0x15 || SCSI.GetBaseAddress() != 0xC0) // check for Step 1.x
       break;
 #endif
 #ifdef NET_BOARD
@@ -1347,7 +1349,7 @@ UINT32 CModel3::Read32(UINT32 addr)
       }
 
     }
-    else if (m_game.stepping != "1.0") break;
+    else if (m_stepping > 0x15 || SCSI.GetBaseAddress() != 0xC0) break;
 #endif
   case 0xF9:
   case 0xC1:
@@ -1419,10 +1421,17 @@ void CModel3::Write8(UINT32 addr, UINT8 data)
     // Sound Board
     case 0x08:
       //printf("PPC: %08X=%02X * (PC=%08X, LR=%08X)\n", addr, data, ppc_get_pc(), ppc_get_lr());
-      if ((addr&0xF) == 0)      // MIDI data port
+      if ((addr & 0xF) == 0)      // MIDI data port
+      {
         SoundBoard.WriteMIDIPort(data);
-      else if ((addr&0xF) == 4) // MIDI control port
+        IRQ.Deassert(0x40);
+      }
+      else if ((addr & 0xF) == 4) // MIDI control port
+      {
         midiCtrlPort = data;
+        if ((data & 0x20) == 0)
+          IRQ.Deassert(0x40);
+      }
       break;
 
     // Backup RAM
@@ -1467,9 +1476,9 @@ void CModel3::Write8(UINT32 addr, UINT8 data)
     break;
 
   // 53C810 SCSI
-  case 0xC0:  // only on Step 1.0
+  case 0xC0:  // only on Step 1.x
 #ifndef NET_BOARD
-    if (m_game.stepping != "1.0")
+    if (m_stepping > 0x15 || SCSI.GetBaseAddress() != 0xC0)
       goto Unknown8;
 #endif
 #ifdef NET_BOARD
@@ -1504,7 +1513,7 @@ void CModel3::Write8(UINT32 addr, UINT8 data)
 
       break;
     }
-    else if (m_game.stepping != "1.0") break;
+    else if (m_stepping > 0x15 || SCSI.GetBaseAddress() != 0xC0) break;
 #endif
   case 0xF9:
   case 0xC1:
@@ -1666,7 +1675,7 @@ void CModel3::Write32(UINT32 addr, UINT32 data)
 
   // Real3D configuration registers
   case 0x9C:  // 9Cxxxxxx
-    //printf("%08X=%08X\n", addr, data);  //TODO: flip endian?
+    GPU.WriteConfigurationRegister(addr, FLIPENDIAN32(data));
     break;
 
   // Real3D DMA
@@ -1789,9 +1798,9 @@ void CModel3::Write32(UINT32 addr, UINT32 data)
     break;
 
   // 53C810 SCSI
-  case 0xC0:  // step 1.0 only
+  case 0xC0:  // step 1.x only
 #ifndef NET_BOARD
-    if (m_game.stepping != "1.0")
+    if (m_stepping > 0x15 || SCSI.GetBaseAddress() != 0xC0)
       goto Unknown32;
 #endif
 #ifdef NET_BOARD
@@ -1826,7 +1835,7 @@ void CModel3::Write32(UINT32 addr, UINT32 data)
 
       break;
     }
-    else if (m_game.stepping != "1.0") break;
+    else if (m_stepping > 0x15 || SCSI.GetBaseAddress() != 0xC0) break;
 #endif
   case 0xF9:
   case 0xC1:
@@ -1895,7 +1904,7 @@ void CModel3::SaveState(CBlockFile *SaveState)
 void CModel3::LoadState(CBlockFile *SaveState)
 {
   // Load Model 3 state
-  if (OKAY != SaveState->FindBlock("Model 3"))
+  if (Result::OKAY != SaveState->FindBlock("Model 3"))
   {
     ErrorLog("Unable to load Model 3 core state. Save state file is corrupt.");
     return;
@@ -1947,7 +1956,7 @@ void CModel3::LoadNVRAM(CBlockFile *NVRAM)
   EEPROM.LoadState(NVRAM);
 
   // Load backup RAM
-  if (OKAY != NVRAM->FindBlock("Backup RAM"))
+  if (Result::OKAY != NVRAM->FindBlock("Backup RAM"))
   {
     ErrorLog("Unable to load Model 3 backup RAM. NVRAM file is corrupt.");
     return;
@@ -2042,6 +2051,27 @@ ThreadError:
   m_multiThreaded = false;
 }
 
+static unsigned GetCPUClockFrequencyInHz(const Game &game, Util::Config::Node &config)
+{
+  unsigned mhz = config["PowerPCFrequency"].ValueAsDefault<unsigned>(0);
+  if (!mhz)
+  {
+    if (game.stepping == "1.0")
+    {
+      mhz = 66;
+    }
+    else if (game.stepping == "1.5")
+    {
+      mhz = 100;
+    }
+    else  // 2.x
+    {
+      mhz = 166;
+    }
+  }
+  return mhz * 1000000;
+}
+
 void CModel3::RunMainBoardFrame(void)
 {
 	UINT32 start = CThread::GetTicks();
@@ -2056,12 +2086,11 @@ void CModel3::RunMainBoardFrame(void)
 	 *
          * 424 lines total: 384 display and 40 blanking/vsync.
 	 */ 
-	unsigned ppcCycles		= m_config["PowerPCFrequency"].ValueAs<unsigned>() * 1000000;
+	unsigned ppcCycles		= GetCPUClockFrequencyInHz(m_game, m_config);
 	unsigned frameCycles	= (unsigned)((float)ppcCycles / 57.524160f);
 	unsigned lineCycles     = frameCycles / 424;
-	unsigned dispCycles     = lineCycles * (TileGen.ReadRegister(0x08) + 40);
-	unsigned offsetCycles   = frameCycles - dispCycles;
-	unsigned statusCycles   = (unsigned)((float)frameCycles * (0.005f));
+	unsigned pingPongCycles = lineCycles * (TileGen.ReadRegister(0x08) + 40);
+    unsigned vBlankCycles   = lineCycles * 40;
 
 	// Games will start writing a new frame after the ping-pong buffers have been flipped, which is indicated by the
 	// ping-pong status bit. The timing of ping-pong flip is determined by the value of tilegen register 0x08, which
@@ -2077,19 +2106,17 @@ void CModel3::RunMainBoardFrame(void)
 	// VBlank
 	if (gpusReady)
 	{
+        IRQ.Assert(0x02);
 		TileGen.BeginVBlank();
-		GPU.BeginVBlank(statusCycles);	// Games poll the ping_pong at startup. Values aren't 100% accurate so we stretch the frame a bit to ensure writes happen in the correct frame
-
-		ppc_execute(offsetCycles);
-		IRQ.Assert(0x02);								// start at 33% of the frame
+		GPU.BeginVBlank(pingPongCycles);	// Games poll the ping_pong at startup. When this flips games can start to write data for the next frame. Often 66% of the frame time.
 
 		// keep running cycles until IRQ2 is acknowledged
 		// Ski Champ can hang if we check the MIDI control port too early
 		// and miss MIDI interrupts pending before the next IRQ2
-		while (IRQ.ReadIRQEnable() & 0x2 && IRQ.ReadIRQState() & 0x2 && dispCycles > 1000)
+		while (IRQ.ReadIRQEnable() & 0x2 && IRQ.ReadIRQState() & 0x2 && vBlankCycles > 1000)
 		{
 			ppc_execute(1000);
-			dispCycles -= 1000;
+            vBlankCycles -= 1000;
 		}
 
 		/*
@@ -2113,10 +2140,8 @@ void CModel3::RunMainBoardFrame(void)
 
 			// Process MIDI interrupt
 			IRQ.Assert(0x40);
-			ppc_execute(200); // give PowerPC time to acknowledge IR
-			IRQ.Deassert(0x40);
-			ppc_execute(200); // acknowledge that IRQ was deasserted (TODO: is this really needed?)
-			dispCycles -= 400;
+			ppc_execute(1000); // give PowerPC time to acknowledge IR
+            vBlankCycles -= 1000;
 
 			++irqCount;
 			if (irqCount > 128)
@@ -2124,6 +2149,8 @@ void CModel3::RunMainBoardFrame(void)
 				break;
 			}
 		}
+
+        ppc_execute(vBlankCycles);
 
 		IRQ.Assert(0x0D);
 
@@ -2133,7 +2160,11 @@ void CModel3::RunMainBoardFrame(void)
 	}
 
 	// Run the PowerPC for the active display part of the frame
-	ppc_execute(dispCycles);
+    for (int i = 0; i < 384; i++)
+    {
+        TileGen.DrawLine(i);
+        ppc_execute(lineCycles);
+    }
 
 	timings.ppcTicks = CThread::GetTicks() - start;
 }
@@ -2164,6 +2195,7 @@ void CModel3::RenderFrame(void)
     TileGen.RenderFrameTop();
     GPU.EndFrame();
     TileGen.EndFrame();
+    m_superAA->Draw();
   }
 
   EndFrameVideo();
@@ -2856,7 +2888,7 @@ const Game &CModel3::GetGame() const
 }
 
 // Stepping-dependent parameters (MPC10x type, etc.) are initialized here
-bool CModel3::LoadGame(const Game &game, const ROMSet &rom_set)
+Result CModel3::LoadGame(const Game &game, const ROMSet &rom_set)
 {
   m_game = Game();
 
@@ -2930,7 +2962,7 @@ bool CModel3::LoadGame(const Game &game, const ROMSet &rom_set)
   else
   {
     ErrorLog("Cannot configure Model 3 because game uses unrecognized stepping (%s).", game.stepping.c_str());
-    return FAIL;
+    return Result::FAIL;
   }
 
   if (!game.pci_bridge.empty())
@@ -2958,8 +2990,9 @@ bool CModel3::LoadGame(const Game &game, const ROMSet &rom_set)
   ppc_set_fetch(PPCFetchRegions);
 
   // Initialize Real3D
-  int stepping = ((game.stepping[0] - '0') << 4) | (game.stepping[2] - '0');
-  GPU.SetStepping(stepping);
+  m_stepping = ((game.stepping[0] - '0') << 4) | (game.stepping[2] - '0');
+  GPU.SetStepping(m_stepping);
+  m_jtag.SetStepping(m_stepping);
 
   // MPEG board (if present)
   if (rom_set.get_rom("mpeg_program").size)
@@ -2981,8 +3014,8 @@ bool CModel3::LoadGame(const Game &game, const ROMSet &rom_set)
       ErrorLog("No MPEG board type defined in game XML for MPEG ROMs.");
     else
       ErrorLog("Unknown MPEG board type '%s'. Only 'DSB1' and 'DSB2' are supported.", game.mpeg_board.c_str());
-    if (DSB && OKAY != DSB->Init(dsbROM, mpegROM))
-      return FAIL;
+    if (DSB && Result::OKAY != DSB->Init(dsbROM, mpegROM))
+      return Result::FAIL;
   }
   SoundBoard.AttachDSB(DSB);
 
@@ -2996,33 +3029,33 @@ bool CModel3::LoadGame(const Game &game, const ROMSet &rom_set)
     else
         DriveBoard = new CWheelBoard(m_config);
 
-    if (DriveBoard->Init(driveROM))
-      return FAIL;
+    if (DriveBoard->Init(driveROM) != Result::OKAY)
+      return Result::FAIL;
   }
   else if (game.driveboard_type == Game::DRIVE_BOARD_JOYSTICK && rom_set.get_rom("driveboard_program").size)
   {
     DriveBoard = new CJoyBoard(m_config);
-    if (DriveBoard->Init(driveROM))
-      return FAIL;
+    if (DriveBoard->Init(driveROM) != Result::OKAY)
+      return Result::FAIL;
   }
   else if (game.driveboard_type == Game::DRIVE_BOARD_BILLBOARD && rom_set.get_rom("driveboard_program").size)
   {
     DriveBoard = new CBillBoard(m_config);
-    if (DriveBoard->Init(driveROM))
-      return FAIL;
+    if (DriveBoard->Init(driveROM) != Result::OKAY)
+      return Result::FAIL;
   }
   else if (game.driveboard_type == Game::DRIVE_BOARD_SKI)
   {
     DriveBoard = new CSkiBoard(m_config);
-    if (DriveBoard->Init(driveROM)) // no actual ROM data loaded (ski feedback is simulated)
-      return FAIL;
+    if (DriveBoard->Init(driveROM) != Result::OKAY) // no actual ROM data loaded (ski feedback is simulated)
+      return Result::FAIL;
   }
   else
   {
     // Dummy drive board (presents itself as not attached)
     DriveBoard = new CDriveBoard(m_config);
-    if (DriveBoard->Init())
-      return FAIL;
+    if (DriveBoard->Init() != Result::OKAY)
+      return Result::FAIL;
   }
 
   // Security board encryption device
@@ -3059,20 +3092,21 @@ bool CModel3::LoadGame(const Game &game, const ROMSet &rom_set)
   m_game = game;
 #ifdef NET_BOARD
   NetBoard->GetGame(m_game);
-  if (OKAY != NetBoard->Init(netRAM, netBuffer))
+  if (Result::OKAY != NetBoard->Init(netRAM, netBuffer))
   {
-    return FAIL;
+    return Result::FAIL;
   }
 
   m_runNetBoard = m_game.stepping != "1.0" && NetBoard->IsAttached();
 #endif
-  return OKAY;
+  return Result::OKAY;
 }
 
-void CModel3::AttachRenderers(CRender2D *Render2DPtr, IRender3D *Render3DPtr)
+void CModel3::AttachRenderers(CRender2D *Render2DPtr, IRender3D *Render3DPtr, SuperAA *superAA)
 {
   TileGen.AttachRenderer(Render2DPtr);
   GPU.AttachRenderer(Render3DPtr);
+  m_superAA = superAA;
 }
 
 void CModel3::AttachInputs(CInputs *InputsPtr)
@@ -3097,21 +3131,21 @@ void CModel3::AttachOutputs(COutputs *OutputsPtr)
   DebugLog("Model 3 attached outputs\n");
 }
 
-const static int RAM_SIZE			= 0x800000;		//8MB
-const static int CROM_SIZE			= 0x800000;		//8MB
-const static int CROMxx_SIZE		= 0x8000000;	//128MB
-const static int VROM_SIZE			= 0x4000000;	//64MB
-const static int BACKUPRAM_SIZE		= 0x20000;		//128KB
-const static int SECURITYRAM_SIZE	= 0x20000;		//128KB
-const static int SOUNDROM_SIZE		= 0x80000;		//512KB
-const static int SAMPLEROM_SIZE		= 0x1000000;	//16MB
-const static int DSBPROGROM_SIZE	= 0x20000;		//128KB
-const static int DSBMPEGROM_SIZE	= 0x1000000;	//16MB
-const static int DRIVEROM_SIZE		= 0x10000;		//64KB
-const static int NETBUFFER_SIZE		= 0x20000;		//128KB
-const static int NETRAM_SIZE		= 0x10000;		//64KB
+constexpr static int RAM_SIZE			= 0x800000;		//8MB
+constexpr static int CROM_SIZE			= 0x800000;		//8MB
+constexpr static int CROMxx_SIZE		= 0x8000000;	//128MB
+constexpr static int VROM_SIZE			= 0x4000000;	//64MB
+constexpr static int BACKUPRAM_SIZE		= 0x20000;		//128KB
+constexpr static int SECURITYRAM_SIZE	= 0x20000;		//128KB
+constexpr static int SOUNDROM_SIZE		= 0x80000;		//512KB
+constexpr static int SAMPLEROM_SIZE		= 0x1000000;	//16MB
+constexpr static int DSBPROGROM_SIZE	= 0x20000;		//128KB
+constexpr static int DSBMPEGROM_SIZE	= 0x1000000;	//16MB
+constexpr static int DRIVEROM_SIZE		= 0x10000;		//64KB
+constexpr static int NETBUFFER_SIZE		= 0x20000;		//128KB
+constexpr static int NETRAM_SIZE		= 0x10000;		//64KB
 
-const static int MEM_POOL_SIZE		= RAM_SIZE + CROM_SIZE +
+constexpr static int MEM_POOL_SIZE		= RAM_SIZE + CROM_SIZE +
                                         CROMxx_SIZE + VROM_SIZE +
                                         BACKUPRAM_SIZE + SECURITYRAM_SIZE +
                                         SOUNDROM_SIZE + SAMPLEROM_SIZE +
@@ -3119,24 +3153,24 @@ const static int MEM_POOL_SIZE		= RAM_SIZE + CROM_SIZE +
                                         DRIVEROM_SIZE + NETBUFFER_SIZE +
                                         NETRAM_SIZE;
 
-const static int RAM_OFFSET			= 0;
-const static int CROM_OFFSET		= RAM_OFFSET + RAM_SIZE;
-const static int CROMxx_OFFSET		= CROM_OFFSET + CROM_SIZE;
-const static int VROM_OFFSET		= CROMxx_OFFSET + CROMxx_SIZE;
-const static int BACKUPRAM_OFFSET	= VROM_OFFSET + VROM_SIZE;
-const static int SECURITYRAM_OFFSET	= BACKUPRAM_OFFSET + BACKUPRAM_SIZE;
-const static int SOUNDROM_OFFSET	= SECURITYRAM_OFFSET + SECURITYRAM_SIZE;
-const static int SAMPLEROM_OFFSET	= SOUNDROM_OFFSET + SOUNDROM_SIZE;
-const static int DSBPROGROM_OFFSET	= SAMPLEROM_OFFSET + SAMPLEROM_SIZE;
-const static int DSBMPEGROM_OFFSET	= DSBPROGROM_OFFSET + DSBPROGROM_SIZE;
-const static int DRIVEROM_OFFSET	= DSBMPEGROM_OFFSET + DSBMPEGROM_SIZE;
-const static int NETBUFFER_OFFSET	= DRIVEROM_OFFSET + DRIVEROM_SIZE;
-const static int NETRAM_OFFSET		= NETBUFFER_OFFSET + NETBUFFER_SIZE;
+constexpr static int RAM_OFFSET			= 0;
+constexpr static int CROM_OFFSET		= RAM_OFFSET + RAM_SIZE;
+constexpr static int CROMxx_OFFSET		= CROM_OFFSET + CROM_SIZE;
+constexpr static int VROM_OFFSET		= CROMxx_OFFSET + CROMxx_SIZE;
+constexpr static int BACKUPRAM_OFFSET	= VROM_OFFSET + VROM_SIZE;
+constexpr static int SECURITYRAM_OFFSET	= BACKUPRAM_OFFSET + BACKUPRAM_SIZE;
+constexpr static int SOUNDROM_OFFSET	= SECURITYRAM_OFFSET + SECURITYRAM_SIZE;
+constexpr static int SAMPLEROM_OFFSET	= SOUNDROM_OFFSET + SOUNDROM_SIZE;
+constexpr static int DSBPROGROM_OFFSET	= SAMPLEROM_OFFSET + SAMPLEROM_SIZE;
+constexpr static int DSBMPEGROM_OFFSET	= DSBPROGROM_OFFSET + DSBPROGROM_SIZE;
+constexpr static int DRIVEROM_OFFSET	= DSBMPEGROM_OFFSET + DSBMPEGROM_SIZE;
+constexpr static int NETBUFFER_OFFSET	= DRIVEROM_OFFSET + DRIVEROM_SIZE;
+constexpr static int NETRAM_OFFSET		= NETBUFFER_OFFSET + NETBUFFER_SIZE;
 
 // Model 3 initialization. Some initialization is deferred until ROMs are loaded in LoadROMSet()
-bool CModel3::Init(void)
+Result CModel3::Init(void)
 {
-  float memSizeMB = (float)MEM_POOL_SIZE / (float)0x100000;
+  constexpr float memSizeMB = (float)MEM_POOL_SIZE / (float)0x100000;
 
   // Allocate all memory for ROMs and PPC RAM
   memoryPool = new(std::nothrow) UINT8[MEM_POOL_SIZE];
@@ -3167,12 +3201,12 @@ bool CModel3::Init(void)
   SCSI.Init(this,&IRQ,0x100); // SCSI is actually a non-maskable interrupt, so we give it a bit number outside of 8-bit range
   RTC.Init();
   EEPROM.Init();
-  if (OKAY != TileGen.Init(&IRQ))
-    return FAIL;
-  if (OKAY != GPU.Init(vrom,this,&IRQ,0x100)) // same for Real3D DMA interrupt
-    return FAIL;
-  if (OKAY != SoundBoard.Init(soundROM,sampleROM))
-    return FAIL;
+  if (Result::OKAY != TileGen.Init(&IRQ))
+    return Result::FAIL;
+  if (Result::OKAY != GPU.Init(vrom,this,&IRQ,0x100)) // same for Real3D DMA interrupt
+    return Result::FAIL;
+  if (Result::OKAY != SoundBoard.Init(soundROM,sampleROM))
+    return Result::FAIL;
 
   PCIBridge.AttachPCIBus(&PCIBus);
   PCIBus.AttachDevice(13,&GPU);
@@ -3188,7 +3222,7 @@ bool CModel3::Init(void)
 
   DebugLog("Initialized Model 3 (allocated %1.1f MB)\n", memSizeMB);
 
-  return OKAY;
+  return Result::OKAY;
 }
 
 CSoundBoard *CModel3::GetSoundBoard(void)
@@ -3216,7 +3250,8 @@ CModel3::CModel3(Util::Config::Node &config)
     TileGen(config),
     GPU(config),
     SoundBoard(config),
-    m_jtag(GPU)
+    m_jtag(GPU),
+    m_superAA(nullptr)
 {
   // Initialize pointers so dtor can know whether to free them
   memoryPool = NULL;
@@ -3242,6 +3277,7 @@ CModel3::CModel3(Util::Config::Node &config)
 
 #ifdef NET_BOARD
   NetBoard = NULL;
+  m_runNetBoard = false;
 #endif
 
   securityPtr = 0;
@@ -3267,6 +3303,23 @@ CModel3::CModel3(Util::Config::Node &config)
 
   notifyLock = NULL;
   notifySync = NULL;
+
+  m_stepping = 0;
+  inputBank = 0;
+  serialFIFO1 = 0;
+  serialFIFO2 = 0;
+  gunReg = 0;
+  adcChannel = 0;
+
+  midiCtrlPort = 0;
+  driveROM = nullptr;
+  OutputRegister[0] = OutputRegister[1] = 0;
+  cromBankReg = 0;
+  memset(PPCFetchRegions, 0, sizeof(PPCFetchRegions));
+  gpusReady = false;
+  sndBrdNotifyLock = nullptr;
+  sndBrdNotifySync = nullptr;
+  memset(&timings, 0, sizeof(FrameTimings));
 
   DebugLog("Built Model 3\n");
 }

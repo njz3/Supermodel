@@ -1,4 +1,3 @@
-
 /**
 ** Supermodel
 ** A Sega Model 3 Arcade Emulator.
@@ -29,6 +28,8 @@
 #ifndef INCLUDED_NEW3D_H
 #define INCLUDED_NEW3D_H
 
+#include <unordered_map>
+#include <atomic>
 #include <GL/glew.h>
 #include "Types.h"
 #include "Graphics/IRender3D.h"
@@ -43,10 +44,11 @@
 #include "PolyHeader.h"
 #include "R3DFrameBuffers.h"
 #include <mutex>
+#include "TextureBank.h"
 
 namespace New3D {
 
-class CNew3D : public IRender3D
+class CNew3D final : public IRender3D
 {
 public:
 	/*
@@ -137,11 +139,11 @@ public:
 	*		totalYRes	Vertical resolution.
 	*
 	* Returns:
-	*		OKAY is successful, otherwise FAILED if a non-recoverable error
+	*		OKAY if successful, otherwise FAILED if a non-recoverable error
 	*		occurred. Any allocated memory will not be freed until the
 	*		destructor is called. Prints own error messages.
 	*/
-	bool Init(unsigned xOffset, unsigned yOffset, unsigned xRes, unsigned yRes, unsigned totalXRes, unsigned totalYRes);
+	Result Init(unsigned xOffset, unsigned yOffset, unsigned xRes, unsigned yRes, unsigned totalXRes, unsigned totalYRes, unsigned aaTarget);
 
 	/*
 	* SetSunClamp(bool enable);
@@ -154,14 +156,14 @@ public:
 	void SetSunClamp(bool enable);
 
 	/*
-	* SetSignedShade(bool enable);
+	* SetBlockCulling(bool enable);
 	*
-	* Sets the sign-ness of fixed shading value
+	* When enabled, clears screen to white and disables 3D rendering
 	*
 	* Parameters:
-	*		enable	Fixed shading is expressed as signed value
+	*		enable	Set block culling
 	*/
-	void SetSignedShade(bool enable);
+	void SetBlockCulling(bool enable);
 
 	/*
 	* GetLosValue(int layer);
@@ -197,7 +199,7 @@ private:
 	// Matrix stack
 	void MultMatrix(UINT32 matrixOffset, Mat4& mat);
 	void InitMatrixStack(UINT32 matrixBaseAddr, Mat4& mat);
-	void ResetMatrix(Mat4& mat);
+	void ResetMatrix(Mat4& mat) const;
 
 	// Scene database traversal
 	bool DrawModel(UINT32 modelAddr);
@@ -207,22 +209,24 @@ private:
 	void RenderViewport(UINT32 addr);
 
 	// building the scene
-	int	GetTexFormat(int originalFormat, bool contour);
+	int	GetTexFormat(int originalFormat, bool contour) const;
 	void SetMeshValues(SortingMesh *currentMesh, PolyHeader &ph);
 	void CacheModel(Model *m, const UINT32 *data);
 	void CopyVertexData(const R3DPoly& r3dPoly, std::vector<FVertex>& vertexArray);
-	void GetCoordinates(int width, int height, UINT16 uIn, UINT16 vIn, float uvScale, float& uOut, float& vOut);
+	void GetCoordinates(int width, int height, UINT16 uIn, UINT16 vIn, float uvScale, float& uOut, float& vOut) const;
 
 	bool RenderScene(int priority, bool renderOverlay, Layer layer);		// returns if has overlay plane
-	bool IsDynamicModel(UINT32 *data);				// check if the model has a colour palette
-	bool IsVROMModel(UINT32 modelAddr);
+	bool IsDynamicModel(UINT32 *data) const;				// check if the model has a colour palette
+	bool IsVROMModel(UINT32 modelAddr) const;
 	void DrawScrollFog();
 	void DrawAmbientFog();
 	bool SkipLayer(int layer);
 	void SetRenderStates();
 	void DisableRenderStates();
-	void TranslateLosPosition(int inX, int inY, int& outX, int& outY);
+	void TranslateLosPosition(int inX, int inY, int& outX, int& outY) const;
 	bool ProcessLos(int priority);
+	void CalcViewport(Viewport* vp);
+	void TranslateTexture(unsigned& x, unsigned& y, int width, int height, int& page) const;
 
 	/*
 	* Data
@@ -234,13 +238,15 @@ private:
 	GLenum m_primType;
 
 	// GPU configuration
-	bool m_sunClamp;
-	bool m_shadeIsSigned;
+	std::atomic_bool m_sunClamp;
+	std::atomic_bool m_blockCulling;
+	bool m_noWhiteFlash;
 
 	// Stepping
 	int		m_step;
 	int		m_offset;			// offset to subtract for words 3 and higher of culling nodes
 	float	m_vertexFactor;		// fixed-point conversion factor for vertices
+	float	m_textureNPFactor;	// fixed-point conversion factor for texture NP values
 
 	// Memory (passed from outside)
 	const UINT32	*m_cullingRAMLo;	// 4 MB
@@ -254,13 +260,13 @@ private:
 	unsigned	m_xOffs, m_yOffs;
 	unsigned	m_xRes, m_yRes;           // resolution of Model 3's 496x384 display area within the window
 	unsigned 	m_totalXRes, m_totalYRes; // total OpenGL window resolution
+	bool		m_wideScreen;
 
 	// Real3D Base Matrix Pointer
 	const float	*m_matrixBasePtr;
 	UINT32 m_colorTableAddr = 0x400;		// address of color table in polygon RAM
 	LODBlendTable* m_LODBlendTable;
 
-	GLuint			m_textureBuffer;
 	NodeAttributes	m_nodeAttribs;
 	Mat4			m_modelMat;				// current modelview matrix
 
@@ -280,38 +286,29 @@ private:
 	std::vector<FVertex> m_polyBufferRam;		// dynamic polys
 	std::vector<FVertex> m_polyBufferRom;		// rom polys
 	std::unordered_map<UINT32, std::shared_ptr<std::vector<Mesh>>> m_romMap;	// a hash table for all the ROM models. The meshes don't have model matrices or tex offsets yet
+	TextureBank			m_textureBank[2];
 
 	GLuint m_vao;
 	VBO m_vbo;								// large VBO to hold our poly data, start of VBO is ROM data, ram polys follow
 	R3DShader m_r3dShader;
 	R3DScrollFog m_r3dScrollFog;
 	R3DFrameBuffers m_r3dFrameBuffers;
+	GLuint m_aaTarget;						// optional, maybe zero
 
-	Plane m_planes[5];
-
-	struct BBox
-	{
-		V4::Vec4 points[8];
-	};
-
-	struct NFPair
-	{
-		float zNear;
-		float zFar;
-	};
-
-	NFPair m_nfPairs[4];
 	int m_currentPriority;
 
-	void CalcFrustumPlanes	(Plane p[5], const float* matrix);
-	void CalcBox			(float distance, BBox& box);
-	void TransformBox		(const float *m, BBox& box);
-	void MultVec			(const float matrix[16], const float in[4], float out[4]);
-	Clip ClipBox			(const BBox& box, Plane planes[5]);
-	void ClipModel			(const Model *m);
-	void ClipPolygon		(ClipPoly& clipPoly, Plane planes[5]);
-	void CalcBoxExtents		(const BBox& box);
-	void CalcViewport		(Viewport* vp, float near, float far);
+	struct
+	{
+		float bnlu;
+		float bnlv;
+		float bntu;
+		float bntw;
+		float bnru;
+		float bnrv;
+		float bnbu;
+		float bnbw;
+		float correction;
+	} m_planes;	
 };
 
 } // New3D

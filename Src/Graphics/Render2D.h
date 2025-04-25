@@ -29,9 +29,12 @@
 #define INCLUDED_RENDER2D_H
 
 #include <GL/glew.h>
+#include <memory>
+#include "Supermodel.h"
 #include "Util/NewConfig.h"
 #include "New3D/GLSLShader.h"
 #include "FBO.h"
+#include "../Model3/TileGenBuffer.h"
 
   /*
    * CRender2D:
@@ -139,6 +142,17 @@ public:
 	void AttachVRAM(const uint8_t* vramPtr);
 
 	/*
+	* AttachDrawBuffers(bottom,top):
+	*
+	* The tilegen is double buffered (for threading). We attach the current draw buffer for drawing.
+	*
+	* Parameters:
+	*    bottom		Bottom surface
+	*    top		Top surface	
+	*/
+	void AttachDrawBuffers(std::shared_ptr<TileGenBuffer> bottom, std::shared_ptr<TileGenBuffer> top);
+
+	/*
 	 * Init(xOffset, yOffset, xRes, yRes, totalXRes, totalYRes);
 	 *
 	 * One-time initialization of the context. Must be called before any other
@@ -158,7 +172,7 @@ public:
 	 *    OKAY is successful, otherwise FAILED if a non-recoverable error
 	 *    occurred. Prints own error messages.
 	 */
-	bool Init(unsigned xOffset, unsigned yOffset, unsigned xRes, unsigned yRes, unsigned totalXRes, unsigned totalYRes);
+	Result Init(unsigned xOffset, unsigned yOffset, unsigned xRes, unsigned yRes, unsigned totalXRes, unsigned totalYRes, unsigned aaTarget, UpscaleMode upscaleMode);
 
 	/*
 	 * CRender2D(config):
@@ -174,21 +188,11 @@ public:
 
 private:
 
-	bool	IsEnabled	(int layerNumber);
-	bool	Above3D		(int layerNumber);
-	void	Setup2D		(bool isBottom);
-	void	DrawSurface	(GLuint textureID);
-
-	float	LineToPercentStart	(int lineNumber);		// vertical line numbers are from 0-383
-	float	LineToPercentEnd	(int lineNumber);		// vertical line numbers are from 0-383
+	void	Setup2D			(bool isBottom);
+	void	DrawSurface		(GLuint textureID);
 
 	// Run-time configuration
 	const Util::Config::Node& m_config;
-
-	// Data received from tile generator device object
-	const uint32_t* m_vram;
-	const uint32_t* m_palette[2]; // palettes for A/A' and B/B'
-	const uint32_t* m_regs;
 
 	// OpenGL data
 	unsigned  m_xPixels = 496;  // display surface resolution
@@ -198,17 +202,13 @@ private:
 	unsigned  m_totalXPixels = 0;   // total display surface resolution
 	unsigned  m_totalYPixels = 0;
 	unsigned  m_correction = 0;
+	GLuint m_aaTarget = 0;
+	UpscaleMode m_upscaleMode = UpscaleMode::Biquintic;
 
 	GLuint m_vao;
-	GLSLShader m_shader;
-	GLSLShader m_shaderTileGen;
-
-	GLuint m_vramTexID = 0;
-	GLuint m_paletteTexID = 0;
-
-	FBO m_fboBottom;
-	FBO m_fboTop;
-
+	GLuint m_textureIDs[2];
+	GLSLShader m_drawShader;
+	std::shared_ptr<TileGenBuffer> m_drawBuffers[2];
 };
 
 
