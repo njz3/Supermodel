@@ -82,6 +82,7 @@ struct DIJoyInfo
 	// DirectInput details
 	GUID guid;
 	int dInputNum;
+	bool hasFFeedback;  // Device has force feedback: DirectInput plays it only when acquired exclusively
 	LPDIRECTINPUTEFFECT dInputEffects[NUM_JOY_AXES][NUM_FF_EFFECTS];
 
 	// XInput details

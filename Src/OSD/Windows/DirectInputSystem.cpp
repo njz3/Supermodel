@@ -1264,6 +1264,7 @@ void CDirectInputSystem::OpenJoysticks()
 		
 			// Keep track of DirectInput device number
 			it->dInputNum = (int)m_di8Joysticks.size();
+			it->hasFFeedback = joyDetails.hasFFeedback;
 
 			m_di8Joysticks.push_back(joystick);
 		}
@@ -1288,7 +1289,10 @@ void CDirectInputSystem::ActivateJoysticks()
 		{	
 			LPDIRECTINPUTDEVICE8 joystick = m_di8Joysticks[it->dInputNum];
 			joystick->Unacquire();
-			if (m_grabMouse)
+			// DirectInput only plays force feedback effects on a device acquired exclusively, whether the mouse is
+			// grabbed or not
+			bool forceFeedback = it->hasFFeedback && m_config["ForceFeedback"].ValueAsDefault<bool>(false);
+			if (m_grabMouse || forceFeedback)
 				joystick->SetCooperativeLevel(m_hwnd, DISCL_EXCLUSIVE | DISCL_FOREGROUND);
 			else
 				joystick->SetCooperativeLevel(m_hwnd, DISCL_NONEXCLUSIVE | DISCL_BACKGROUND);
