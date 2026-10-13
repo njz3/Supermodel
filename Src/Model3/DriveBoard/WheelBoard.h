@@ -161,8 +161,8 @@ public:
    * GetForceFeedbackStrength(void):
    * SetForceFeedbackStrength(strength):
    *
-   * The strength DIP switches: 1-3..1-5 on the boards that drive a servo
-   * board, 1-6..1-8 on EPR-18261.
+   * The strength DIP switches: bits 2-4 of DIP switches 1 on the boards
+   * that drive a servo board, bits 5-7 on EPR-18261.
    */
   unsigned GetForceFeedbackStrength(void) const;
   void SetForceFeedbackStrength(unsigned strength);

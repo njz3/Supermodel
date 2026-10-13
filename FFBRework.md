@@ -57,7 +57,7 @@ envoient sont dans `DRIVEBOARD.md` de BFF.
 | **`FB` = gain** (`80`..`FF`, valeurs < `80` ignorées), appliqué à la force constante et à la vibration, pas au ressort de la carte servo | Ignoré avant : `2x` (16 niveaux), `7x` (MOTOR POWER 50-100 %) et le demi-gain après un power slide restaient sans effet | Courbes `fb_curve_70`..`75` ; essai : `57` avec MOTOR POWER 80 % donne −4251 sur vJoy, soit 53,5 % × 79,5 % |
 | **`FF` + toute valeur = moteur libre** | `FF 80`, qui suit le recentrage du volant en attract (cabinet `B0`), était ignoré : la dernière poussée restait (28 % sur Scud, 49 % sur Daytona 2) jusqu'à 30 s | Code d'attract des deux EPROM |
 | **Force constante et vibration envoyées une fois par image** (`UpdateForceFeedback` en fin de `RunFrame`) | Les ~9 NMI d'une image tournent d'un bloc : le volant ne sentait que la dernière valeur, au prix de rafales de `SetParameters` | - |
-| **EPR-18261** (Le Mans 24, cabinet STANDARD) : reconnu par son CRC32 `0C7FAC58` ; deux puissances 0-63, bits inversés et complémentés, force = montée − descente ; volant lu sur l'ADC canal 1 (port `24`) ; `ForceFeedbackStrength` → DIP 1-6..8 | Supermodel lisait ces ports comme registre/valeur : **aucun effet** ; et le volant était lu sur le port `25` | README EPR-18261 de BFF ; **pas encore essayé** |
+| **EPR-18261** (Le Mans 24, cabinet STANDARD) : reconnu par son CRC32 `0C7FAC58` ; deux puissances 0-63, bits inversés et complémentés, force = montée − descente ; volant lu sur l'ADC canal 1 (port `24`) ; `ForceFeedbackStrength` → bits 5-7 des DIP 1, soit les interrupteurs 1-1..1-3 (sur cette carte, l'interrupteur n est le bit 8 − n, mesuré) | Supermodel lisait ces ports comme registre/valeur : **aucun effet** ; et le volant était lu sur le port `25` | README EPR-18261 de BFF ; **pas encore essayé** |
 | Gain gardé dans un bloc de save state séparé, `WheelBoardServo` | Les anciens états se chargent toujours | - |
 | `SimulateWrite` : `break` manquant après `case 8` | Code mort (mode simulé jamais actif) | - |
 
@@ -140,7 +140,10 @@ La capture des trois parties est dans BFF :
 6. **Acquisition exclusive en arrière-plan** (`DISCL_EXCLUSIVE | DISCL_BACKGROUND`) pour un volant
    FFB : si DirectInput l'accepte, le FFB tiendrait sans le focus. C'est utile à la borne, où une
    fenêtre qui passe devant coupe le FFB, et pour les essais. À essayer.
-7. **`FD`**, probablement un amortissement : le traduire en `GUID_Damper`, à étalonner.
+7. **Les amortissements** : `FD` des cartes servo, probablement un amortissement, et le frein
+   `2x` d'EPR-18261 (les deux puissances à la fois), **mesuré comme un amortisseur** sur la
+   carte réelle. Aujourd'hui Supermodel n'en tire aucune force : les traduire en `GUID_Damper`,
+   à étalonner.
 8. **Cadence** : faire tourner la driveboard en temps réel à 500 Hz, avec la position du volant lue
    à cette cadence. Les effets de route (8-33 Hz) et les impulsions de 2 ms de l'effet `02` se
    perdent à 57,5 Hz.
@@ -157,3 +160,14 @@ La capture des trois parties est dans BFF :
 - Daytona 2 : tout le ressort vient du Z80 ; les DIP 1-3..5 ne sont pas lues, donc
   `ForceFeedbackStrength` est sans effet.
 - Le Mans 24 : CABINET TYPE STANDARD → EPR-18261 ; LE MANS → EPR-19338A.
+- **EPR-18261 mesurée sur une vraie carte** (Racecab1, carte moteur 838-11966, 13 octobre 2026,
+  par la session BFF) :
+  - les DIP se lisent ON = 0, et **l'interrupteur n est le bit 8 − n** : la force ajoutée (bits
+    5-7) correspond aux interrupteurs 1-1..1-3 ;
+  - `5x` pousse à gauche, `6x` à droite ;
+  - les forces suivent la formule `(2n + base) × 2` ;
+  - `2x` agit comme un amortisseur ;
+  - la NMI tourne à 500 Hz, donc le Z80 à 8 MHz : la cadence de Supermodel est la bonne.
+- Pour les cartes Model 3 (Scud, Daytona 2, Sega Rally 2), la numérotation des DIP n'est pas
+  mesurée : les numéros des docs BFF supposent bit n − 1. Le code de Supermodel travaille sur les
+  bits (2-4 pour la force), il n'est donc pas concerné.

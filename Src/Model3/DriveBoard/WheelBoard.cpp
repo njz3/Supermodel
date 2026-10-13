@@ -731,7 +731,8 @@ uint8_t CWheelBoard::ReadADCChannel4() const
 
 unsigned CWheelBoard::GetForceFeedbackStrength() const
 {
-  // EPR-18261: DIP switches 1-6..1-8 add 0 to 7 to every strength
+  // EPR-18261: bits 5-7 of DIP switches 1 add 0 to 7 to every strength (switches 1-1..1-3 on the board, switch n
+  // being bit 8 - n, measured)
   if (m_twoPowerOutputs)
     return ((~(m_dip1 >> 5)) & 7) + 1;
   return CDriveBoard::GetForceFeedbackStrength();
