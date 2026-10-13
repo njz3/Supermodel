@@ -34,6 +34,12 @@
 #include "Supermodel.h"
 #include <cstdio>
 #include <algorithm>
+#include <zlib.h>
+
+// EPR-18261, the program of the Model 2 Indy 500 drive board. Le Mans 24 uses it with its cabinet type STANDARD
+// (with the cabinet type LE MANS, it uses Scud Race's EPR-19338A). It drives a motor with two powers, one per way,
+// instead of the registers of a servo board, and reads the wheel on ADC channel 1
+static constexpr uint32_t EPR18261_CRC32 = 0x0C7FAC58;
 
 Game::DriveBoardType CWheelBoard::GetType(void) const
 {
@@ -68,6 +74,10 @@ void CWheelBoard::SaveState(CBlockFile *SaveState)
     SaveState->Write(m_adcPortBit);
     SaveState->Write(m_uncenterVal1);
     SaveState->Write(m_uncenterVal2);
+
+    // In a block of its own, so that older save states still load
+    SaveState->NewBlock("WheelBoardServo", __FILE__);
+    SaveState->Write(m_servoGain);
   }
 }
 
@@ -97,6 +107,11 @@ void CWheelBoard::LoadState(CBlockFile *SaveState)
     SaveState->Read(m_adcPortBit);
     SaveState->Read(m_uncenterVal1);
     SaveState->Read(m_uncenterVal2);
+
+    if (SaveState->FindBlock("WheelBoardServo") == Result::OKAY)
+      SaveState->Read(m_servoGain);
+    else
+      m_servoGain = 0x7F;
   }
 
   CDriveBoard::LoadState(SaveState);
@@ -110,6 +125,9 @@ void CWheelBoard::Disable(void)
 
 void CWheelBoard::Reset(void)
 {
+  // Before CDriveBoard::Reset(), which sets the strength DIP switches
+  m_twoPowerOutputs = crc32(0, m_rom, 0x10000) == EPR18261_CRC32;
+
   CDriveBoard::Reset();
 
   m_seg1Digit1 = 0xFF;
@@ -126,6 +144,10 @@ void CWheelBoard::Reset(void)
 
   m_uncenterVal1 = 0;
   m_uncenterVal2 = 0;
+
+  m_servoGain = 0x7F;
+  m_constForce = 0;
+  m_vibrate = 0;
 
   m_lastConstForce = 0;
   m_lastSelfCenter = 0;
@@ -275,6 +297,7 @@ void CWheelBoard::SimulateWrite(UINT8 cmd)
     case 6:  /* Ignore */                                      break;  // 0x86 Set cockpit banking position
     case 7:  /* Ignore */                                      break;  // 0x87 Lamp on/off
     }
+    break;
   case 0x9: // 0x90-9F ??? Don't appear to have any effect with Scud Race ROM
     /* TODO */
     break;
@@ -317,7 +340,12 @@ void CWheelBoard::RunFrame(void)
   if (m_simulated)
     SimulateFrame();
   else
+  {
     CDriveBoard::RunFrame();
+
+    // The frame's ~9 NMIs run in one go: the wheel only gets the last torque of the frame, so send that one only
+    UpdateForceFeedback();
+  }
 }
 
 void CWheelBoard::SimulateFrame(void)
@@ -337,7 +365,7 @@ UINT8 CWheelBoard::IORead8(UINT32 portNum)
     return m_dip1;
   case 0x21: // DIP 2 value
     return m_dip2;
-  case 0x24: // ADC channel 1 - Y analog axis for joystick
+  case 0x24: // ADC channel 1 - Y analog axis for joystick, steering wheel position on EPR-18261
   case 0x25: // ADC channel 2 - steering wheel position (0x00 = full left, 0x80 = center, 0xFF = full right) and X analog axis for joystick
   case 0x26: // ADC channel 3 - cockpit bank position (deluxe cabinets) (0x00 = full left, 0x80 = center, 0xFF = full right)
   case 0x27: // ADC channel 4 - not connected
@@ -418,14 +446,19 @@ void CWheelBoard::IOWrite8(UINT32 portNum, UINT8 data)
     if (data == 0xCC)
       m_initialized = true;
     return;
-  case 0x2a: // Encoder motor data (x axis)
+  case 0x2a: // Encoder motor data (x axis), or EPR-18261's motor power "up"
     m_port42Out = data;
-    ProcessEncoderCmd();
+    if (m_twoPowerOutputs)
+      ProcessMotorPowers();
+    else
+      ProcessEncoderCmd();
     return;
   case 0x2d: // Clutch/lamp control (deluxe cabinets) ( or y axis)
     return;
-  case 0x2e: // Encoder motor control
+  case 0x2e: // Encoder motor control, or EPR-18261's motor power "down"
     m_port46Out = data;
+    if (m_twoPowerOutputs)
+      ProcessMotorPowers();
     return;
   default:
     DebugLog("Unhandled Z80 output on port %u (at PC = %04X)\n", portNum, m_z80.GetPC());
@@ -441,16 +474,18 @@ void CWheelBoard::ProcessEncoderCmd(void)
     switch (m_port46Out)
     {
       case 0xFB:
-        // TODO - friction?  Sent during power slide.  0xFF = strongest or 0x00?
-        //SendFriction(m_port42Out);
+        // Torque gain, 0x80 (none) to 0xFF (full) [guess, from the programs]: set by the game's 2x commands within
+        // the curve its 7x command picked (Scud Race, Daytona 2), half after a power slide, 0xFF in Sega Rally 2.
+        // 0x05, written only at start-up, is not a gain
+        if (m_port42Out & 0x80)
+          m_servoGain = m_port42Out & 0x7F;
         break;
 
       case 0xFC:
-        // Centering / uncentering (vibrate)
-        // Bit 2 = on for centering, off for uncentering
+        // Sub-register in bits 0-2
         if (m_port42Out&0x04)
         {
-          // Centering
+          // 4: centering
           // Bit 7 = on for disable, off for enable
           if (m_port42Out&0x80)
           {
@@ -466,29 +501,27 @@ void CWheelBoard::ProcessEncoderCmd(void)
         }
         else
         {
-          // Uncentering
-          // Bits 0-1 = data sequence number 0-3
-          UINT8 seqNum = m_port42Out&0x03;
-          // Bits 4-7 = data values
-          UINT16 data = (m_port42Out&0xF0)>>4;
-          switch (seqNum)
+          // 0-3: vibration (the game's 3x commands). Each sub-register holds a nibble, in bits 4-7: 0 and 1 the low
+          // and high nibbles of a first byte (0x0E, 0x10, 0x12 for 31-35, 36-3A, 3B-3F), 2 and 3 those of a
+          // second one (0x0A to 0x12 within each group); 30, and the mode changes (FC 0A, FC 0B), zero them. The
+          // programs write 0 to 3 in turn: the vibration is set when 3 is written
+          UINT8 subRegister = m_port42Out&0x03;
+          UINT8 nibble = m_port42Out>>4;
+          UINT8 &param = (subRegister & 2) ? m_uncenterVal2 : m_uncenterVal1;
+          if (subRegister & 1)
+            param = (param & 0x0F) | (nibble << 4);
+          else
+            param = (param & 0xF0) | nibble;
+          if (subRegister == 3)
           {
-            case 0: m_uncenterVal1 = data<<4; break;
-            case 1: m_uncenterVal1 |= data;   break;
-            case 2: m_uncenterVal2 = data<<4; break;
-            case 3: m_uncenterVal2 |= data;   break;
-          }
-          if (seqNum == 0 && m_uncenterVal1 == 0)
-          {
-            // Disable uncentering
-            SendVibrate(0);
-          }
-          else if (seqNum == 3 && m_uncenterVal1 > 0)
-          {
-            // Uncentering - unsure exactly how values sent map to strength or whether they specify some other attributes of effect
-            // For now just attempting to map them to a sensible value in range 0x00-0xFF
-            UINT8 strength = ((m_uncenterVal1>>1) - 7) * 0x50 + ((m_uncenterVal2>>1) - 5) * 0x10 + 0xF;
-            SendVibrate(strength);
+            if (m_uncenterVal1 == 0 || m_uncenterVal2 == 0)
+              m_vibrate = 0;
+            else
+            {
+              // What the two bytes do on the servo board is unknown: 31-3F are mapped to 0x0F-0xEF, in 15 steps
+              int strength = ((m_uncenterVal1>>1) - 7) * 0x50 + ((m_uncenterVal2>>1) - 5) * 0x10 + 0xF;
+              m_vibrate = (UINT8)std::clamp(strength, 0, 0xFF);
+            }
           }
         }
         break;
@@ -504,25 +537,24 @@ void CWheelBoard::ProcessEncoderCmd(void)
         if (m_port42Out > 0x81)
         {
           if (m_port42Out <= 0xC0)
-            SendConstantForce(2 * (0x81 - m_port42Out));
+            m_constForce = 2 * (0x81 - m_port42Out);
           else
-            SendConstantForce(-0x80);
+            m_constForce = -0x80;
         }
         else if (m_port42Out < 0x7F)
         {
           if (m_port42Out >= 0x40)
-            SendConstantForce(2 * (0x7F - m_port42Out));
+            m_constForce = 2 * (0x7F - m_port42Out);
           else
-            SendConstantForce(0x7F);
+            m_constForce = 0x7F;
         }
         else
-          SendConstantForce(0);
+          m_constForce = 0;
         break;
 
       case 0xFF:
-        // Stop all effects
-        if (m_port42Out == 0xFF)
-          SendStopAll();
+        // Motor idle, whatever the value: FF FF, and FF 80 after the attract mode's centring of the wheel
+        SendStopAll();
         break;
 
       default:
@@ -533,6 +565,30 @@ void CWheelBoard::ProcessEncoderCmd(void)
     m_prev42Out = m_port42Out;
     m_prev46Out = m_port46Out;
   }
+}
+
+void CWheelBoard::ProcessMotorPowers(void)
+{
+  // EPR-18261 writes each power, 0-63, with its bits reversed and complemented. "Up" raises the wheel position
+  // (to the right), "down" lowers it; both at once brake the motor
+  auto power = [](UINT8 port)
+  {
+    UINT8 bits = ~port;
+    UINT8 value = 0;
+    for (int i = 0; i < 8; i++)
+      value |= ((bits >> i) & 1) << (7 - i);
+    return value & 0x3F;
+  };
+
+  // 63 is the full force, as 0x80 +- 63 is on the servo boards
+  m_constForce = 2 * (power(m_port42Out) - power(m_port46Out));
+}
+
+void CWheelBoard::UpdateForceFeedback(void)
+{
+  // The servo board's gain scales the torque and the vibration, not its own spring
+  SendConstantForce(m_constForce * m_servoGain / 0x7F);
+  SendVibrate(m_vibrate * m_servoGain / 0x7F);
 }
 
 
@@ -549,6 +605,8 @@ void CWheelBoard::SendStopAll(void)
       }
   }
   
+  m_constForce     = 0;
+  m_vibrate        = 0;
   m_lastConstForce = 0;
   m_lastSelfCenter = 0;
   m_lastFriction   = 0;
@@ -648,6 +706,8 @@ void CWheelBoard::SendVibrate(UINT8 val)
 
 uint8_t CWheelBoard::ReadADCChannel1() const
 {
+  if (m_twoPowerOutputs)
+    return (UINT8)m_inputs->steering->value;
   return 0x00;
 }
 
@@ -667,6 +727,22 @@ uint8_t CWheelBoard::ReadADCChannel3() const
 uint8_t CWheelBoard::ReadADCChannel4() const
 {
   return 0x00;
+}
+
+unsigned CWheelBoard::GetForceFeedbackStrength() const
+{
+  // EPR-18261: DIP switches 1-6..1-8 add 0 to 7 to every strength
+  if (m_twoPowerOutputs)
+    return ((~(m_dip1 >> 5)) & 7) + 1;
+  return CDriveBoard::GetForceFeedbackStrength();
+}
+
+void CWheelBoard::SetForceFeedbackStrength(unsigned strength)
+{
+  if (m_twoPowerOutputs)
+    m_dip1 = (m_dip1 & 0x1F) | (((~(strength - 1)) & 7) << 5);
+  else
+    CDriveBoard::SetForceFeedbackStrength(strength);
 }
 
 CWheelBoard::CWheelBoard(const Util::Config::Node &config)
@@ -691,6 +767,11 @@ CWheelBoard::CWheelBoard(const Util::Config::Node &config)
 
   m_uncenterVal1 = 0;
   m_uncenterVal2 = 0;
+
+  m_twoPowerOutputs = false;
+  m_servoGain = 0x7F;
+  m_constForce = 0;
+  m_vibrate = 0;
 
   // Feedback state
   m_lastConstForce = 0;
