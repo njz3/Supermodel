@@ -59,5 +59,11 @@ drives floored for `--game-length` seconds (150 by default), the wheel swinging 
 is what makes the board work. Each run writes `drive.tsv`, `session.jsonl`, `supermodel_stdout.txt`
 and the screenshots into `--out`.
 
+`--mode joystick` plays Star Wars Trilogy's force feedback joystick instead: the menus confirmed
+with START and the trigger, then the stick sweeping X over 5 s and Y over 7 s (`--stick-amp`), the
+trigger in bursts. `analyse.py` and `export_capture.py` tell the axes apart by the effects'
+directions (DirectInput turns the X axis into 90 degrees and the Y axis into 0), and check each
+axis's force against its own control.
+
 `check_scud.py` needs the drive board's program, `epr-19338a.bin`, from the game's ROM set. It is
 Sega's code: never commit it.

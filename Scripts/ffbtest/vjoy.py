@@ -29,10 +29,12 @@ class EffConstant(ctypes.Structure):
 
 
 class EffReport(ctypes.Structure):
+    # vJoy 2.2's FFB_EFF_REPORT (vjoyinterface.h). DirectInput folds a cartesian direction into the polar one before
+    # vJoy sees it: an effect on the X axis comes as 90 degrees, one on the Y axis as 180 (or 0)
     _fields_ = [("EffectBlockIndex", ctypes.c_ubyte), ("EffectType", ctypes.c_int), ("Duration", ctypes.c_ushort),
-                ("TrigerRpt", ctypes.c_ushort), ("SamplePrd", ctypes.c_ushort), ("Gain", ctypes.c_ubyte),
-                ("TrigerBtn", ctypes.c_ubyte), ("Polar", wintypes.BOOL), ("Direction", ctypes.c_ubyte),
-                ("DirY", ctypes.c_ubyte)]
+                ("TrigerRpt", ctypes.c_ushort), ("SamplePrd", ctypes.c_ushort), ("StartDelay", ctypes.c_ushort),
+                ("Gain", ctypes.c_ubyte), ("TrigerBtn", ctypes.c_ubyte), ("AxesEnabledDirection", ctypes.c_ubyte),
+                ("Polar", wintypes.BOOL), ("Direction", ctypes.c_ushort), ("DirY", ctypes.c_ushort)]
 
 
 class EffOp(ctypes.Structure):
@@ -123,7 +125,8 @@ class VJoy:
                     e = EffReport()
                     if dll.Ffb_h_Eff_Report(p, ctypes.byref(e)) == 0:
                         rec.update(ebi=e.EffectBlockIndex, effect=ET.get(e.EffectType, e.EffectType),
-                                   duration=e.Duration, gain=e.Gain, dir=e.Direction)
+                                   duration=e.Duration, gain=e.Gain, axes=e.AxesEnabledDirection,
+                                   polar=bool(e.Polar), dir_deg=round(e.Direction * 360.0 / 32767), dir_y=e.DirY)
                 elif t.value == 0x0A:
                     e = EffOp()
                     if dll.Ffb_h_EffOp(p, ctypes.byref(e)) == 0:

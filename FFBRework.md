@@ -13,7 +13,8 @@ conversation.
 - **Branche** : `driveboard-ffb-fixes`, partie d'upstream `7da4f9a` (13 octobre 2026). Le `master`
   du fork a été aligné sur upstream et poussé ce jour (`587da80..7da4f9a`). Le remote `upstream`
   pointe sur `https://github.com/trzy/Supermodel.git`.
-- **État** : les modifications du §2 ne sont **pas committées**. Rien n'est poussé de la branche.
+- **État** : §2.1 à §2.6, le banc et ce fichier sont committés et poussés sur
+  `origin/driveboard-ffb-fixes`.
 - **Pousser, committer** : seulement à la demande du propriétaire.
 - **Essais** : la fenêtre de Supermodel doit avoir le premier plan, puisque DirectInput n'acquiert
   le volant en exclusif qu'au premier plan. **Ne jamais forcer le focus ni simuler de touches** :
@@ -43,6 +44,7 @@ Les programmes des driveboards ont été désassemblés et commentés dans le d�
 | EPR-20985 | Daytona USA 2 | `docs/EPR-20985-Daytona2-DriveBoard` |
 | EPR-20512 | Sega Rally 2 | `docs/EPR-20512-SegaRally2-DriveBoard` |
 | EPR-18261 | Le Mans 24 (cabinet STANDARD), Indy 500 et sa famille Model 2 | `docs/EPR-18261-Indy500-DriveBoard` |
+| EPR-21119 | Star Wars Trilogy (joystick à retour de force, deux cartes servo) | `docs/EPR-21119-StarWars-DriveBoard` |
 
 Le résumé des protocoles, les schémas mermaid du démarrage (`CF`/`CE`/`CD`/`CC`) et ce que les jeux
 envoient sont dans `DRIVEBOARD.md` de BFF.
@@ -84,6 +86,32 @@ avec la modification `GrabMouse` du propriétaire, vJoy ne recevait **aucun paqu
 Le Mans 24 : commentaire sur les deux cabinets. CABINET TYPE STANDARD va avec EPR-18261 ; LE MANS
 va avec EPR-19338A, en commentaire. La ROM doit correspondre au réglage du jeu.
 
+### 2.5 `Src/Model3/DriveBoard/JoystickBoard.cpp/.h` (Star Wars Trilogy, EPR-21119)
+
+La carte est celle des volants, avec **deux cartes servo**, une par axe. Le Z80 calcule lui-même le
+ressort à partir des axes et l'envoie à chaque carte en couple (`FE`).
+
+| Changement | Pourquoi |
+|:--|:--|
+| **Axes lus sur les ADC canaux 3 et 4** (ports `26` = X, servo 1 ; `27` = Y, servo 2), `80` sur `24`/`25` | Supermodel donnait le stick aux ports `24`/`25`, que le programme ne fait qu'afficher : le ressort du Z80 ne voyait jamais le stick et restait au repos (`7F`/`81`) |
+| **Port `2E` décodé en deux quartets** : bits 0-3 pour le servo 1, 4-7 pour le servo 2, chacun le registre sans son `F`, avec la valeur écrite juste avant (`2A` pour le servo 1, `2D` pour le servo 2 ; le NMI écrit `2A`, `2D`, puis `2E`) | Supermodel associait chaque valeur aux registres de l'interruption précédente : ses cas `CC`, `DD`, `99`, `00`, `CE`, `EC` n'étaient que des artefacts de ce décalage |
+| **Chaque servo traduit comme sur les volants** : `E` couple (servo 2 câblé dans l'autre sens), `C` 0-3 vibration (par axe), `B` gain, `F` moteur libre ; force et vibration envoyées une fois par image | `2 * (TQ - 7F)` débordait à partir de `C0` ; les écritures de vibration (`CE`/`EC`) étaient prises pour des forces constantes sur l'autre axe |
+| **Plus de recentrage de Supermodel** (`7F`/`81` → ressort plein) | C'était le ressort du Z80 au repos, faute de stick |
+| **Redémarrage sur `C9`** (la carte repart de `CE`), `C8` saute au jeu | Le jeu n'envoie jamais `CB` |
+| Servos gardés dans un bloc de save state séparé, `JoystickBoardServos` | Les anciens états se chargent toujours |
+
+### 2.6 `Src/Inputs/Input.h` : `NUM_FF_EFFECTS`
+
+`NUM_FF_EFFECTS` valait **3** alors qu'il y a **4** effets (constante, ressort, friction,
+vibration). `dInputEffects[axe][FFVibrate]` débordait donc sur `dInputEffects[axe + 1][FFConstantForce]` :
+la vibration d'un axe et la force constante de l'axe suivant partageaient le même objet
+DirectInput. Le premier créé gagnait, et l'autre était refusé (`SetParameters` →
+`E_INVALIDARG`). Sur le dernier axe, la vibration écrivait hors du tableau. Avec Star Wars, la
+vibration X prenait la case de la constante Y : **aucune force constante sur Y**. Les volants n'y
+échappaient que parce qu'ils n'utilisent qu'un axe. Bug présent depuis 2011 (`e8782b9`).
+Diagnostic : trace temporaire dans Supermodel, puis un petit programme DirectInput qui crée les
+mêmes effets sur vJoy sans erreur.
+
 ## 3. Les essais
 
 ### 3.1 Le banc
@@ -114,6 +142,22 @@ Il est dans `Scripts/ffbtest/` ; son `README.md` dit comment le préparer et le 
 
 La capture des trois parties est dans BFF :
 `docs/EPR-19338A-ScudRace-DriveBoard/captures/scud-three-games-supermodel-vjoy.txt`.
+
+### 3.2 bis Star Wars Trilogy (13 octobre)
+
+Banc en mode joystick (`smtest.py --mode joystick`) : stick vJoy sur X/Y (`InputAnalogJoyX/Y`),
+gâchette en bouton 17. Le stick balaie X sur 5 s (amplitude 35 %) et Y sur 7 s (28 %). Le jeu est
+chargé en `swtrilgya`, le premier du zip fusionné de MAME. `analyse.py` sépare les axes par la
+direction des effets : DirectInput replie l'axe X en 90° et l'axe Y en 0°.
+
+| Série | Poussées vers le centre / vers l'extérieur (écart ≥ 3 %) |
+|:--|:--|
+| Avant (`JoystickBoard` d'upstream), 1 partie | X 36 / 27, Y 37 / 38, et un ressort de Supermodel en plus |
+| `JoystickBoard` corrigé, 2 parties | X **5476 / 0** ; Y : **aucune force constante** (§2.6) |
+| + `NUM_FF_EFFECTS` = 4, 2 parties | X **5476 / 0**, Y **4508 / 0** ; vibration `75 65` sur les deux axes |
+
+La capture des deux parties corrigées est dans BFF :
+`docs/EPR-21119-StarWars-DriveBoard/captures/swtrilgy-two-games-supermodel-vjoy-fixed.txt`.
 
 ### 3.3 Ce que Scud Race envoie
 
@@ -147,7 +191,12 @@ La capture des trois parties est dans BFF :
 8. **Cadence** : faire tourner la driveboard en temps réel à 500 Hz, avec la position du volant lue
    à cette cadence. Les effets de route (8-33 Hz) et les impulsions de 2 ms de l'effet `02` se
    perdent à 57,5 Hz.
-9. **Committer**, puis décider d'une PR vers `trzy/Supermodel`, sur demande du propriétaire.
+9. **Star Wars** : savoir quel axe est X et dans quel sens, par le test de retour de force du menu
+   de test (journaliser ses octets en regard de ce que dit l'écran). Aujourd'hui servo 1 = X est
+   une supposition. Le ressort reste stable quel que soit le choix, puisque le Z80 le calcule sur
+   l'axe qu'il lit.
+10. **Committer**, puis décider d'une PR vers `trzy/Supermodel`, sur demande du propriétaire.
+    `NUM_FF_EFFECTS` est un correctif à part entière, à proposer seul s'il le faut.
 
 ## 5. Ce qu'il faut savoir des programmes
 
@@ -160,6 +209,11 @@ La capture des trois parties est dans BFF :
 - Daytona 2 : tout le ressort vient du Z80 ; les DIP 1-3..5 ne sont pas lues, donc
   `ForceFeedbackStrength` est sans effet.
 - Le Mans 24 : CABINET TYPE STANDARD → EPR-18261 ; LE MANS → EPR-19338A.
+- Star Wars Trilogy (EPR-21119) : deux cartes servo, registres dans les deux quartets de `2E`,
+  valeurs sur `2A` et `2D` écrites **avant** `2E` ; axes sur les ADC canaux 3 et 4 (ports `26`,
+  `27`) ; ressort calculé par le Z80, au repos `7F` (servo 1) et `81` (servo 2) ; démarrage
+  `CF`..`CC` puis `CB`, `C9` relance, `C8` saute au jeu. Le jeu envoie `03 13` à chaque image (les
+  deux ressorts), `75 65` / `70 60` à chaque tir ou coup.
 - **EPR-18261 mesurée sur une vraie carte** (Racecab1, carte moteur 838-11966, 13 octobre 2026,
   par la session BFF) :
   - les DIP se lisent ON = 0, et **l'interrupteur n est le bit 8 − n** : la force ajoutée (bits

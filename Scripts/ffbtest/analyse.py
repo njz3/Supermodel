@@ -59,40 +59,52 @@ def main():
         per_s = collections.Counter(int(r["t"]) for r in ffb)
         print(f"  over {dur:.0f} s: {len(ffb)/max(dur,1):.1f} packets/s on average, {max(per_s.values())} in the busiest second")
 
+    # Which axis each effect block plays on: DirectInput folds a one-axis cartesian direction into the polar one,
+    # 90 degrees for the X axis, 0 or 180 for the Y axis
+    axis_of = {}
+    for r in ffb:
+        if r["type"] == "effect" and "dir_deg" in r:
+            axis_of[r["ebi"]] = "X" if r["dir_deg"] in (90, 270) else "Y"
     const = [r for r in ffb if r["type"] == "constant"]
-    if const:
-        mags = [r["magnitude"] for r in const]
-        print(f"\n-- constant force: {len(mags)} updates, magnitude {min(mags)}..{max(mags)} (of +-10000)")
+    for axis in sorted({axis_of.get(r["ebi"], "X") for r in const}):
+        mine = [r for r in const if axis_of.get(r["ebi"], "X") == axis]
+        mags = [r["magnitude"] for r in mine]
+        print(f"\n-- constant force, axis {axis}: {len(mags)} updates, magnitude {min(mags)}..{max(mags)} (of +-10000)")
         hist = collections.Counter((m // 1000) * 1000 for m in mags)
         print("  histogram (by 1000): " + " ".join(f"{k}:{v}" for k, v in sorted(hist.items())))
-    if const and samples:
-        # The steering sent at the time of each constant force: a spring the board computes pushes against it
-        # (DirectInput's magnitude is the opposite of Supermodel's force: positive pushes left)
-        st = sorted((s["t"], s["steer"]) for s in samples)
-        import bisect
-        times = [x[0] for x in st]
-        agree = against = 0
-        for r in const:
-            i = bisect.bisect_right(times, r["t"]) - 1
-            if i < 0:
-                continue
-            off = st[i][1] - 0.5
-            if abs(off) < 0.03 or r["magnitude"] == 0:
-                continue
-            if (off > 0) == (r["magnitude"] > 0):
-                agree += 1
-            else:
-                against += 1
-        print(f"  pushing back towards the centre: {agree}, away from it: {against} (wheel off-centre by 3 % or more)")
+        if samples:
+            # The control sent at the time of each constant force (the wheel or the stick's X: steer; the stick's
+            # Y: accel): a spring the board computes pushes against it. DirectInput's magnitude is the opposite of
+            # Supermodel's force
+            key = "steer" if axis == "X" else "accel"
+            st = sorted((s["t"], s[key]) for s in samples)
+            import bisect
+            times = [x[0] for x in st]
+            agree = against = 0
+            for r in mine:
+                i = bisect.bisect_right(times, r["t"]) - 1
+                if i < 0:
+                    continue
+                off = st[i][1] - 0.5
+                if abs(off) < 0.03 or r["magnitude"] == 0:
+                    continue
+                if (off > 0) == (r["magnitude"] > 0):
+                    agree += 1
+                else:
+                    against += 1
+            print(f"  pushing back towards the centre: {agree}, away from it: {against} (control off-centre by 3 % or more)")
     cond = [r for r in ffb if r["type"] == "condition"]
-    if cond:
-        coefs = collections.Counter(r["pos"] for r in cond)
-        print(f"\n-- spring/friction conditions: {len(cond)} updates; coefficients " +
+    for axis in sorted({"Y" if r.get("y") else "X" for r in cond}):
+        mine = [r for r in cond if ("Y" if r.get("y") else "X") == axis]
+        coefs = collections.Counter(r["pos"] for r in mine)
+        print(f"\n-- spring/friction conditions, axis {axis}: {len(mine)} updates; coefficients " +
               " ".join(f"{k}x{v}" for k, v in sorted(coefs.items())))
     per = [r for r in ffb if r["type"] == "periodic"]
-    if per:
-        m = collections.Counter(r["magnitude"] for r in per)
-        print(f"\n-- periodic (vibration): {len(per)} updates; magnitudes " + " ".join(f"{k}x{v}" for k, v in sorted(m.items())))
+    for axis in sorted({axis_of.get(r["ebi"], "X") for r in per}):
+        mine = [r for r in per if axis_of.get(r["ebi"], "X") == axis]
+        m = collections.Counter(r["magnitude"] for r in mine)
+        print(f"\n-- periodic (vibration), axis {axis}: {len(mine)} updates; magnitudes " +
+              " ".join(f"{k}x{v}" for k, v in sorted(m.items())))
 
     # Each command, the FFB packets that followed it within 100 ms
     print("\n-- what follows each command family (packets within 100 ms)")

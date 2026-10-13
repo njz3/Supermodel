@@ -30,6 +30,7 @@ user32.SetProcessDPIAware()
 BTN_COIN, BTN_START, BTN_VIEW = 1, 2, 3
 BTN_GEAR = {1: 6, 2: 7, 3: 8, 4: 9}
 BTN_VR = [13, 14, 15, 16]
+BTN_TRIGGER, BTN_EVENT = 17, 18     # the analog joystick's trigger and event buttons (Star Wars Trilogy)
 
 
 def find_window(pid):
@@ -110,6 +111,9 @@ def main():
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--steer-amp", type=float, default=0.10, help="amplitude of the slow steering, 0..0.5")
     ap.add_argument("--jolt-rate", type=float, default=0.002, help="chance of a hard turn at each 20 ms tick")
+    ap.add_argument("--mode", choices=("wheel", "joystick"), default="wheel",
+                    help="wheel: steering and pedals; joystick: the analog joystick on X/Y with its trigger")
+    ap.add_argument("--stick-amp", type=float, default=0.35, help="joystick mode: amplitude of the stick's sweep")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     random.seed(a.seed)
@@ -199,25 +203,30 @@ def main():
             press(BTN_START)
             tick(2.0)
             shot(f"g{game+1}_after_start")
-            # Menus: confirm with START and a step on the accelerator every few seconds, the timers do the rest
+            # Menus: confirm with START and a step on the accelerator (wheel) or the trigger (joystick) every few
+            # seconds, the timers do the rest
             menu_end = time.time() + a.menu
             k = 0
             while time.time() < menu_end and proc.poll() is None:
                 press(BTN_START)
                 tick(1.0)
-                set_controls(accel=1.0)
-                tick(0.4)
-                set_controls(accel=0.5)
-                tick(1.6)
+                if a.mode == "joystick":
+                    press(BTN_TRIGGER)
+                    tick(2.0)
+                else:
+                    set_controls(accel=1.0)
+                    tick(0.4)
+                    set_controls(accel=0.5)
+                    tick(1.6)
                 k += 1
                 if k % 3 == 0:
                     shot(f"g{game+1}_menu{k}")
-            # Drive: floored, steering slowly from side to side, a hard turn now and then
             phase = random.random() * 6.28
             t_start = time.time()
             jolts = []
 
             def driver(now):
+                # Wheel: floored, steering slowly from side to side, a hard turn now and then
                 dt = now - t_start
                 steer = 0.5 + a.steer_amp * math.sin(phase + dt * 2 * math.pi / 7.0)
                 if not jolts or now > jolts[-1][1]:
@@ -227,7 +236,20 @@ def main():
                     steer += jolts[-1][2]
                 set_controls(steer=max(0.0, min(1.0, steer)), accel=1.0, brake=0.5)
 
-            set_controls(accel=1.0)
+            def pilot(now):
+                # Joystick: the stick sweeping both axes (X over 5 s, Y over 7 s), the trigger in bursts, the event
+                # button now and then
+                dt = now - t_start
+                x = 0.5 + a.stick_amp * math.sin(phase + dt * 2 * math.pi / 5.0)
+                y = 0.5 + a.stick_amp * 0.8 * math.sin(dt * 2 * math.pi / 7.0)
+                set_controls(steer=x, accel=y)
+                vj.button(BTN_TRIGGER, (dt % 0.3) < 0.1)
+                vj.button(BTN_EVENT, (dt % 8.0) < 0.15)
+
+            if a.mode == "joystick":
+                driver = pilot
+            else:
+                set_controls(accel=1.0)
             n_shots = 0
             seg = 10.0
             elapsed = 0.0
@@ -238,6 +260,8 @@ def main():
                 if n_shots % 3 == 1:
                     shot(f"g{game+1}_drive{int(elapsed)}")
             set_controls(steer=0.5, accel=0.5, brake=0.5)
+            vj.button(BTN_TRIGGER, False)
+            vj.button(BTN_EVENT, False)
             # Game over, continue screen, name entry: let them time out
             tick(25.0)
             shot(f"g{game+1}_end")
