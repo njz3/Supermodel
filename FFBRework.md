@@ -182,6 +182,15 @@ touché qu'aux endroits indispensables :
     `29` en changements seulement, `28` pour chaque nouvelle commande, avec un compteur de NMI
     (`CDriveBoard::SetIOObserver`, `m_nmiCount`). Les enregistrements portent le numéro de
     l'image en cours.
+- **Sens trigonométrique**, comme un vrai volant et comme BFF (décision du propriétaire, le 14
+  octobre) :
+  - un axe vaut +1 à son extrémité gauche (son minimum : volant tout à gauche, manche à gauche
+    ou en haut) et −1 à droite (`set Steering 1` = tout à gauche) ;
+  - dans `ffb`, une force constante > 0 pousse à gauche, vers +1, et vJoy/DirectInput reçoit
+    +FORCE × 10000. La force interne de Supermodel est l'inverse (> 0 vers la droite) :
+    l'agent la retourne.
+
+  sm2-emu suit la même règle.
 - **Le retour de force continue d'aller au périphérique** (vJoy) : on compare ce que Supermodel
   envoie et ce que vJoy reçoit. Les entrées peuvent aussi passer par vJoy, réglées avant chaque
   `step 1`, pour tester le chemin d'entrée complet.

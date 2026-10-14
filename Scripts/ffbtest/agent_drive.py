@@ -36,9 +36,9 @@ EFFECT_OF_PACKET = {"constant": "constant", "condition": "selfcenter"}
 
 
 def match_ffb(ffb, vjoy):
-    """Pair each command Supermodel sent with the packet vJoy received for it, in order. DirectInput's magnitude is
-    the opposite of Supermodel's force, times 10000 (DirectInput...Max = 100); a spring's coefficient is the force
-    times 10000. vJoy's first packet of each effect block is its creation, at 0: skipped."""
+    """Pair each command Supermodel sent with the packet vJoy received for it, in order. The agent's constant force
+    is trigonometric (> 0 to the left), as DirectInput's magnitude: magnitude = force * 10000 (DirectInput...Max =
+    100); a spring's coefficient is its strength times 10000. vJoy's first packet of each effect block is its creation, at 0: skipped."""
     packets = {"constant": [], "selfcenter": []}
     created = set()
     for r in vjoy:
@@ -49,7 +49,7 @@ def match_ffb(ffb, vjoy):
             value = r["magnitude"] if r["type"] == "constant" else r["pos"]
             packets[EFFECT_OF_PACKET[r["type"]]].append((r["frame"], value))
     report = {}
-    for effect, sign in (("constant", -1), ("selfcenter", 1)):
+    for effect, sign in (("constant", 1), ("selfcenter", 1)):
         sent = [(f, force) for f, name, e, force in ffb if e == effect]
         got = packets[effect]
         n = min(len(sent), len(got))
@@ -146,7 +146,7 @@ def main():
                 sm.set("Accelerator", 1.0)
                 sm.set("Brake", 0.0)
             else:
-                vj.axis(AXIS_X, 0.5 + 0.5 * steer)
+                vj.axis(AXIS_X, 0.5 - 0.5 * steer)    # trigonometric: +1 fully left, vJoy's X minimum
                 vj.axis(AXIS_Y, 1.0)              # JOY1_YAXIS_POS: 0.5 released, 1.0 floored
                 vj.axis(AXIS_Z, 0.5)
             frame, drive = sm.step(1)
@@ -161,7 +161,7 @@ def main():
                 # Supermodel's dead zone, then the rest of the travel scaled to the full range
                 dz = a.deadzone / 100.0
                 scaled = max(0.0, (abs(steer) - dz) / (1.0 - dz))
-                expected = 0x80 + math.copysign(scaled, steer) * (0x7F if steer >= 0 else 0x80)
+                expected = 0x80 - scaled * 0x80 if steer >= 0 else 0x80 + scaled * 0x7F
                 logs["inputs.tsv"].write(f"{frame}\t{steer:.4f}\t{got}\n")
                 if abs(got - expected) <= 2:
                     input_checks["same frame"] += 1

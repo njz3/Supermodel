@@ -69,7 +69,9 @@ class SMAgent:
         return int(words[1]), [int(b, 16) for b in words[2:]]
 
     def set(self, name, value):
-        """Hold an input: an axis -1..1, a pedal 0..1, a button 0 or 1 (names: Supermodel.ini's, without 'Input')."""
+        """Hold an input: an axis -1..1, a pedal 0..1, a button 0 or 1 (names: Supermodel.ini's, without 'Input').
+        An axis goes the trigonometric way, as a real wheel and BackForceFeeder: +1 fully left (or up), -1 fully
+        right."""
         self._ok(f"set {name} {value}")
 
     def setraw(self, name, value):
@@ -131,8 +133,8 @@ class SMAgent:
 
     def ffb(self):
         """The force feedback commands Supermodel sent since the last call: [(frame, input, effect, force)].
-        force -1..1; a constant force > 0 pushes towards the input's positive side (Steering: towards
-        set('Steering', 1)), so vJoy receives a magnitude of -force * 10000 (the same rule as sm2-emu's)."""
+        force -1..1, the trigonometric way as the axes: a constant force > 0 pushes to the left (towards
+        set('Steering', 1)), so vJoy receives a magnitude of force * 10000 (the same rule as sm2-emu's)."""
         n = int(self._ask("ffb").split()[1])
         out = []
         for _ in range(n):

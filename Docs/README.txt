@@ -1238,6 +1238,9 @@ not.  All options are case sensitive.
                                           to 1, a button (Start1, Coin1...)
                                           0 or 1.  INPUT is the name of the
                                           Input... setting, without 'Input'.
+                                          An axis goes the trigonometric
+                                          way, as a real wheel: +1 fully
+                                          left (or up), -1 fully right.
                       setraw INPUT VALUE  The same with the raw value.
                       get INPUT           The raw value the game reads now.
                       release INPUT|all   Gives the input back to its device.
@@ -1251,10 +1254,10 @@ not.  All options are case sensitive.
                       ffb                 The force feedback commands sent
                                           since the last call, device or not:
                                           'FRAME INPUT EFFECT FORCE' lines;
-                                          a constant FORCE > 0 pushes towards
-                                          the input's positive side (a
-                                          DirectInput device then receives
-                                          -FORCE * 10000).
+                                          a constant FORCE > 0 pushes to the
+                                          left (towards +1), the way of the
+                                          axes (a DirectInput device then
+                                          receives FORCE * 10000).
                       servo on|off        Starts or stops the drive board's
                                           journal.
                       servo               The journal: 'FRAME NMI PORT VALUE'

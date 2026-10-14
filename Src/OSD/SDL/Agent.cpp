@@ -38,6 +38,10 @@
  *                       (Accelerator, Brake...) from 0 to 1, a button (Start1,
  *                       Coin1, ViewChange...) 0 or 1. INPUT is the name of the
  *                       Input... setting in Supermodel.ini, without "Input".
+ *                       An axis goes the trigonometric way, as a real wheel's
+ *                       angle (and BackForceFeeder): +1 at its left end (its
+ *                       minimum: Steering fully left, a stick left or up), -1
+ *                       at its right end.
  *                       Answer: "ok", or "err ..." for an unknown input.
  *   setraw INPUT VALUE  The same with the raw value the game reads.
  *   get INPUT           The raw value the game reads now (held, or read from
@@ -55,10 +59,11 @@
  *                       whether a device takes them or not: "ffb N", then N
  *                       lines "FRAME INPUT EFFECT FORCE", EFFECT stop,
  *                       constant, selfcenter, friction or vibrate. FORCE is
- *                       -1..1; a constant force > 0 pushes towards the input's
- *                       positive side (Steering: towards set Steering 1), so a
- *                       DirectInput device receives a magnitude of -FORCE *
- *                       10000 (as on sm2-emu); the others are a strength >= 0.
+ *                       -1..1, the trigonometric way as the axes: a constant
+ *                       force > 0 pushes to the left (towards +1), < 0 to the
+ *                       right, so a DirectInput device receives a magnitude of
+ *                       FORCE * 10000 (as on sm2-emu); the others are a
+ *                       strength >= 0.
  *   servo on|off        Starts or stops the drive board's journal.
  *   servo               The journal since the last call: "servo N", then N
  *                       lines "FRAME NMI PORT VALUE" (hex port and value):
@@ -277,7 +282,8 @@ namespace Agent
   {
     std::lock_guard<std::mutex> lock(s_ffbMutex);
     if (s_ffb.size() < 1000000)
-      s_ffb.push_back({ s_running.load(), input.id, int(ffCmd.id), ffCmd.force });
+      // Supermodel's constant force is > 0 to the right (towards the axis' maximum): the agent's is trigonometric
+      s_ffb.push_back({ s_running.load(), input.id, int(ffCmd.id), ffCmd.id == FFConstantForce ? -ffCmd.force : ffCmd.force });
   }
 
   static const char *EffectName(int effect)
@@ -346,7 +352,8 @@ namespace Agent
     return "other";
   }
 
-  // From the agent's value (-1..1 for an axis, 0..1 for a pedal, 0 or 1 for a button) to the value the game reads
+  // From the agent's value (-1..1 for an axis, +1 at its left or minimum end; 0..1 for a pedal; 0 or 1 for a button)
+  // to the value the game reads
   static bool ToRaw(const CInput *input, double v, UINT16 &raw)
   {
     double r;
@@ -354,7 +361,7 @@ namespace Agent
     {
       v = std::clamp(v, -1.0, 1.0);
       double off = axis->GetOffValue();
-      r = v >= 0 ? off + v * (axis->GetMaxValue() - off) : off + v * (off - axis->GetMinValue());
+      r = v >= 0 ? off + v * (axis->GetMinValue() - off) : off - v * (axis->GetMaxValue() - off);
     }
     else if (auto *analog = dynamic_cast<const CAnalogInput *>(input))
     {
