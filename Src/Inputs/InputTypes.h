@@ -21,6 +21,9 @@ public:
 	CSwitchInput(const char *inputId, const char *inputLabel, unsigned inputGameFlags, const char *defaultMapping, 
 		UINT16 offVal = 0x00, UINT16 onVal = 0x01);
 
+	UINT16 GetOffValue() const { return m_offVal; }
+	UINT16 GetOnValue() const { return m_onVal; }
+
 	/*
 	 * Polls (updates) the input, updating its value from the input source
 	 */
@@ -50,6 +53,9 @@ private:
 public:
 	CAnalogInput(const char *inputId, const char *inputLabel, unsigned inputGameFlags, const char *defaultMapping, 
 		UINT16 minVal = 0x00, UINT16 maxVal = 0xFF);
+
+	UINT16 GetMinValue() const { return m_minVal; }
+	UINT16 GetMaxValue() const { return m_maxVal; }
 
 	/*
 	 * Polls (updates) the input, updating its value from the input source
@@ -87,6 +93,10 @@ private:
 public:
 	CAxisInput(const char *inputId, const char *inputLabel, unsigned inputGameFlags, const char *defaultMapping, std::shared_ptr<CAnalogInput> negInput, std::shared_ptr<CAnalogInput> posInput,
 		UINT16 minVal = 0x00, UINT16 offVal = 0x80, UINT16 maxVal = 0xFF);
+
+	UINT16 GetMinValue() const { return m_minVal; }
+	UINT16 GetOffValue() const { return m_offVal; }
+	UINT16 GetMaxValue() const { return m_maxVal; }
 
 	/*
 	 * Polls (updates) the input, updating its value from the switch inputs and/or input source

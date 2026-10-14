@@ -104,6 +104,7 @@
 #include "Util/BMPFile.h"
 
 #include "Crosshair.h"
+#include "Agent.h"
 #include "OSD/ConfigFile.h"
 #include "Gui.h"
 
@@ -304,7 +305,7 @@ static Result CreateGLScreen(bool coreContext, const std::string &caption, bool 
   }
 
   // Set video mode
-  s_window = SDL_CreateWindow(caption.c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, *xResPtr, *yResPtr, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | (fullScreen ? SDL_WINDOW_FULLSCREEN : 0));
+  s_window = SDL_CreateWindow(caption.c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, *xResPtr, *yResPtr, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | Agent::WindowFlags() | (fullScreen ? SDL_WINDOW_FULLSCREEN : 0));
   if (nullptr == s_window)
   {
     ErrorLog("Unable to create an OpenGL display: %s\n", SDL_GetError());
@@ -700,15 +701,16 @@ static const int STATE_FILE_VERSION = 6;  // save state file version
 static const int NVRAM_FILE_VERSION = 0;  // NVRAM file version
 static unsigned s_saveSlot = 0;           // save state slot #
 
-static void SaveState(IEmulator *Model3)
+static bool SaveState(IEmulator *Model3, std::string file_path = std::string())
 {
   CBlockFile  SaveState;
 
-  std::string file_path = Util::Format() << FileSystemPath::GetPath(FileSystemPath::Saves) << Model3->GetGame().name << ".st" << s_saveSlot;
+  if (file_path.empty())
+    file_path = Util::Format() << FileSystemPath::GetPath(FileSystemPath::Saves) << Model3->GetGame().name << ".st" << s_saveSlot;
   if (Result::OKAY != SaveState.Create(file_path, "Supermodel Save State", "Supermodel Version " SUPERMODEL_VERSION))
   {
     ErrorLog("Unable to save state to '%s'.", file_path.c_str());
-    return;
+    return false;
   }
 
   // Write file format version and ROM set ID to header block
@@ -721,9 +723,10 @@ static void SaveState(IEmulator *Model3)
   SaveState.Close();
   printf("Saved state to '%s'.\n", file_path.c_str());
   InfoLog("Saved state to '%s'.", file_path.c_str());
+  return true;
 }
 
-static void LoadState(IEmulator *Model3, std::string file_path = std::string())
+static bool LoadState(IEmulator *Model3, std::string file_path = std::string())
 {
   CBlockFile  SaveState;
 
@@ -735,13 +738,13 @@ static void LoadState(IEmulator *Model3, std::string file_path = std::string())
   if (Result::OKAY != SaveState.Load(file_path))
   {
     ErrorLog("Unable to load state from '%s'.", file_path.c_str());
-    return;
+    return false;
   }
 
   if (Result::OKAY != SaveState.FindBlock("Supermodel Save State"))
   {
     ErrorLog("'%s' does not appear to be a valid save state file.", file_path.c_str());
-    return;
+    return false;
   }
 
   int32_t fileVersion;
@@ -749,7 +752,7 @@ static void LoadState(IEmulator *Model3, std::string file_path = std::string())
   if (fileVersion != STATE_FILE_VERSION)
   {
     ErrorLog("'%s' is incompatible with this version of Supermodel.", file_path.c_str());
-    return;
+    return false;
   }
 
   // Load
@@ -757,6 +760,7 @@ static void LoadState(IEmulator *Model3, std::string file_path = std::string())
   SaveState.Close();
   printf("Loaded state from '%s'.\n", file_path.c_str());
   InfoLog("Loaded state from '%s'.", file_path.c_str());
+  return true;
 }
 
 static void SaveNVRAM(IEmulator *Model3)
@@ -984,7 +988,8 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Model3, CInputs *In
   // Attach the inputs to the emulator
   Model3->AttachInputs(Inputs);
 
-  // Attach the outputs to the emulator
+  // Attach the outputs to the emulator (in agent mode, through the agent's recorder)
+  Outputs = Agent::WrapOutputs(Outputs);
   if (Outputs != nullptr)
     Model3->AttachOutputs(Outputs);
 
@@ -994,7 +999,7 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Model3, CInputs *In
   uint64_t nextTime = 0;
 
   // Initialize the renderers
-  SuperAA* superAA = new SuperAA(aaValue, CRTcolors);
+  SuperAA* superAA = new SuperAA(aaValue, CRTcolors, Agent::Enabled());  // the agent reads the frames from its target
   superAA->Init(totalXRes, totalYRes);  // pass actual frame sizes here
   CRender2D *Render2D = new CRender2D(s_runtime_config);
 #ifndef SUPERMODEL_OSX
@@ -1036,6 +1041,15 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Model3, CInputs *In
   quit = false;
   paused = false;
   dumpTimings = false;
+  if (Agent::Enabled())
+  {
+    // Agent mode: the agent runs the frames, instead of the loop below
+    Agent::Run(Model3, Inputs, superAA, s_runtime_config,
+      [&]() { return Inputs->Poll(&game, xOffset, yOffset, xRes, yRes); },
+      [&](const std::string &path) { return SaveState(Model3, path); },
+      [&](const std::string &path) { return LoadState(Model3, path); });
+    quit = true;
+  }
 #ifdef DEBUG
   if (dynamic_cast<CModel3GraphicsState *>(Model3))
   {
@@ -2258,6 +2272,7 @@ static ParsedCommandLine ParseCommandLine(int argc, char **argv)
  */
 int main(int argc, char **argv)
 {
+  Agent::Init(argc, argv);
   Title();
   WriteDefaultConfigurationFileIfNotPresent();
 
@@ -2362,6 +2377,7 @@ int main(int argc, char **argv)
       config4 = config3;
     Util::Config::MergeINISections(&s_runtime_config, config4, cmd_line.config);  // apply command line overrides once more
   }
+  Agent::AdjustConfig(s_runtime_config);
   LogConfig(s_runtime_config);
 
   // Initialize SDL (individual subsystems get initialized later)

@@ -1214,6 +1214,60 @@ not.  All options are case sensitive.
 
     ----------------
 
+    Option:         -agent
+
+    Description:    Lets another program drive Supermodel over its standard
+                    input and output, for an autopilot or automated tests.
+                    The window is hidden and never takes the focus: no full
+                    screen, no keyboard, and on Windows the joysticks are read
+                    in the background (see '-background-input').  The frames
+                    are rendered into a frame buffer and run only on the
+                    program's commands, in real time unless '-no-throttle' is
+                    given.  Everything Supermodel prints goes to its
+                    standard error; its standard output carries the protocol:
+                    one command a line, one answer.  Once the game is loaded,
+                    Supermodel writes 'ready GAME WIDTH HEIGHT', then answers:
+
+                      step [N]            Runs N frames (1 by default).
+                                          Answer: 'ok FRAME' followed by the
+                                          bytes written to the drive board
+                                          meanwhile, in hex.
+                      set INPUT VALUE     Holds an input: an axis (Steering,
+                                          AnalogJoyX...) from -1 to 1, a
+                                          pedal (Accelerator, Brake) from 0
+                                          to 1, a button (Start1, Coin1...)
+                                          0 or 1.  INPUT is the name of the
+                                          Input... setting, without 'Input'.
+                      setraw INPUT VALUE  The same with the raw value.
+                      get INPUT           The raw value the game reads now.
+                      release INPUT|all   Gives the input back to its device.
+                      inputs              The game's inputs and their types.
+                      obs [W H]           The last frame scaled to W x H:
+                                          'obs W H', a new line, then
+                                          W * H * 3 bytes, RGB, top row first.
+                      shot PATH           Saves the last frame (BMP).
+                      save PATH           Saves a state.
+                      load PATH           Loads a state.
+                      ffb                 The force feedback commands sent
+                                          since the last call, device or not:
+                                          'FRAME INPUT EFFECT FORCE' lines.
+                      servo on|off        Starts or stops the drive board's
+                                          journal.
+                      servo               The journal: 'FRAME NMI PORT VALUE'
+                                          lines, what the drive board's Z80
+                                          wrote to its outputs at each NMI
+                                          (2A, 2D, 2E; 29 its reply) and each
+                                          new command shown to it (28).
+                      outputs             The outputs (lamps, drive board).
+                      ram ADDRESS LENGTH  Memory read by the main CPU (hex).
+                      frame               The number of frames run.
+                      quit                Exits.
+
+                    Force feedback still goes to the device the inputs are
+                    mapped to.  'Scripts/ffbtest/smagent.py' is a Python client.
+
+    ----------------
+
     Option:         -no-throttle
 
     Description:    Disables 60 FPS throttling.  The Model 3 runs at a 60 Hz

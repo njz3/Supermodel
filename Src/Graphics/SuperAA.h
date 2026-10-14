@@ -13,7 +13,7 @@
 class SuperAA
 {
 public:
-	SuperAA(int aaValue, CRTcolor CRTcolors);
+	SuperAA(int aaValue, CRTcolor CRTcolors, bool forceTarget = false);	// forceTarget: render into the FBO even at 1x (agent mode reads it)
 	~SuperAA();
 
 	void Init(int width, int height);		// width & height are real window dimensions
@@ -22,10 +22,13 @@ public:
 	GLuint GetTargetID();
 
 private:
+	bool UsesTarget() const;
+
 	FBO m_fbo;
 	GLSLShader m_shader;
 	const int m_aa;
 	const CRTcolor m_crtcolors;
+	const bool m_forceTarget;
 	GLuint m_vao;
 	int m_width;
 	int m_height;

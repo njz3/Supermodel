@@ -38,6 +38,7 @@
 #include "Game.h"
 #include "Z80CTC.h"
 
+#include <cstdint>
 #include <deque>
 #include <mutex>
 
@@ -259,6 +260,18 @@ public:
   virtual void Write8(UINT32 addr, UINT8 data);
   virtual void IOWrite8(UINT32 portNum, UINT8 data);
 
+  /*
+   * SetIOObserver(observer):
+   *
+   * Sets a function told of what the Z80 writes to its outputs (ports 29, the
+   * reply; 2A, 2D, 2E, the servo or motor boards) and of each new command
+   * shown to it (port 28, at the start of a frame), with the number of NMIs
+   * run so far. The agent mode logs them. Called from the drive board's
+   * thread. nullptr: none.
+   */
+  typedef void (*IOObserver)(uint64_t nmi, uint8_t port, uint8_t value);
+  static void SetIOObserver(IOObserver observer);
+
 
 protected:
 
@@ -292,6 +305,8 @@ protected:
   std::mutex m_commandMutex;
   std::deque<UINT8> m_commands;
   UINT8 m_lastCommand;
+
+  uint64_t m_nmiCount;    // NMIs run since the board was built, for the I/O observer
 
   UINT8 m_dip1;           // Value of DIP switch 1
   UINT8 m_dip2;           // Value of DIP switch 2

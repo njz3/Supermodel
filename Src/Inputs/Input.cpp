@@ -209,8 +209,17 @@ bool CInput::Changed() const
 	return value != prevValue;
 }
 
+static CInput::ForceFeedbackObserver s_ffbObserver = nullptr;
+
+void CInput::SetForceFeedbackObserver(ForceFeedbackObserver observer)
+{
+	s_ffbObserver = observer;
+}
+
 bool CInput::SendForceFeedbackCmd(ForceFeedbackCmd ffCmd)
 {
+	if (s_ffbObserver != nullptr)
+		s_ffbObserver(*this, ffCmd);
 	if (m_source == NULL)
 		return false;
 	return m_source->SendForceFeedbackCmd(ffCmd);

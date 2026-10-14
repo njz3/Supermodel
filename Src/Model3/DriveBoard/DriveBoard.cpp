@@ -296,8 +296,18 @@ UINT8 CDriveBoard::IORead8(UINT32 portNum)
   return 0xff;
 }
 
+static CDriveBoard::IOObserver s_ioObserver = nullptr;
+
+void CDriveBoard::SetIOObserver(IOObserver observer)
+{
+  s_ioObserver = observer;
+}
+
 void CDriveBoard::IOWrite8(UINT32 portNum, UINT8 data)
 {
+    if (s_ioObserver != nullptr && (portNum == 0x29 || portNum == 0x2A || portNum == 0x2D || portNum == 0x2E))
+      s_ioObserver(m_nmiCount, UINT8(portNum), data);
+
     switch (portNum)
     {
         case 0x10: // CTC channel 0
@@ -338,14 +348,18 @@ void CDriveBoard::RunFrame(void)
   }
 
   // The next command the main board wrote, shown to the Z80 for this whole frame
+  bool newCommand = false;
   {
     std::lock_guard<std::mutex> lock(m_commandMutex);
     if (!m_commands.empty())
     {
       m_dataSent = m_commands.front();
       m_commands.pop_front();
+      newCommand = true;
     }
   }
+  if (newCommand && s_ioObserver != nullptr)
+    s_ioObserver(m_nmiCount, 0x28, m_dataSent);
 
   int frameCycles = GetFramecycles();
 
@@ -364,6 +378,7 @@ void CDriveBoard::RunFrame(void)
       if (m_allowNMIInterupts && m_nmiTimerVal <= 0) {
 
           // fire nmi
+          ++m_nmiCount;
           m_z80.TriggerNMI();
 
           int freq = (int)m_z80Clock * 1000000;
@@ -483,6 +498,7 @@ CDriveBoard::CDriveBoard(const Util::Config::Node& config)
     m_z80Clock(8.0f),
     m_z80NMI(true),
     m_nmiTimerVal(0),
+    m_nmiCount(0),
     m_inputs(NULL),
     m_inputFlags(0),
     m_outputs(NULL)

@@ -203,6 +203,13 @@ public:
 	 * Sends a force feedback command to the input source of this input.
 	 */
 	bool SendForceFeedbackCmd(ForceFeedbackCmd ffCmd);
+
+	/*
+	 * Sets a function told of every force feedback command sent to any input, whether it has a source or not (the
+	 * agent mode logs them). Called from the thread that sends the command, the drive board's. nullptr: none.
+	 */
+	typedef void (*ForceFeedbackObserver)(const CInput &input, const ForceFeedbackCmd &ffCmd);
+	static void SetForceFeedbackObserver(ForceFeedbackObserver observer);
 };
 
 //
