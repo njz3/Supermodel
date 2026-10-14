@@ -15,8 +15,11 @@ conversation.
   `master` du fork a été aligné sur upstream le 13 (`587da80..7da4f9a`). Le remote `upstream`
   pointe sur `https://github.com/trzy/Supermodel.git`.
 - **État** : §2.1 à §2.7 (`BackgroundInput`, le mode agent), le banc et ce fichier sont
-  committés et poussés sur `origin/dev/driveboard-ffb-fixes`. Les branches `pr/*` ne contiennent
-  ni `BackgroundInput` ni le mode agent.
+  committés et poussés sur `origin/dev/driveboard-ffb-fixes`.
+- **Le mode agent n'ira pas upstream** (décision du propriétaire, le 14 octobre) : il reste sur
+  `dev`, comme outil de ses développements sur le retour de force. Pas de branche `pr/*` pour lui.
+  `BackgroundInput` a la sienne, `pr/dinput-background-input`, posée sur
+  `pr/dinput-ffb-exclusive`.
 - **Branches PR vers upstream** (14 octobre, parties de `c65edb1`, upstream `aa8ec00` fusionné,
   poussées sur origin, aucune PR ouverte) : `pr/ff-effects-count`, `pr/dinput-ffb-exclusive`,
   `pr/wheelboard-servo-registers`, `pr/wheelboard-epr18261` (sur la précédente),
