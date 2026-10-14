@@ -1561,6 +1561,8 @@ Util::Config::Node DefaultConfig()
 #ifdef SUPERMODEL_WIN32
   config.Set<std::string>("InputSystem", "dinput", "Core", "", "", { "sdl","sdlgamepad","dinput","xinput","rawinput" });
   SetLabels("InputSystem", { "SDL (joystick)", "SDL (gamepad)", "DirectInput", "XInput", "Raw Input (multiple mice/keyboards)" });
+  // DirectInput: read the joysticks, and play their force feedback, while the window is in the background (SDL always does)
+  config.Set("BackgroundInput", false, "Core");
   // DirectInput ForceFeedback
   config.Set("DirectInputConstForceLeftMax", 100, "ForceFeedback", 0, 100);
   config.Set("DirectInputConstForceRightMax", 100, "ForceFeedback", 0, 100);
@@ -1923,6 +1925,8 @@ static void Help(void)
   puts("  -config-inputs          Configure keyboards, mice, and game controllers");
 #ifdef SUPERMODEL_WIN32
   printf("  -input-system=<s>       Input system [Default: %s]\n", defaultConfig["InputSystem"].ValueAs<std::string>().c_str());
+  puts("  -background-input       Read joysticks in the background (DirectInput)");
+  puts("  -no-background-input    Read joysticks only in the foreground [Default]");
 #endif
   puts("  -print-inputs           Prints current input configuration");
   puts("");
@@ -2038,6 +2042,10 @@ static ParsedCommandLine ParseCommandLine(int argc, char **argv)
     { "-emulate-netboard",    { "SimulateNet",      false } },
     { "-no-force-feedback",   { "ForceFeedback",    false } },
     { "-force-feedback",      { "ForceFeedback",    true } },
+#ifdef SUPERMODEL_WIN32
+    { "-background-input",    { "BackgroundInput",  true } },
+    { "-no-background-input", { "BackgroundInput",  false } },
+#endif
     { "-dump-memory",         { "DumpMemory",       true } },
     { "-dump-textures",       { "DumpTextures",     true } },
   };

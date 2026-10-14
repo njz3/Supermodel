@@ -1351,6 +1351,20 @@ not.  All options are case sensitive.
 
     ----------------
 
+    Option:         -background-input
+                    -no-background-input
+
+    Description:    Keeps reading joysticks and wheels, and playing their force
+                    feedback, while the Supermodel window is in the background
+                    (for example behind a cabinet's front-end, or when another
+                    window takes the focus).  By default, DirectInput reads
+                    them only while the window has the focus.  The keyboard
+                    and the mouse are not affected.  Applies to DirectInput
+                    only: SDL always reads joysticks in the background.
+                    Available only on Windows.
+
+    ----------------
+
     Option:         -print-inputs
 
     Description:    Prints the current input configuration.
@@ -1505,6 +1519,19 @@ All settings are case sensitive.
     Description:    If set to 1, enables force feedback emulation; if set to 0,
                     disables it (the default behavior).  Equivalent to the
                     '-force-feedback' command line option.  Available only on
+                    Windows.
+
+    ----------------
+
+    Name:           BackgroundInput
+
+    Argument:       Integer.
+
+    Description:    If set to 1, joysticks and wheels are read, and their force
+                    feedback played, while the Supermodel window is in the
+                    background; if set to 0, only while it has the focus (the
+                    default behavior).  DirectInput only.  Equivalent to the
+                    '-background-input' command line option.  Available only on
                     Windows.
 
     ----------------
