@@ -157,6 +157,16 @@ public:
    */
   void IOWrite8(UINT32 portNum, UINT8 data);
 
+  /*
+   * GetForceFeedbackStrength(void):
+   * SetForceFeedbackStrength(strength):
+   *
+   * The strength DIP switches: bits 2-4 of DIP switches 1 on the boards
+   * that drive a servo board, bits 5-7 on EPR-18261.
+   */
+  unsigned GetForceFeedbackStrength(void) const;
+  void SetForceFeedbackStrength(unsigned strength);
+
 protected:
   void Disable(void);
 
@@ -179,6 +189,7 @@ private:
   UINT8 m_uncenterVal1;   // Vibration, first byte: servo board sub-registers FC 0 (low nibble) and 1 (high nibble)
   UINT8 m_uncenterVal2;   // Vibration, second byte: sub-registers FC 2 (low nibble) and 3 (high nibble)
 
+  bool m_twoPowerOutputs; // EPR-18261: ports 2A and 2E are two motor powers, not a servo board register and value
   UINT8 m_servoGain;      // Servo board torque gain (register FB), 0-127
 
   // What the board asks for, sent to the wheel once a frame
@@ -198,6 +209,8 @@ private:
   void SimulateFrame(void);
 
   void ProcessEncoderCmd(void);
+
+  void ProcessMotorPowers(void);
 
   void UpdateForceFeedback(void);
 

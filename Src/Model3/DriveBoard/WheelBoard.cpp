@@ -34,6 +34,12 @@
 #include "Supermodel.h"
 #include <cstdio>
 #include <algorithm>
+#include <zlib.h>
+
+// EPR-18261, the program of the Model 2 Indy 500 drive board. Le Mans 24 uses it with its cabinet type STANDARD
+// (with the cabinet type LE MANS, it uses Scud Race's EPR-19338A). It drives a motor with two powers, one per way,
+// instead of the registers of a servo board, and reads the wheel on ADC channel 1
+static constexpr uint32_t EPR18261_CRC32 = 0x0C7FAC58;
 
 Game::DriveBoardType CWheelBoard::GetType(void) const
 {
@@ -119,6 +125,9 @@ void CWheelBoard::Disable(void)
 
 void CWheelBoard::Reset(void)
 {
+  // Before CDriveBoard::Reset(), which sets the strength DIP switches
+  m_twoPowerOutputs = crc32(0, m_rom, 0x10000) == EPR18261_CRC32;
+
   CDriveBoard::Reset();
 
   m_seg1Digit1 = 0xFF;
@@ -356,7 +365,7 @@ UINT8 CWheelBoard::IORead8(UINT32 portNum)
     return m_dip1;
   case 0x21: // DIP 2 value
     return m_dip2;
-  case 0x24: // ADC channel 1 - Y analog axis for joystick
+  case 0x24: // ADC channel 1 - Y analog axis for joystick, steering wheel position on EPR-18261
   case 0x25: // ADC channel 2 - steering wheel position (0x00 = full left, 0x80 = center, 0xFF = full right) and X analog axis for joystick
   case 0x26: // ADC channel 3 - cockpit bank position (deluxe cabinets) (0x00 = full left, 0x80 = center, 0xFF = full right)
   case 0x27: // ADC channel 4 - not connected
@@ -437,14 +446,19 @@ void CWheelBoard::IOWrite8(UINT32 portNum, UINT8 data)
     if (data == 0xCC)
       m_initialized = true;
     return;
-  case 0x2a: // Encoder motor data (x axis)
+  case 0x2a: // Encoder motor data (x axis), or EPR-18261's motor power "up"
     m_port42Out = data;
-    ProcessEncoderCmd();
+    if (m_twoPowerOutputs)
+      ProcessMotorPowers();
+    else
+      ProcessEncoderCmd();
     return;
   case 0x2d: // Clutch/lamp control (deluxe cabinets) ( or y axis)
     return;
-  case 0x2e: // Encoder motor control
+  case 0x2e: // Encoder motor control, or EPR-18261's motor power "down"
     m_port46Out = data;
+    if (m_twoPowerOutputs)
+      ProcessMotorPowers();
     return;
   default:
     DebugLog("Unhandled Z80 output on port %u (at PC = %04X)\n", portNum, m_z80.GetPC());
@@ -551,6 +565,23 @@ void CWheelBoard::ProcessEncoderCmd(void)
     m_prev42Out = m_port42Out;
     m_prev46Out = m_port46Out;
   }
+}
+
+void CWheelBoard::ProcessMotorPowers(void)
+{
+  // EPR-18261 writes each power, 0-63, with its bits reversed and complemented. "Up" raises the wheel position
+  // (to the right), "down" lowers it; both at once brake the motor
+  auto power = [](UINT8 port)
+  {
+    UINT8 bits = ~port;
+    UINT8 value = 0;
+    for (int i = 0; i < 8; i++)
+      value |= ((bits >> i) & 1) << (7 - i);
+    return value & 0x3F;
+  };
+
+  // 63 is the full force, as 0x80 +- 63 is on the servo boards
+  m_constForce = 2 * (power(m_port42Out) - power(m_port46Out));
 }
 
 void CWheelBoard::UpdateForceFeedback(void)
@@ -675,6 +706,8 @@ void CWheelBoard::SendVibrate(UINT8 val)
 
 uint8_t CWheelBoard::ReadADCChannel1() const
 {
+  if (m_twoPowerOutputs)
+    return (UINT8)m_inputs->steering->value;
   return 0x00;
 }
 
@@ -694,6 +727,23 @@ uint8_t CWheelBoard::ReadADCChannel3() const
 uint8_t CWheelBoard::ReadADCChannel4() const
 {
   return 0x00;
+}
+
+unsigned CWheelBoard::GetForceFeedbackStrength() const
+{
+  // EPR-18261: bits 5-7 of DIP switches 1 add 0 to 7 to every strength (switches 1-1..1-3 on the board, switch n
+  // being bit 8 - n, measured)
+  if (m_twoPowerOutputs)
+    return ((~(m_dip1 >> 5)) & 7) + 1;
+  return CDriveBoard::GetForceFeedbackStrength();
+}
+
+void CWheelBoard::SetForceFeedbackStrength(unsigned strength)
+{
+  if (m_twoPowerOutputs)
+    m_dip1 = (m_dip1 & 0x1F) | (((~(strength - 1)) & 7) << 5);
+  else
+    CDriveBoard::SetForceFeedbackStrength(strength);
 }
 
 CWheelBoard::CWheelBoard(const Util::Config::Node &config)
@@ -719,6 +769,7 @@ CWheelBoard::CWheelBoard(const Util::Config::Node &config)
   m_uncenterVal1 = 0;
   m_uncenterVal2 = 0;
 
+  m_twoPowerOutputs = false;
   m_servoGain = 0x7F;
   m_constForce = 0;
   m_vibrate = 0;
