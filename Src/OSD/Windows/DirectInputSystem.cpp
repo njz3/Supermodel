@@ -1290,10 +1290,12 @@ void CDirectInputSystem::ActivateJoysticks()
 			LPDIRECTINPUTDEVICE8 joystick = m_di8Joysticks[it->dInputNum];
 			joystick->Unacquire();
 			// DirectInput only plays force feedback effects on a device acquired exclusively, whether the mouse is
-			// grabbed or not
+			// grabbed or not. In the foreground only, unless BackgroundInput: then the joystick is read, and its force
+			// feedback played, whichever window has the focus
 			bool forceFeedback = it->hasFFeedback && m_config["ForceFeedback"].ValueAsDefault<bool>(false);
+			bool background = m_config["BackgroundInput"].ValueAsDefault<bool>(false);
 			if (m_grabMouse || forceFeedback)
-				joystick->SetCooperativeLevel(m_hwnd, DISCL_EXCLUSIVE | DISCL_FOREGROUND);
+				joystick->SetCooperativeLevel(m_hwnd, DISCL_EXCLUSIVE | (background ? DISCL_BACKGROUND : DISCL_FOREGROUND));
 			else
 				joystick->SetCooperativeLevel(m_hwnd, DISCL_NONEXCLUSIVE | DISCL_BACKGROUND);
 			joystick->Acquire();
