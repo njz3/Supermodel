@@ -11,26 +11,27 @@ conversation.
   `git_supermodel_trzy_master`, le clone d'upstream qui garde la modification locale de
   `GrabMouse` du propriétaire.
 - **Branche** : `dev/driveboard-ffb-fixes` (renommée le 14 octobre, avant `driveboard-ffb-fixes`),
-  partie d'upstream `7da4f9a` (13 octobre 2026). Le `master` du fork a été aligné sur upstream et
-  poussé ce jour (`587da80..7da4f9a`). Le remote `upstream` pointe sur
-  `https://github.com/trzy/Supermodel.git`.
+  partie d'upstream `7da4f9a` (13 octobre 2026), upstream `aa8ec00` fusionné le 14 octobre. Le
+  `master` du fork a été aligné sur upstream le 13 (`587da80..7da4f9a`). Le remote `upstream`
+  pointe sur `https://github.com/trzy/Supermodel.git`.
 - **État** : §2.1 à §2.7 (`BackgroundInput`, le mode agent), le banc et ce fichier sont
   committés et poussés sur `origin/dev/driveboard-ffb-fixes`. Les branches `pr/*` ne contiennent
   ni `BackgroundInput` ni le mode agent.
-- **Branches PR vers upstream** (14 octobre, sur `c65edb1`, poussées sur origin, aucune PR
-  ouverte) : `pr/ff-effects-count`, `pr/dinput-ffb-exclusive`, `pr/wheelboard-servo-registers`,
-  `pr/wheelboard-epr18261` (sur la précédente), `pr/driveboard-command-queue`,
-  `pr/joystickboard-swtrilgy` (sur `pr/ff-effects-count`). Upstream `c65edb1` ne compile pas sous
-  MSVC sans `NOMINMAX` (`std::min`/`std::max` dans `Gui.cpp`) : pour compiler, `set CL=/DNOMINMAX`.
+- **Branches PR vers upstream** (14 octobre, parties de `c65edb1`, upstream `aa8ec00` fusionné,
+  poussées sur origin, aucune PR ouverte) : `pr/ff-effects-count`, `pr/dinput-ffb-exclusive`,
+  `pr/wheelboard-servo-registers`, `pr/wheelboard-epr18261` (sur la précédente),
+  `pr/driveboard-command-queue`, `pr/joystickboard-swtrilgy` (sur `pr/ff-effects-count`).
+  `c65edb1` ne compilait pas sous MSVC (`std::min`/`std::max` dans `Gui.cpp`) ; `aa8ec00` l'a
+  corrigé, `NOMINMAX` n'est plus nécessaire.
 - **Pousser, committer** : seulement à la demande du propriétaire.
 - **Essais** : avec `-background-input` (passé par le banc) ou en mode agent, Supermodel lit vJoy
   et joue le retour de force sans le focus ; sinon sa fenêtre doit avoir le premier plan.
   **Ne jamais forcer le focus ni simuler de touches** : le premier banc envoyait ALT et
   reprenait le focus toutes les 20 ms, et le propriétaire ne pouvait plus se servir de son
   clavier ni de sa souris. Lancer les essais seulement si le propriétaire l'a demandé.
-- **Après un changement de branche à base différente** (les `pr/*` sur `c65edb1`, celle-ci sur
-  `7da4f9a`), **recompiler entièrement** (`/t:Rebuild`) : un build incrémental a mélangé des
-  objets incompatibles, et Supermodel bouclait au démarrage.
+- **Après un changement de branche à base différente**, **recompiler entièrement**
+  (`/t:Rebuild`) : un build incrémental a mélangé des objets incompatibles, et Supermodel bouclait
+  au démarrage.
 - **Compilation** : `MSVC/Supermodel.sln`, Release x64, avec Visual Studio 18 (v145). Les
   bibliothèques SDL2 2.30.11, SDL2_net 2.4.0 et zlib 1.3.1 sont dans `Libraries/`, ignorées par
   git. Commande :
