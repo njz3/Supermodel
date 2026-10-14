@@ -130,7 +130,9 @@ class SMAgent:
         self._ok(f"load {path}")
 
     def ffb(self):
-        """The force feedback commands Supermodel sent since the last call: [(frame, input, effect, force)]."""
+        """The force feedback commands Supermodel sent since the last call: [(frame, input, effect, force)].
+        force -1..1; a constant force > 0 pushes towards the input's positive side (Steering: towards
+        set('Steering', 1)), so vJoy receives a magnitude of -force * 10000 (the same rule as sm2-emu's)."""
         n = int(self._ask("ffb").split()[1])
         out = []
         for _ in range(n):

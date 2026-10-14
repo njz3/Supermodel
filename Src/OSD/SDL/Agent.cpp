@@ -54,7 +54,11 @@
  *   ffb                 The force feedback commands sent since the last call,
  *                       whether a device takes them or not: "ffb N", then N
  *                       lines "FRAME INPUT EFFECT FORCE", EFFECT stop,
- *                       constant, selfcenter, friction or vibrate.
+ *                       constant, selfcenter, friction or vibrate. FORCE is
+ *                       -1..1; a constant force > 0 pushes towards the input's
+ *                       positive side (Steering: towards set Steering 1), so a
+ *                       DirectInput device receives a magnitude of -FORCE *
+ *                       10000 (as on sm2-emu); the others are a strength >= 0.
  *   servo on|off        Starts or stops the drive board's journal.
  *   servo               The journal since the last call: "servo N", then N
  *                       lines "FRAME NMI PORT VALUE" (hex port and value):

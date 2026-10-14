@@ -1250,7 +1250,11 @@ not.  All options are case sensitive.
                       load PATH           Loads a state.
                       ffb                 The force feedback commands sent
                                           since the last call, device or not:
-                                          'FRAME INPUT EFFECT FORCE' lines.
+                                          'FRAME INPUT EFFECT FORCE' lines;
+                                          a constant FORCE > 0 pushes towards
+                                          the input's positive side (a
+                                          DirectInput device then receives
+                                          -FORCE * 10000).
                       servo on|off        Starts or stops the drive board's
                                           journal.
                       servo               The journal: 'FRAME NMI PORT VALUE'
