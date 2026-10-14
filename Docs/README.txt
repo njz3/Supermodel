@@ -1268,6 +1268,10 @@ not.  All options are case sensitive.
                       outputs             The outputs (lamps, drive board).
                       ram ADDRESS LENGTH  Memory read by the main CPU (hex).
                       frame               The number of frames run.
+                      settle [MS]         Waits MS milliseconds before each
+                                          frame, so that a device set just
+                                          before a step is read in that
+                                          frame with '-no-throttle'.
                       quit                Exits.
 
                     Force feedback still goes to the device the inputs are

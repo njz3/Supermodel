@@ -130,6 +130,8 @@ def main():
         print(f"{sm.game}: {sm.width}x{sm.height}, inputs {a.inputs}")
         if a.servo:
             sm.servo_on()
+        if a.inputs == "vjoy" and a.no_throttle:
+            sm.settle(2)      # vJoy set just before each step, read in that frame
         jolt_until, jolt = 0, 0.0
         phase = random.random() * 6.28
         expected_prev = None

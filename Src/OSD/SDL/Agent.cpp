@@ -75,6 +75,10 @@
  *                       at most 1 MB): "ram LENGTH", a new line, the bytes.
  *   mem ADDRESS LENGTH  The same (sm2-emu's name): "mem LENGTH", the bytes.
  *   frame               "frame N", the number of frames run.
+ *   settle [MS]         Waits MS milliseconds before each frame (0 by default),
+ *                       so that a device set just before a step (vJoy) is read
+ *                       in that frame even with -no-throttle; real-time pacing
+ *                       leaves that time anyway. Answer: "settle MS".
  *   quit                "bye", and Supermodel exits.
  *
  * A command that fails answers "err" and a reason.
@@ -104,6 +108,8 @@
 #include <memory>
 #include <mutex>
 #include <sstream>
+#include <thread>
+#include <chrono>
 #include <vector>
 
 #ifdef _WIN32
@@ -118,6 +124,7 @@ namespace Agent
   static FILE *s_out = nullptr;           // the protocol's stdout
   static std::atomic<uint64_t> s_frame{ 0 };    // frames run
   static std::atomic<uint64_t> s_running{ 0 };  // the frame being run (or the last one), labels the journals
+  static int s_settleMs = 0;                     // wait before each frame (settle)
 
   static bool s_enabled = false;
 
@@ -537,6 +544,8 @@ namespace Agent
           n = 1;
         for (long i = 0; i < n; i++)
         {
+          if (s_settleMs > 0)
+            std::this_thread::sleep_for(std::chrono::milliseconds(s_settleMs));
           if (!pollInputs())
           {
             running = false;
@@ -733,6 +742,13 @@ namespace Agent
         for (unsigned i = 0; i < length; i++)
           bytes[i] = model3->Read8(address + i);
         ReplyBytes(command + " " + std::to_string(length), bytes.data(), bytes.size());
+      }
+      else if (command == "settle")
+      {
+        int ms = s_settleMs;
+        if (in >> ms)
+          s_settleMs = std::clamp(ms, 0, 1000);
+        Reply("settle %d", s_settleMs);
       }
       else if (command == "frame")
         Reply("frame %llu", (unsigned long long)s_frame.load());

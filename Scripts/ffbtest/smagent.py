@@ -153,6 +153,11 @@ class SMAgent:
             raise RuntimeError(" ".join(header))
         return self._read(int(header[1]))
 
+    def settle(self, ms):
+        """Wait ms milliseconds before each frame, so that vJoy set just before a step is read in that frame, as fast
+        as the host goes (-no-throttle); real-time pacing leaves that time anyway. The same command as sm2-emu's."""
+        return int(self._ask(f"settle {int(ms)}").split()[1])
+
     def frame(self):
         return int(self._ask("frame").split()[1])
 
