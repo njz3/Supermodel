@@ -1,0 +1,11 @@
+<Project>
+  <!--
+    Imported by every project of the solution. vcpkg's user-wide MSBuild integration (vcpkg integrate install)
+    would link the libraries it has installed to them, zlib as a DLL (zlib1.dll) among them, while the solution
+    builds its own: it is turned off here.
+  -->
+  <PropertyGroup>
+    <VcpkgEnabled>false</VcpkgEnabled>
+    <VCPkgLocalAppDataDisabled>true</VCPkgLocalAppDataDisabled>
+  </PropertyGroup>
+</Project>

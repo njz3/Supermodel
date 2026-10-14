@@ -40,6 +40,14 @@ conversation.
   git. Commande :
   `call "%ProgramFiles%\Microsoft Visual Studio\18\Community\Common7\Tools\VsDevCmd.bat" -arch=amd64`
   puis `msbuild MSVC\Supermodel.sln /m /p:Configuration=Release /p:Platform=x64`.
+  `MSVC/Directory.Build.props` coupe l'intégration vcpkg de la machine (`C:\libs\vcpkg`), qui
+  liait son zlib en DLL (`zlib1.dll`) alors que la solution compile le sien.
+- **Version comme une officielle** : `python Scripts/release_windows.py` construit un seul
+  `supermodel.exe` (SDL2, SDL2_net, zlib et runtime C liés en statique) dans
+  `MSVC/x64/ReleaseStatic/`, sans toucher aux projets ni au build en DLL. Il le met dans
+  `pkg/supermodel-<version>-windows.zip`, rangé comme la cible `pkg` officielle. La version est
+  `0.3a-AAAAMMJJ-git-<hash>` de HEAD. Visual Studio 2026 est marqué incomplet par son installeur :
+  le script le trouve avec `vswhere -all`.
 
 ## 1. Le contexte
 
