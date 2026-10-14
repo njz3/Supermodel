@@ -14,19 +14,23 @@ conversation.
   partie d'upstream `7da4f9a` (13 octobre 2026). Le `master` du fork a été aligné sur upstream et
   poussé ce jour (`587da80..7da4f9a`). Le remote `upstream` pointe sur
   `https://github.com/trzy/Supermodel.git`.
-- **État** : §2.1 à §2.6, le banc et ce fichier sont committés et poussés sur
-  `origin/dev/driveboard-ffb-fixes`.
+- **État** : §2.1 à §2.7 (`BackgroundInput`, le mode agent), le banc et ce fichier sont
+  committés et poussés sur `origin/dev/driveboard-ffb-fixes`. Les branches `pr/*` ne contiennent
+  ni `BackgroundInput` ni le mode agent.
 - **Branches PR vers upstream** (14 octobre, sur `c65edb1`, poussées sur origin, aucune PR
   ouverte) : `pr/ff-effects-count`, `pr/dinput-ffb-exclusive`, `pr/wheelboard-servo-registers`,
   `pr/wheelboard-epr18261` (sur la précédente), `pr/driveboard-command-queue`,
   `pr/joystickboard-swtrilgy` (sur `pr/ff-effects-count`). Upstream `c65edb1` ne compile pas sous
   MSVC sans `NOMINMAX` (`std::min`/`std::max` dans `Gui.cpp`) : pour compiler, `set CL=/DNOMINMAX`.
 - **Pousser, committer** : seulement à la demande du propriétaire.
-- **Essais** : la fenêtre de Supermodel doit avoir le premier plan, puisque DirectInput n'acquiert
-  le volant en exclusif qu'au premier plan. **Ne jamais forcer le focus ni simuler de touches** :
-  le premier banc envoyait ALT et reprenait le focus toutes les 20 ms, et le propriétaire ne
-  pouvait plus se servir de son clavier ni de sa souris. Lancer les essais quand le PC est libre,
-  et seulement si le propriétaire l'a demandé.
+- **Essais** : avec `-background-input` (passé par le banc) ou en mode agent, Supermodel lit vJoy
+  et joue le retour de force sans le focus ; sinon sa fenêtre doit avoir le premier plan.
+  **Ne jamais forcer le focus ni simuler de touches** : le premier banc envoyait ALT et
+  reprenait le focus toutes les 20 ms, et le propriétaire ne pouvait plus se servir de son
+  clavier ni de sa souris. Lancer les essais seulement si le propriétaire l'a demandé.
+- **Après un changement de branche à base différente** (les `pr/*` sur `c65edb1`, celle-ci sur
+  `7da4f9a`), **recompiler entièrement** (`/t:Rebuild`) : un build incrémental a mélangé des
+  objets incompatibles, et Supermodel bouclait au démarrage.
 - **Compilation** : `MSVC/Supermodel.sln`, Release x64, avec Visual Studio 18 (v145). Les
   bibliothèques SDL2 2.30.11, SDL2_net 2.4.0 et zlib 1.3.1 sont dans `Libraries/`, ignorées par
   git. Commande :
@@ -87,6 +91,15 @@ que l'option `ForceFeedback` est active, que la souris soit capturée ou non. Av
 n'était pris que si `m_grabMouse` était vrai. Or DirectInput ne joue aucun effet hors exclusif :
 avec la modification `GrabMouse` du propriétaire, vJoy ne recevait **aucun paquet FFB**.
 
+**Option `BackgroundInput`** (14 octobre ; `-background-input` / `-no-background-input`, onglet
+Core de l'interface, Windows seulement, désactivée par défaut). Activée, les joysticks et volants
+DirectInput sont acquis en `DISCL_BACKGROUND` : ils sont lus, et leur retour de force joué, quelle
+que soit la fenêtre qui a le focus. Le clavier et la souris ne changent pas, puisqu'un Échap tapé
+ailleurs ferait quitter Supermodel. SDL lit déjà les joysticks en arrière-plan
+(`SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS`). C'est utile à la borne, où une fenêtre qui passe
+devant coupait le retour de force, et pour le banc, qui passe l'option par défaut : le PC reste
+utilisable pendant un essai. Documentée dans `Docs/README.txt`.
+
 ### 2.4 `Config/Games.xml`
 
 Le Mans 24 : commentaire sur les deux cabinets. CABINET TYPE STANDARD va avec EPR-18261 ; LE MANS
@@ -118,6 +131,65 @@ vibration X prenait la case de la constante Y : **aucune force constante sur Y**
 Diagnostic : trace temporaire dans Supermodel, puis un petit programme DirectInput qui crée les
 mêmes effets sur vJoy sans erreur.
 
+### 2.7 Mode agent (`-agent`, `Src/OSD/SDL/Agent.cpp/.h`)
+
+Supermodel piloté par un autre programme sur stdin/stdout, sur le modèle du `--agent` de sm2-emu,
+pour un pilote automatique et pour déboguer driveboard et retour de force. Le protocole est décrit
+en tête d'`Agent.cpp` et dans `Docs/README.txt`.
+
+**Module séparé** : tout est dans `Agent.cpp/.h` (l'option, les réglages, la fenêtre,
+l'enregistreur des sorties, la cadence, la lecture du FBO, le protocole). Le code existant n'est
+touché qu'aux endroits indispensables :
+- `Main.cpp` : un appel d'une ligne à chaque point d'accroche :
+  - `Agent::Init` en tête de `main()` ;
+  - `AdjustConfig` avant `LogConfig` ;
+  - `WindowFlags` à la création de la fenêtre ;
+  - `WrapOutputs` avant l'attache des sorties ;
+  - `Enabled()` pour `SuperAA` ;
+  - `Agent::Run` à la place de la boucle principale.
+
+  S'y ajoutent `SaveState`, qui prend un chemin optionnel comme `LoadState`, et les deux qui
+  disent s'ils ont réussi. `-agent` est retiré d'`argv` par l'agent lui-même : ni clé de
+  configuration, ni entrée dans le parseur.
+- `SuperAA` : un paramètre `forceTarget` (rendre dans son FBO même en 1x).
+- `Input.h/.cpp` : un observateur du retour de force (`CInput::SetForceFeedbackObserver`).
+- `InputTypes.h` : accesseurs des bornes (certaines entrées ont des plages inversées).
+- `DriveBoard.h/.cpp` : un observateur des sorties du Z80 et un compteur de NMI.
+- Le projet MSVC et `Makefiles/Rules.inc` : les deux fichiers ajoutés.
+
+- **Fenêtre cachée** (`SDL_WINDOW_HIDDEN`), qui ne prend jamais le focus : pas de plein écran,
+  pas de clavier, `BackgroundInput` forcé. Une option `-headless` à part a existé le 14 octobre,
+  puis a été retirée : l'agent couvre ses usages.
+- **stdout est au protocole** : `Agent::Init` duplique le stdout du processus pour le protocole et
+  redirige tout le reste vers stderr, avant le premier affichage.
+- **Images dans un frame buffer** : `SuperAA` rend toujours dans son FBO en mode agent, que
+  l'agent relit (`glReadPixels` sur ce FBO). Fiable même fenêtre cachée, alors que lire le back
+  buffer d'une fenêtre cachée est indéfini sur certains pilotes.
+- **Les images ne tournent que sur commande** (`step N`), en temps réel par défaut (`Throttle`,
+  cadence propre à l'agent), plus vite avec `-no-throttle` (1,5 fois le temps réel sur Scud),
+  VSync coupée. La NVRAM est sauvegardée à la sortie, comme d'habitude : un essai qui part d'une
+  sauvegarde d'état n'en dépend pas.
+- **Commandes** :
+  - `step` renvoie les octets écrits à la driveboard ;
+  - `set` / `setraw` / `release` / `get` pour les entrées (les bornes viennent de nouveaux
+    accesseurs dans `InputTypes.h`), `inputs` ;
+  - `obs` (RGB réduit), `shot` (BMP), `save` / `load`, `outputs`, `ram` / `mem`, `frame`,
+    `quit`.
+- **Débogage du retour de force** :
+  - `ffb` : chaque commande envoyée à une entrée, périphérique branché ou non
+    (`CInput::SetForceFeedbackObserver`) ;
+  - `servo on|off` / `servo` : le journal du Z80 à chaque NMI, ports `2A`/`2D`/`2E`, réponse
+    `29` en changements seulement, `28` pour chaque nouvelle commande, avec un compteur de NMI
+    (`CDriveBoard::SetIOObserver`, `m_nmiCount`). Les enregistrements portent le numéro de
+    l'image en cours.
+- **Le retour de force continue d'aller au périphérique** (vJoy) : on compare ce que Supermodel
+  envoie et ce que vJoy reçoit. Les entrées peuvent aussi passer par vJoy, réglées avant chaque
+  `step 1`, pour tester le chemin d'entrée complet.
+- Client Python `Scripts/ffbtest/smagent.py`, pilote d'essai `agent_drive.py` (§3.2 ter).
+- Compatibilité avec sm2-emu : sa session reprend ces commandes et ces formats, et garde son
+  `step` positionnel. `mem` est un alias de `ram`. La télémétrie (`tel`) reprendra les clés JSON
+  de sm2-emu quand la carte mémoire de Scud sera faite.
+
 ## 3. Les essais
 
 ### 3.1 Le banc
@@ -145,6 +217,7 @@ Il est dans `Scripts/ffbtest/` ; son `README.md` dit comment le préparer et le 
 | Correctifs `WheelBoard` seuls, `GrabMouse` neutralisé | **0 paquet FFB** |
 | + DirectInput, 3 parties | ressorts `1x` 162/163, coupures `9x` 66/66, gain `2x` 42/42, vibrations `3x` 10/11, poussées `5x`/`6x` 84/96 (les 12 écarts suivent tous le `2F` perdu) |
 | + file de commandes | **partielle** : 384 s, 98 % au premier plan, 281 octets, 1232 paquets, puis Supermodel a été fermé normalement, pendant que le propriétaire luttait contre le vol de focus du banc (§4) |
+| + file + `BackgroundInput`, 3 parties (14 octobre) | **complète** : 693 s, fenêtre au premier plan 4 % du temps. Commandes jouées comme le programme le veut : `0x` 6/6, ressorts `1x` 168/168, gain `2x` 55/55, vibrations `3x` 15/15, power slide `4x` 5/5, poussées `5x`/`6x` **116/116**, coupures `9x` 79/79. `check_scud.py` compte deux écarts, mais le paquet y arrive 30 ms *avant* la commande : le banc horodate celle-ci à sa réception TCP, en retard |
 
 La capture des trois parties est dans BFF :
 `docs/EPR-19338A-ScudRace-DriveBoard/captures/scud-three-games-supermodel-vjoy.txt`.
@@ -164,6 +237,23 @@ direction des effets : DirectInput replie l'axe X en 90° et l'axe Y en 0°.
 
 La capture des deux parties corrigées est dans BFF :
 `docs/EPR-21119-StarWars-DriveBoard/captures/swtrilgy-two-games-supermodel-vjoy-fixed.txt`.
+
+### 3.2 ter Sauvegardes d'état et mode agent (14 octobre)
+
+- **Sauvegarde au départ d'une course** (`smtest.py --make-state`, F5 pressé par le propriétaire :
+  les touches d'interface de Supermodel ne se mappent pas sur un joystick). Ensuite
+  `smtest.py --state` démarre chaque partie depuis elle, par `-load-state`, en 8 s au lieu
+  d'environ 80 s de démarrage et de menus.
+- **Mode agent, Scud depuis cette sauvegarde** (`agent_drive.py`) :
+
+| Essai | Résultat |
+|:--|:--|
+| 60 s, entrées tenues par l'agent, `--vjoy` | retour de force Supermodel / vJoy : constantes 49 / 50 (une de plus à la création de l'effet), ressorts 68 / 69 |
+| 15 s, `--inputs vjoy --servo` | volant lu par le jeu = consigne vJoy de la même image, 861 images sur 862 ; constantes 26/26 et ressorts 14/14 arrivés à vJoy avec la bonne valeur, **dans la même image** ; 8,70 NMI par image dans le journal servo |
+| 30 s, `--no-throttle` | 86 images/s, 1,5 fois le temps réel |
+
+La zone morte des joysticks de Supermodel (3 % par défaut, `InputJoy1XDeadZone`) rapproche du
+centre la valeur que le jeu lit ; `agent_drive.py --deadzone` en tient compte.
 
 ### 3.3 Ce que Scud Race envoie
 
@@ -189,15 +279,15 @@ La capture des deux parties corrigées est dans BFF :
    allait donc à Supermodel, qui quitte sur Échap, et ALT + F4 ferme la fenêtre. Depuis, la file a
    tourné sans arrêt dans tous les essais Star Wars (`CDriveBoard::Write`) : `swt_fixed` et
    `swt_fixed2`, 480 s chacun.
-2. **Valider la file de commandes** : 3 parties de Scud, sans écart dû à une commande perdue.
+2. ~~Valider la file de commandes~~ : **validée le 14 octobre** (§3.2). Sur 3 parties de Scud, aucune
+   commande perdue, et les poussées `5x`/`6x` sont toutes justes (116/116, contre 84/96 avant la
+   file, quand un `2F` perdu laissait le gain à 4 %).
 3. **Comparatif avant/après** : la même série avec upstream plus le seul correctif DirectInput.
 4. **Daytona 2** : son ressort est calculé par le Z80 et envoyé en force constante à 57,5 Hz ;
    vérifier qu'il ne vibre pas au centre (cabinet `B0` par défaut : jusqu'à 100 %).
 5. **Le Mans 24** : en STANDARD avec EPR-18261 (le nouveau décodage), puis en LE MANS avec
    EPR-19338A.
-6. **Acquisition exclusive en arrière-plan** (`DISCL_EXCLUSIVE | DISCL_BACKGROUND`) pour un volant
-   FFB : si DirectInput l'accepte, le FFB tiendrait sans le focus. C'est utile à la borne, où une
-   fenêtre qui passe devant coupe le FFB, et pour les essais. À essayer.
+6. ~~Acquisition exclusive en arrière-plan~~ : faite, c'est l'option `BackgroundInput` (§2.3).
 7. **Les amortissements** : `FD` des cartes servo, probablement un amortissement, et le frein
    `2x` d'EPR-18261 (les deux puissances à la fois), **mesuré comme un amortisseur** sur la
    carte réelle. Aujourd'hui Supermodel n'en tire aucune force : les traduire en `GUID_Damper`,

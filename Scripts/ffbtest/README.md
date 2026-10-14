@@ -15,14 +15,15 @@ the results.
 
 ## Before running it
 
-- **Do not use the PC while it runs.** Supermodel acquires a force feedback wheel in DirectInput's
-  exclusive foreground mode: it reads the wheel and sends forces only while its window has the
-  foreground. The bench brings the window to the front once, when it appears, and logs whether it
-  kept it (`fg` in the samples). It never simulates keys and never takes the focus back: an earlier
-  version did, every 20 ms, and blocked the keyboard and the mouse.
+- The bench runs Supermodel with `-background-input`: it reads the vJoy wheel and sends forces
+  whichever window has the focus, so the PC stays usable during a run. Do not type into the
+  Supermodel window: it quits on Escape. The bench brings the window to the front once, when it
+  appears, and logs whether it kept it (`fg` in the samples). It never simulates keys and never
+  takes the focus back: an earlier version did, every 20 ms, and blocked the keyboard and the mouse.
+- With `--foreground-only` (a build without `-background-input`), Supermodel acquires the wheel in
+  DirectInput's exclusive foreground mode and reads it only while its window has the focus: do not
+  use the PC then, and close any system dialog (Windows Security, a credentials prompt) first.
 - **BackForceFeeder must not run**: it owns vJoy.
-- A system dialog (Windows Security, a credentials prompt) keeps the foreground and makes a run
-  useless: close it first.
 
 ## Requirements
 
@@ -58,6 +59,22 @@ drives floored for `--game-length` seconds (150 by default), the wheel swinging 
 (`--steer-amp`) with a hard turn now and then (`--jolt-rate`). The car hits the walls often, which
 is what makes the board work. Each run writes `drive.tsv`, `session.jsonl`, `supermodel_stdout.txt`
 and the screenshots into `--out`.
+
+**Save states** skip the boot (45 s), the attract mode and the menus (35 s) of every game. Make the
+state once, at the start of a race, then start every game from it:
+
+```
+python smtest.py --exe <Supermodel.exe> --rom <scud.zip> --rundir <rundir> --out runs/scud_state --make-state
+python smtest.py --exe <Supermodel.exe> --rom <scud.zip> --rundir <rundir> --out runs/scud --games 3 --state <rundir>/Saves/scud.st0
+```
+
+`--make-state` plays the coins, START and menus once, then waits at the start of the race until
+someone clicks Supermodel's window and presses **F5** (Save State, slot 0, written to
+`<rundir>/Saves/<game>.st0`). Supermodel's UI keys cannot be mapped to a joystick (`IsConfigurable()`
+leaves them out), and the bench never simulates keys. A state can also be made by hand at any time.
+`--state` starts Supermodel again for each game with `-load-state`, which takes a few seconds. A
+state holds the drive board too: its Z80, its RAM, the servo board's gain. Make it again after
+changing the drive board code, since a save state from another build may not load.
 
 `--mode joystick` plays Star Wars Trilogy's force feedback joystick instead: the menus confirmed
 with START and the trigger, then the stick sweeping X over 5 s and Y over 7 s (`--stick-amp`), the

@@ -4,9 +4,12 @@
 - the controls sent, whether Supermodel's window was in the foreground, and screenshots.
 
 Usage: python smtest.py --exe Supermodel.exe --rom scud.zip --out runs/scud_new [--games 3]
+       python smtest.py ... --make-state      once: play to the start of a race, wait for F5 (Save State)
+       python smtest.py ... --state <rundir>/Saves/scud.st0 --games 3    every game from that state
 
-Supermodel opens a force feedback joystick in DirectInput's exclusive foreground mode: its
-window must stay in the foreground, or it neither reads vJoy nor sends force feedback."""
+Supermodel is run with -background-input: it reads vJoy and sends force feedback whichever window
+has the focus. A build without that option (--foreground-only) opens a force feedback joystick in
+DirectInput's exclusive foreground mode: its window must then stay in the foreground."""
 import argparse
 import ctypes
 import json
@@ -78,7 +81,7 @@ class DriveLog(threading.Thread):
             return
         sock.settimeout(0.5)
         buf = b""
-        with open(self.out, "w") as f:
+        with open(self.out, "a") as f:
             while not self.stop:
                 try:
                     data = sock.recv(4096)
@@ -114,6 +117,15 @@ def main():
     ap.add_argument("--mode", choices=("wheel", "joystick"), default="wheel",
                     help="wheel: steering and pedals; joystick: the analog joystick on X/Y with its trigger")
     ap.add_argument("--stick-amp", type=float, default=0.35, help="joystick mode: amplitude of the stick's sweep")
+    ap.add_argument("--foreground-only", action="store_true",
+                    help="do not pass -background-input (builds without it): the window must keep the focus")
+    ap.add_argument("--make-state", action="store_true",
+                    help="boot, coin, start and menus once, then wait at the start of the race for someone to press "
+                         "F5 (Save State) in Supermodel's window: its UI keys cannot be mapped to a joystick")
+    ap.add_argument("--save-wait", type=float, default=180, help="--make-state: seconds to wait for the save")
+    ap.add_argument("--state", help="start every game from this save state, Supermodel started again for each one "
+                                    "with -load-state: no boot, no attract, no menus")
+    ap.add_argument("--state-boot", type=float, default=8, help="--state: seconds for Supermodel to load the state")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     random.seed(a.seed)
@@ -152,31 +164,53 @@ def main():
         log.write(json.dumps(kw) + "\n")
         log.flush()
 
-    args = [a.exe, "-window", "-input-system=dinput", "-force-feedback", "-outputs=net"] + a.extra_args.split() + [a.rom]
+    args = [a.exe, "-window", "-input-system=dinput", "-force-feedback", "-outputs=net"]
+    if not a.foreground_only:
+        args.append("-background-input")
+    if a.state:
+        args.append("-load-state=" + os.path.abspath(a.state))
+    args += a.extra_args.split() + [a.rom]
     smlog = open(os.path.join(a.out, "supermodel_stdout.txt"), "w")
-    proc = subprocess.Popen(args, cwd=a.rundir, stdout=smlog, stderr=subprocess.STDOUT)
-    event("start", args=args, pid=proc.pid)
-    drive = DriveLog(8000, os.path.join(a.out, "drive.tsv"))
-    drive.start()
+    drive_path = os.path.join(a.out, "drive.tsv")
+    open(drive_path, "w").close()
+    sm = {"proc": None, "drive": None, "hwnd": None}
 
-    hwnd = None
-    shot_n = [0]
+    def launch():
+        """Start Supermodel, and the reading of its outputs (appended to drive.tsv)."""
+        sm["proc"] = subprocess.Popen(args, cwd=a.rundir, stdout=smlog, stderr=subprocess.STDOUT)
+        sm["hwnd"] = None
+        event("start", args=args, pid=sm["proc"].pid)
+        sm["drive"] = DriveLog(8000, drive_path)
+        sm["drive"].start()
+
+    def stop():
+        sm["drive"].stop = True
+        proc = sm["proc"]
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+        sm["drive"].join(2)
+
+    def running():
+        return sm["proc"].poll() is None
 
     def tick(duration, step=0.02, driver=None):
-        """Run for duration seconds: keep the window in front, sample, apply the driver."""
-        nonlocal hwnd
+        """Run for duration seconds: sample, apply the driver. The window is brought to the front once, when found."""
         end = time.time() + duration
         next_sample = 0
-        while time.time() < end and proc.poll() is None:
-            if hwnd is None:
-                hwnd = find_window(proc.pid)
-                if hwnd:
-                    user32.SetForegroundWindow(hwnd)
+        while time.time() < end and running():
+            if sm["hwnd"] is None:
+                sm["hwnd"] = find_window(sm["proc"].pid)
+                if sm["hwnd"]:
+                    user32.SetForegroundWindow(sm["hwnd"])
             if driver:
                 driver(time.time())
             now = time.time()
             if now >= next_sample:
-                fg = hwnd is not None and user32.GetForegroundWindow() == hwnd
+                fg = sm["hwnd"] is not None and user32.GetForegroundWindow() == sm["hwnd"]
                 for (tp, rec) in vj.take_ffb():
                     rec["t"] = round(tp, 4)
                     rec["kind"] = "ffb"
@@ -185,42 +219,79 @@ def main():
                 next_sample = now + 0.1
             time.sleep(step)
 
+    shot_n = [0]
+
     def shot(label):
-        if hwnd:
+        if sm["hwnd"]:
             shot_n[0] += 1
-            screenshot(hwnd, os.path.join(a.out, f"shot_{shot_n[0]:03d}_{label}.png"))
+            screenshot(sm["hwnd"], os.path.join(a.out, f"shot_{shot_n[0]:03d}_{label}.png"))
             event("shot", label=label, n=shot_n[0])
 
-    try:
-        tick(a.boot)
-        shot("boot")
-        for game in range(a.games):
-            event("game", n=game + 1)
-            press(BTN_COIN)
-            tick(1.0)
-            press(BTN_COIN)
-            tick(2.0)
+    def start_game(game):
+        """From the attract mode to the start of the race: coins, START, the menus."""
+        press(BTN_COIN)
+        tick(1.0)
+        press(BTN_COIN)
+        tick(2.0)
+        press(BTN_START)
+        tick(2.0)
+        shot(f"g{game+1}_after_start")
+        # Menus: confirm with START and a step on the accelerator (wheel) or the trigger (joystick) every few
+        # seconds, the timers do the rest
+        menu_end = time.time() + a.menu
+        k = 0
+        while time.time() < menu_end and running():
             press(BTN_START)
-            tick(2.0)
-            shot(f"g{game+1}_after_start")
-            # Menus: confirm with START and a step on the accelerator (wheel) or the trigger (joystick) every few
-            # seconds, the timers do the rest
-            menu_end = time.time() + a.menu
-            k = 0
-            while time.time() < menu_end and proc.poll() is None:
-                press(BTN_START)
+            tick(1.0)
+            if a.mode == "joystick":
+                press(BTN_TRIGGER)
+                tick(2.0)
+            else:
+                set_controls(accel=1.0)
+                tick(0.4)
+                set_controls(accel=0.5)
+                tick(1.6)
+            k += 1
+            if k % 3 == 0:
+                shot(f"g{game+1}_menu{k}")
+
+    def new_states():
+        saves = os.path.join(a.rundir, "Saves")
+        if not os.path.isdir(saves):
+            return []
+        return sorted(os.path.join(saves, f) for f in os.listdir(saves)
+                      if ".st" in f and os.path.getmtime(os.path.join(saves, f)) > t0)
+
+    try:
+        launch()
+        if a.state:
+            tick(a.state_boot)
+            shot("state_loaded")
+        else:
+            tick(a.boot)
+            shot("boot")
+        if a.make_state:
+            event("game", n=1)
+            start_game(0)
+            set_controls(steer=0.5, accel=0.5, brake=0.5)
+            shot("race_start")
+            print("At the start of the race: click Supermodel's window and press F5 (Save State)", flush=True)
+            event("waiting_for_save")
+            end_wait = time.time() + a.save_wait
+            while not new_states() and time.time() < end_wait and running():
                 tick(1.0)
-                if a.mode == "joystick":
-                    press(BTN_TRIGGER)
-                    tick(2.0)
-                else:
-                    set_controls(accel=1.0)
-                    tick(0.4)
-                    set_controls(accel=0.5)
-                    tick(1.6)
-                k += 1
-                if k % 3 == 0:
-                    shot(f"g{game+1}_menu{k}")
+            made = new_states()
+            event("state", path=made[-1] if made else None)
+            print("state saved:", made[-1] if made else None)
+            a.games = 0
+        for game in range(a.games):
+            if a.state and game > 0:
+                stop()
+                launch()
+                tick(a.state_boot)
+            event("game", n=game + 1)
+            if not a.state:
+                start_game(game)
             phase = random.random() * 6.28
             t_start = time.time()
             jolts = []
@@ -253,7 +324,7 @@ def main():
             n_shots = 0
             seg = 10.0
             elapsed = 0.0
-            while elapsed < a.game_length and proc.poll() is None:
+            while elapsed < a.game_length and running():
                 tick(seg, driver=driver)
                 elapsed += seg
                 n_shots += 1
@@ -262,23 +333,21 @@ def main():
             set_controls(steer=0.5, accel=0.5, brake=0.5)
             vj.button(BTN_TRIGGER, False)
             vj.button(BTN_EVENT, False)
-            # Game over, continue screen, name entry: let them time out
-            tick(25.0)
+            if not a.state:
+                # Game over, continue screen, name entry: let them time out
+                tick(25.0)
+            else:
+                tick(1.0)
             shot(f"g{game+1}_end")
         event("done")
     finally:
-        drive.stop = True
+        if sm["proc"]:
+            stop()
         for (tp, rec) in vj.take_ffb():
             rec["t"] = round(tp, 4)
             rec["kind"] = "ffb"
             log.write(json.dumps(rec) + "\n")
         log.close()
-        if proc.poll() is None:
-            proc.terminate()
-            try:
-                proc.wait(10)
-            except subprocess.TimeoutExpired:
-                proc.kill()
         vj.release()
         smlog.close()
         print("done in", round(time.time() - t0), "s")
