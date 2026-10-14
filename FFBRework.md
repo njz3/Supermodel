@@ -10,11 +10,17 @@ conversation.
   `emulateurs/git_Supermodel_njz3_master`. **On travaille ici**, pas dans
   `git_supermodel_trzy_master`, le clone d'upstream qui garde la modification locale de
   `GrabMouse` du propriétaire.
-- **Branche** : `driveboard-ffb-fixes`, partie d'upstream `7da4f9a` (13 octobre 2026). Le `master`
-  du fork a été aligné sur upstream et poussé ce jour (`587da80..7da4f9a`). Le remote `upstream`
-  pointe sur `https://github.com/trzy/Supermodel.git`.
+- **Branche** : `dev/driveboard-ffb-fixes` (renommée le 14 octobre, avant `driveboard-ffb-fixes`),
+  partie d'upstream `7da4f9a` (13 octobre 2026). Le `master` du fork a été aligné sur upstream et
+  poussé ce jour (`587da80..7da4f9a`). Le remote `upstream` pointe sur
+  `https://github.com/trzy/Supermodel.git`.
 - **État** : §2.1 à §2.6, le banc et ce fichier sont committés et poussés sur
-  `origin/driveboard-ffb-fixes`.
+  `origin/dev/driveboard-ffb-fixes`.
+- **Branches PR vers upstream** (14 octobre, sur `c65edb1`, poussées sur origin, aucune PR
+  ouverte) : `pr/ff-effects-count`, `pr/dinput-ffb-exclusive`, `pr/wheelboard-servo-registers`,
+  `pr/wheelboard-epr18261` (sur la précédente), `pr/driveboard-command-queue`,
+  `pr/joystickboard-swtrilgy` (sur `pr/ff-effects-count`). Upstream `c65edb1` ne compile pas sous
+  MSVC sans `NOMINMAX` (`std::min`/`std::max` dans `Gui.cpp`) : pour compiler, `set CL=/DNOMINMAX`.
 - **Pousser, committer** : seulement à la demande du propriétaire.
 - **Essais** : la fenêtre de Supermodel doit avoir le premier plan, puisque DirectInput n'acquiert
   le volant en exclusif qu'au premier plan. **Ne jamais forcer le focus ni simuler de touches** :
@@ -138,7 +144,7 @@ Il est dans `Scripts/ffbtest/` ; son `README.md` dit comment le préparer et le 
 |:--|:--|
 | Correctifs `WheelBoard` seuls, `GrabMouse` neutralisé | **0 paquet FFB** |
 | + DirectInput, 3 parties | ressorts `1x` 162/163, coupures `9x` 66/66, gain `2x` 42/42, vibrations `3x` 10/11, poussées `5x`/`6x` 84/96 (les 12 écarts suivent tous le `2F` perdu) |
-| + file de commandes | **partielle** : 384 s, 98 % au premier plan, 281 octets, 1232 paquets, puis Supermodel s'est arrêté (§4) |
+| + file de commandes | **partielle** : 384 s, 98 % au premier plan, 281 octets, 1232 paquets, puis Supermodel a été fermé normalement, pendant que le propriétaire luttait contre le vol de focus du banc (§4) |
 
 La capture des trois parties est dans BFF :
 `docs/EPR-19338A-ScudRace-DriveBoard/captures/scud-three-games-supermodel-vjoy.txt`.
@@ -172,9 +178,17 @@ La capture des deux parties corrigées est dans BFF :
 
 ## 4. Ce qui reste, dans l'ordre
 
-1. **Pourquoi Supermodel s'est arrêté** à 384 s dans la série avec la file de commandes : aucune
-   erreur dans sa sortie. À reproduire, et à exclure la file (accès concurrents, verrou) avant
-   tout commit.
+1. ~~Pourquoi Supermodel s'est arrêté à 384 s~~ — **élucidé le 14 octobre : une fermeture normale,
+   pas la file.** Le 13 octobre à 12:55:23, Supermodel est sorti proprement. Aucun plantage dans le
+   journal Windows : ni « Application Error », ni rapport WER. Les trois runs lancés ensuite sont
+   sortis de même en 3 à 5 s, y compris `scud_base2`, le build **sans** la file. Chacun a écrit sa
+   NVRAM en sortant, ce qu'un processus tué ou planté ne fait pas : `scud.nv` à 12:55:31,
+   `daytona2.nv` à 12:55:48. Au même moment, le propriétaire tentait de reprendre la main
+   (« arrête les essais » à 12:55:35, « je ne peux plus taper au clavier » à 12:56:12) : l'ancien
+   banc rendait le premier plan à Supermodel toutes les 20 ms en simulant ALT. Toute touche tapée
+   allait donc à Supermodel, qui quitte sur Échap, et ALT + F4 ferme la fenêtre. Depuis, la file a
+   tourné sans arrêt dans tous les essais Star Wars (`CDriveBoard::Write`) : `swt_fixed` et
+   `swt_fixed2`, 480 s chacun.
 2. **Valider la file de commandes** : 3 parties de Scud, sans écart dû à une commande perdue.
 3. **Comparatif avant/après** : la même série avec upstream plus le seul correctif DirectInput.
 4. **Daytona 2** : son ressort est calculé par le Z80 et envoyé en force constante à 57,5 Hz ;
