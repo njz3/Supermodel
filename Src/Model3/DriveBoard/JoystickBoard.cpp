@@ -26,9 +26,10 @@
  * Implementation of the CJoyBoard class: drive board (force feedback emulation
  * for joystick) emulation.
  *
- * NOTE: This is largely a copy of CWheelBoard as it appears to be the same drive
- * board. The joystick X axis is used rather than the wheel input. It is unknown
- * how or whether the Y axis is involved at all.
+ * NOTE: The drive board of Star Wars Trilogy (EPR-21119) is the wheel boards'
+ * (see CWheelBoard) with two of their servo boards, one per axis of the
+ * joystick. Its program computes the spring itself, from the axes it reads on
+ * ADC channels 3 and 4, and sends it to each servo board as a torque.
  *
  * NOTE: Simulation does not yet work. Drive board ROMs are required.
  */
@@ -72,8 +73,20 @@ void CJoyBoard::SaveState(CBlockFile *SaveState)
 
     SaveState->Write(m_adcPortRead);
     SaveState->Write(m_adcPortBit);
-    SaveState->Write(m_uncenterVal1);
-    SaveState->Write(m_uncenterVal2);
+    SaveState->Write(m_servo[0].vibrateVal[0]);
+    SaveState->Write(m_servo[0].vibrateVal[1]);
+
+    // In a block of its own, so that older save states still load
+    SaveState->NewBlock("JoystickBoardServos", __FILE__);
+    for (const Servo &servo : m_servo)
+    {
+      SaveState->Write(servo.value);
+      SaveState->Write(servo.vibrateVal[0]);
+      SaveState->Write(servo.vibrateVal[1]);
+      SaveState->Write(servo.gain);
+      SaveState->Write(servo.constForce);
+      SaveState->Write(servo.vibrate);
+    }
   }
 }
 
@@ -105,8 +118,23 @@ void CJoyBoard::LoadState(CBlockFile *SaveState)
 
     SaveState->Read(m_adcPortRead);
     SaveState->Read(m_adcPortBit);
-    SaveState->Read(m_uncenterVal1);
-    SaveState->Read(m_uncenterVal2);
+    SaveState->Read(m_servo[0].vibrateVal[0]);
+    SaveState->Read(m_servo[0].vibrateVal[1]);
+
+    if (SaveState->FindBlock("JoystickBoardServos") == Result::OKAY)
+    {
+      for (Servo &servo : m_servo)
+      {
+        SaveState->Read(servo.value);
+        SaveState->Read(servo.vibrateVal[0]);
+        SaveState->Read(servo.vibrateVal[1]);
+        SaveState->Read(servo.gain);
+        SaveState->Read(servo.constForce);
+        SaveState->Read(servo.vibrate);
+      }
+    }
+    else
+      ResetServos();
   }
 }
 
@@ -127,21 +155,15 @@ void CJoyBoard::Reset(void)
 
   m_adcPortRead = 0;
   m_adcPortBit = 0;
-  m_port42Out = 0;
-  m_port45Out = 0;
-  m_port46Out = 0;
-  m_prev42Out = 0;
-  m_prev45Out = 0;
-  m_prev46Out = 0;
 
-  m_uncenterVal1 = 0;
-  m_uncenterVal2 = 0;
+  ResetServos();
 
-  m_lastConstForce = 0;
-  m_lastConstForceY = 0;
+  m_lastConstForce[0] = 0;
+  m_lastConstForce[1] = 0;
   m_lastSelfCenter = 0;
   m_lastFriction = 0;
-  m_lastVibrate = 0;
+  m_lastVibrate[0] = 0;
+  m_lastVibrate[1] = 0;
 
   m_simulated = false;  //TODO: make this run-time configurable when simulation mode is supported
 
@@ -151,6 +173,19 @@ void CJoyBoard::Reset(void)
   // Stop any effects that may still be playing
   if (!IsDisabled())
     SendStopAll();
+}
+
+void CJoyBoard::ResetServos(void)
+{
+  for (Servo &servo : m_servo)
+  {
+    servo.value = 0x80;
+    servo.vibrateVal[0] = 0;
+    servo.vibrateVal[1] = 0;
+    servo.gain = 0x7F;
+    servo.constForce = 0;
+    servo.vibrate = 0;
+  }
 }
 
 UINT8 CJoyBoard::Read(void)
@@ -186,8 +221,12 @@ void CJoyBoard::Write(UINT8 data)
   else
   {
     CDriveBoard::Write(data);
-    if (data == 0xCB)
+    // C9 starts the board again from its reply CE: the stick is shown centred to its calibration until it replies
+    // CB again. C8 jumps from the start-up straight to the game
+    if (data == 0xC9)
       m_initialized = false;
+    else if (data == 0xC8)
+      m_initialized = true;
   }
 }
 
@@ -258,19 +297,19 @@ void CJoyBoard::SimulateWrite(UINT8 cmd)
     case 3: // 0x30-3F Uncentering (vibrate)
       if (val == 0)
         // Disable uncentering
-        SendVibrate(0);
+        SendVibrate(0, 0);
       else
         // Enable uncentering (0x1 = weakest, 0xF = strongest)
-        SendVibrate(val * 0x11);
+        SendVibrate(0, val * 0x11);
       break;
     case 4: // 0x40-4F Play power-slide sequence
       /* TODO */
       break;
     case 5: // 0x50-5F Rotate wheel right
-      SendConstantForce((val + 1) * 0x5);
+      SendConstantForce(0, (val + 1) * 0x5);
       break;
     case 6: // 0x60-6F Rotate wheel left
-      SendConstantForce(-(val + 1) * 0x5);
+      SendConstantForce(0, -(val + 1) * 0x5);
       break;
     case 7: // 0x70-7F Set steering parameters
       /* TODO */
@@ -279,8 +318,8 @@ void CJoyBoard::SimulateWrite(UINT8 cmd)
       switch (val & 0x7)
       {
         case 0:  SendStopAll();                                      break;  // 0x80 Stop motor
-        case 1:  SendConstantForce(20);                              break;  // 0x81 Roll wheel right
-        case 2:  SendConstantForce(-20);                             break;  // 0x82 Roll wheel left
+        case 1:  SendConstantForce(0, 20);                           break;  // 0x81 Roll wheel right
+        case 2:  SendConstantForce(0, -20);                          break;  // 0x82 Roll wheel left
         case 3:  /* Ignore - no clutch */                            break;  // 0x83 Clutch on
         case 4:  /* Ignore - no clutch */                            break;  // 0x84 Clutch off
         case 5:  m_wheelCenter = (UINT8)m_inputs->analogJoyX->value; break;  // 0x85 Set wheel center position
@@ -323,10 +362,20 @@ void CJoyBoard::SimulateWrite(UINT8 cmd)
 
 void CJoyBoard::RunFrame(void)
 {
+  if (IsDisabled())
+  {
+    return;
+  }
+
   if (m_simulated)
     SimulateFrame();
   else
+  {
     CDriveBoard::RunFrame();
+
+    // The frame's ~9 NMIs run in one go: the stick only gets the last torques of the frame, so send those only
+    UpdateForceFeedback();
+  }
 }
 
 void CJoyBoard::SimulateFrame(void)
@@ -346,24 +395,24 @@ UINT8 CJoyBoard::IORead8(UINT32 portNum)
     return m_dip1;
   case 0x21: // DIP 2 value
     return m_dip2;
-  case 0x24: // ADC channel 1 - Y analog axis for joystick
-  case 0x25: // ADC channel 2 - steering wheel position (0x00 = full left, 0x80 = center, 0xFF = full right) and X analog axis for joystick
-  case 0x26: // ADC channel 3 - cockpit bank position (deluxe cabinets) (0x00 = full left, 0x80 = center, 0xFF = full right)
-  case 0x27: // ADC channel 4 - not connected
+  case 0x24: // ADC channel 1 - only shown on the 7-segment displays
+  case 0x25: // ADC channel 2 - only shown on the 7-segment displays
+  case 0x26: // ADC channel 3 - joystick X axis (servo board 1) (0x00 = full left, 0x80 = center, 0xFF = full right)
+  case 0x27: // ADC channel 4 - joystick Y axis (servo board 2)
     if (portNum == m_adcPortRead && m_adcPortBit-- > 0)
     {
       switch (portNum)
       {
-      case 0x24: // Y analog axis for joystick
+      case 0x24:
         adcVal = ReadADCChannel1();
         break;
-      case 0x25: // Steering wheel for twin racing cabinets - TODO - check actual range of steering, suspect it is not really 0x00-0xFF
+      case 0x25:
         adcVal = ReadADCChannel2();
         break;
-      case 0x26: // Cockpit bank position for deluxe racing cabinets
+      case 0x26: // X analog axis for joystick
         adcVal = ReadADCChannel3();
         break;
-      case 0x27: // Not connected
+      case 0x27: // Y analog axis for joystick
         adcVal = ReadADCChannel4();
         break;
       default:
@@ -380,6 +429,7 @@ UINT8 CJoyBoard::IORead8(UINT32 portNum)
   case 0x28: // PPC command
     return m_dataSent;
   case 0x2c: // Encoder error reporting (kept at 0x00 for no error)
+    // Bits 0-1 servo board 1, bits 2-3 servo board 2:
     // Bit 1 0
     //     0 0 = encoder okay, no error
     //     0 1 = encoder error 1 - overcurrent error
@@ -427,16 +477,15 @@ void CJoyBoard::IOWrite8(UINT32 portNum, UINT8 data)
     if (data == 0xCB)
       m_initialized = true;
     return;
-  case 0x2a: // Encoder motor data (x axis)
-    m_port42Out = data;
-    ProcessEncoderCmdJoystick();
+  case 0x2a: // Servo board 1 value (x axis), written before the registers
+    m_servo[0].value = data;
     return;
-  case 0x2d: // Clutch/lamp control (deluxe cabinets) ( or y axis)
-    m_port45Out = data;
-    ProcessEncoderCmdJoystick();
+  case 0x2d: // Servo board 2 value (y axis), written before the registers
+    m_servo[1].value = data;
     return;
-  case 0x2e: // Encoder motor control
-    m_port46Out = data;
+  case 0x2e: // Servo boards' registers: board 1 in bits 0-3, board 2 in bits 4-7, each the register less its F
+    ProcessServoRegister(0, 0xF0 | (data & 0x0F));
+    ProcessServoRegister(1, 0xF0 | (data >> 4));
     return;
   default:
     DebugLog("Unhandled Z80 output on port %u (at PC = %04X)\n", portNum, m_z80.GetPC());
@@ -444,121 +493,82 @@ void CJoyBoard::IOWrite8(UINT32 portNum, UINT8 data)
   }
 }
 
-void CJoyBoard::ProcessEncoderCmdJoystick(void)
+void CJoyBoard::ProcessServoRegister(int servoNum, UINT8 reg)
 {
-  if (m_prev42Out != m_port42Out || m_prev46Out != m_port46Out || m_prev45Out != m_port45Out)
+  // The wheel boards' servo board registers (see CWheelBoard::ProcessEncoderCmd). Bit 3 of each nibble, A-RST, is
+  // active low: the program only writes 0xF8-0xFF
+  Servo &servo = m_servo[servoNum];
+  UINT8 value = servo.value;
+  switch (reg)
   {
-    switch (m_port46Out)
+    case 0xFB:
+      // Torque gain, 0x80 (none) to 0xFF (full) [guess]. 0x05, written only at start-up, is not a gain
+      if (value & 0x80)
+        servo.gain = value & 0x7F;
+      break;
+
+    case 0xFC:
+      // Sub-register in bits 0-2. 4, the servo board's own spring, is never written: the program computes the spring
+      // and sends it as a torque. 0-3: vibration (the game's 6x and 7x commands, Scud Race's bytes), a nibble each in
+      // bits 4-7, low nibble first; set when 3 is written. The mode changes (FC 0A, FC 0B) zero it
+      if (!(value & 0x04))
+      {
+        UINT8 subRegister = value & 0x03;
+        UINT8 nibble = value >> 4;
+        UINT8 &param = servo.vibrateVal[subRegister >> 1];
+        if (subRegister & 1)
+          param = (param & 0x0F) | (nibble << 4);
+        else
+          param = (param & 0xF0) | nibble;
+        if (subRegister == 3)
+        {
+          if (servo.vibrateVal[0] == 0 || servo.vibrateVal[1] == 0)
+            servo.vibrate = 0;
+          else
+          {
+            // What the two bytes do on the servo board is unknown: the wheel boards' scale
+            int strength = ((servo.vibrateVal[0]>>1) - 7) * 0x50 + ((servo.vibrateVal[1]>>1) - 5) * 0x10 + 0xF;
+            servo.vibrate = (UINT8)std::clamp(strength, 0, 0xFF);
+          }
+        }
+      }
+      break;
+
+    case 0xFE:
     {
-      case 0xEE:
-      // Apply constant force
-        if (m_port42Out > 0x7f) // X
-        {
-          SendConstantForce(2 * (m_port42Out - 0x7f));
-        }
-        else if (m_port42Out < 0x7f)
-        {
-          SendConstantForce(2 * (m_port42Out - 0x7f));
-        }
-        else
-        {
-          SendConstantForce(0);
-        }
-
-        if (m_port45Out > 0x7f) // Y
-        {
-          SendConstantForceY(-2 * (m_port45Out - 0x7f));
-        }
-        else if (m_port45Out < 0x7f)
-        {
-          SendConstantForceY(-2 * (m_port45Out - 0x7f));
-        }
-        else
-        {
-          SendConstantForceY(0);
-        }
-
-        if (m_port42Out == 0x7f && m_port45Out == 0x81)
-        {
-          SendSelfCenter(255);
-        }
-        else SendSelfCenter(0);
-
-        break;
-
-        case 0xFF:
-        // Stop all effects
-        if (m_port42Out == 0xFF && m_port45Out == 0xFF)
-          SendStopAll();
-        break;
-
-        case 0xcc: // init
-        //42[0B] / 45[0A]
-        //42[0B] / 45[0B]
-        //42[FF] / 45[0B]
-        //42[FF] / 45[FF]
-        break;
-
-        case 0xdd: // init
-        // 42[FF] / 45[00]
-        // 42[FF] / 45[FF]
-
-        // 42[0A] / 45[00]
-        // 42[0A] / 45[0A]
-        break;
-
-        case 0xce:
-        // 42[7F] / 45[08]
-        // 42[7F] / 45[09]
-        // 42[7F] / 45[0A]
-        // 42[7F] / 45[0B]
-        // 42[7F] / 45[81]
-        if (m_port42Out == 0x7f && m_port45Out != 0x81) // X
-        {
-          SendConstantForce(2 * m_port45Out);
-        }
-
-        if (m_port42Out == 0x7f && m_port45Out == 0x81)
-        {
-          SendSelfCenter(255);
-        }
-        break;
-
-        case 0xec:
-        // 42[09] / 45[81]
-        // 42[2A] / 45[81]
-        // 42[1B] / 45[81]
-        // 42[7F] / 45[81]
-        if (m_port45Out == 0x81 && m_port42Out != 0x7f) // Y
-        {
-          SendConstantForceY(2 * m_port42Out);
-        }
-
-        if (m_port42Out == 0x7f && m_port45Out == 0x81)
-        {
-          SendSelfCenter(255);
-        }
-        break;
-
-        case 0x00: // init
-        // 42[FF] / 45[00]
-        // 42[FF] / 45[FF]
-        break;
-
-        case 0x99: // init
-        // 42[B0] / 45[B0]
-        // 42[80] / 45[B0]
-        // 42[80] / 45[80]
-        break;
-
-        default:
-        //DebugLog("Unknown = 46 [%02X] / 42 [%02X] / 45 [%02X]\n", m_port46Out, m_port42Out, m_port45Out);
-        break;
+      // Torque: 0x80 none, below 0x80 raises the axis on servo board 1 and lowers it on servo board 2, wired the other
+      // way round. The spring rests at 0x7F on board 1 and 0x81 on board 2: these are no force, as on the wheels
+      int force;
+      if (value > 0x81)
+        force = value <= 0xC0 ? 2 * (0x81 - value) : -0x80;
+      else if (value < 0x7F)
+        force = value >= 0x40 ? 2 * (0x7F - value) : 0x7F;
+      else
+        force = 0;
+      servo.constForce = (INT8)std::clamp(servoNum == 0 ? force : -force, -0x80, 0x7F);
+      break;
     }
 
-    m_prev42Out = m_port42Out;
-    m_prev46Out = m_port46Out;
-    m_prev45Out = m_port45Out;
+    case 0xFF:
+      // Motor idle, whatever the value
+      servo.constForce = 0;
+      servo.vibrate = 0;
+      break;
+
+    default:
+      // 0xFD (unsure), 0xF8, 0xF9 (start-up settings): not translated
+      break;
+  }
+}
+
+void CJoyBoard::UpdateForceFeedback(void)
+{
+  // The servo board's gain scales the torque and the vibration. The program never sets it
+  for (int axisNum = 0; axisNum < 2; axisNum++)
+  {
+    const Servo &servo = m_servo[axisNum];
+    SendConstantForce(axisNum, servo.constForce * servo.gain / 0x7F);
+    SendVibrate(axisNum, servo.vibrate * servo.gain / 0x7F);
   }
 }
 
@@ -572,16 +582,17 @@ void CJoyBoard::SendStopAll(void)
   m_inputs->analogJoyX->SendForceFeedbackCmd(ffCmd);
   m_inputs->analogJoyY->SendForceFeedbackCmd(ffCmd);
 
-  m_lastConstForce = 0;
+  m_lastConstForce[0] = 0;
+  m_lastConstForce[1] = 0;
   m_lastSelfCenter = 0;
   m_lastFriction   = 0;
-  m_lastVibrate    = 0;
-  m_lastConstForceY = 0;
+  m_lastVibrate[0] = 0;
+  m_lastVibrate[1] = 0;
 }
 
-void CJoyBoard::SendConstantForce(INT8 val)
+void CJoyBoard::SendConstantForce(int axisNum, INT8 val)
 {
-  if (val == m_lastConstForce)
+  if (val == m_lastConstForce[axisNum])
     return;
   /*
   if (val > 0)
@@ -606,21 +617,12 @@ void CJoyBoard::SendConstantForce(INT8 val)
   ffCmd.id = FFConstantForce;
   ffCmd.force = (float)val / (val >= 0 ? 127.0f : 128.0f);
 
-  m_inputs->analogJoyX->SendForceFeedbackCmd(ffCmd);
+  if (axisNum == 0)
+    m_inputs->analogJoyX->SendForceFeedbackCmd(ffCmd);
+  else
+    m_inputs->analogJoyY->SendForceFeedbackCmd(ffCmd);
 
-  m_lastConstForce = val;
-}
-
-void CJoyBoard::SendConstantForceY(INT8 val)
-{
-  if (val == m_lastConstForceY)
-    return;
-
-  ForceFeedbackCmd ffCmd;
-  ffCmd.id = FFConstantForce;
-  ffCmd.force = (float)val / (val >= 0 ? 127.0f : 128.0f);
-  m_inputs->analogJoyY->SendForceFeedbackCmd(ffCmd);
-  m_lastConstForceY = val;
+  m_lastConstForce[axisNum] = val;
 }
 
 void CJoyBoard::SendSelfCenter(UINT8 val)
@@ -664,9 +666,9 @@ void CJoyBoard::SendFriction(UINT8 val)
   m_lastFriction = val;
 }
 
-void CJoyBoard::SendVibrate(UINT8 val)
+void CJoyBoard::SendVibrate(int axisNum, UINT8 val)
 {
-  if (val == m_lastVibrate)
+  if (val == m_lastVibrate[axisNum])
     return;
   /*
   if (val == 0)
@@ -678,20 +680,26 @@ void CJoyBoard::SendVibrate(UINT8 val)
   ForceFeedbackCmd ffCmd;
   ffCmd.id = FFVibrate;
   ffCmd.force = (float)val / 255.0f;
-  m_inputs->analogJoyX->SendForceFeedbackCmd(ffCmd);
 
-  m_lastVibrate = val;
+  if (axisNum == 0)
+    m_inputs->analogJoyX->SendForceFeedbackCmd(ffCmd);
+  else
+    m_inputs->analogJoyY->SendForceFeedbackCmd(ffCmd);
+
+  m_lastVibrate[axisNum] = val;
 }
 
 uint8_t CJoyBoard::ReadADCChannel1() const
 {
-  if (m_initialized)
-    return (UINT8)m_inputs->analogJoyY->value;
-  else
-    return 0x80; // If not initialized, return 0x80 so that ffb centering test does not fail
+  return 0x80;
 }
 
 uint8_t CJoyBoard::ReadADCChannel2() const
+{
+  return 0x80;
+}
+
+uint8_t CJoyBoard::ReadADCChannel3() const
 {
   if (m_initialized)
     return (UINT8)m_inputs->analogJoyX->value;
@@ -699,14 +707,12 @@ uint8_t CJoyBoard::ReadADCChannel2() const
     return 0x80; // If not initialized, return 0x80 so that ffb centering test does not fail
 }
 
-uint8_t CJoyBoard::ReadADCChannel3() const
-{
-  return 0x80;
-}
-
 uint8_t CJoyBoard::ReadADCChannel4() const
 {
-  return 0x80;
+  if (m_initialized)
+    return (UINT8)m_inputs->analogJoyY->value;
+  else
+    return 0x80; // If not initialized, return 0x80 so that ffb centering test does not fail
 }
 
 CJoyBoard::CJoyBoard(const Util::Config::Node &config)
@@ -714,6 +720,8 @@ CJoyBoard::CJoyBoard(const Util::Config::Node &config)
 {
   m_dip1 = 0xCF;
   m_dip2 = 0xFF;
+
+  ResetServos();
 
   DebugLog("Built Drive Board (Joystick)\n");
 }
