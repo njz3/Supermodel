@@ -29,6 +29,9 @@
     <Filter Include="Source Files\Model3">
       <UniqueIdentifier>{9113f873-c745-44ac-860a-dcf12d177f5b}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\Telemetry">
+      <UniqueIdentifier>{cfef2462-142d-4f4f-98bc-ae3069ce8e5c}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Source Files\Pro1000">
       <UniqueIdentifier>{10297567-7bf1-47c1-89e4-d5856ff09166}</UniqueIdentifier>
     </Filter>
@@ -86,6 +89,9 @@
     </Filter>
     <Filter Include="Header Files\Model3">
       <UniqueIdentifier>{5f55bf72-6938-4887-b78c-58b29e674985}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\Telemetry">
+      <UniqueIdentifier>{4a91e9e2-90be-4d5f-9847-07b51058bca7}</UniqueIdentifier>
     </Filter>
     <Filter Include="Header Files\Pro1000">
       <UniqueIdentifier>{bd7e7ea0-3439-4858-9e18-b170acb39aa0}</UniqueIdentifier>
@@ -484,6 +490,15 @@
     </ClCompile>
     <ClCompile Include="..\Src\OSD\SDL\Agent.cpp">
       <Filter>Source Files\OSD\SDL</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Src\OSD\SDL\TelemetryServer.cpp">
+      <Filter>Source Files\OSD\SDL</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Src\Telemetry\Model3Games.cpp">
+      <Filter>Source Files\Telemetry</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Src\Telemetry\Telemetry.cpp">
+      <Filter>Source Files\Telemetry</Filter>
     </ClCompile>
     <ClCompile Include="..\Src\OSD\SDL\Crosshair.cpp">
       <Filter>Source Files\OSD\SDL</Filter>
@@ -918,6 +933,12 @@
     </ClInclude>
     <ClInclude Include="..\Src\OSD\SDL\Agent.h">
       <Filter>Header Files\OSD\SDL</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Src\OSD\SDL\TelemetryServer.h">
+      <Filter>Header Files\OSD\SDL</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Src\Telemetry\Telemetry.h">
+      <Filter>Header Files\Telemetry</Filter>
     </ClInclude>
     <ClInclude Include="..\Src\OSD\SDL\Crosshair.h">
       <Filter>Header Files\OSD\SDL</Filter>

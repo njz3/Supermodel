@@ -177,6 +177,9 @@ SRC_FILES = \
 	Src/Pkgs/imgui/imgui_widgets.cpp \
 	Src/ROMSet.cpp \
 	Src/OSD/SDL/NetOutputs.cpp \
+	Src/OSD/SDL/TelemetryServer.cpp \
+	Src/Telemetry/Telemetry.cpp \
+	Src/Telemetry/Model3Games.cpp \
 	Src/Network/TCPReceive.cpp \
 	Src/Network/TCPSend.cpp \
 	Src/Network/NetBoard.cpp \

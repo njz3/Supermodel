@@ -1268,6 +1268,9 @@ not.  All options are case sensitive.
                       outputs             The outputs (lamps, drive board).
                       ram ADDRESS LENGTH  Memory read by the main CPU (hex).
                       frame               The number of frames run.
+                      tel                 The racing game's telemetry, one
+                                          JSON line (see TelemetryPort), or
+                                          'tel none'.
                       settle [MS]         Waits MS milliseconds before each
                                           frame, so that a device set just
                                           before a step is read in that
@@ -1433,6 +1436,19 @@ not.  All options are case sensitive.
     Option:         -print-inputs
 
     Description:    Prints the current input configuration.
+
+    ----------------
+
+    Option:         -telemetry=<port>
+                    -telemetry-forza=<host:port>
+
+    Description:    Serves what a racing game knows about the cars and the race,
+                    read in its memory each frame, for a motion simulator, a
+                    dashboard or an autopilot: one JSON line a frame to each
+                    client of this TCP port, and Forza Motorsport 7 "Data Out"
+                    datagrams (the "Car Dash" format, 311 bytes) to this UDP
+                    host and port, which most motion and dashboard software
+                    reads.  See the TelemetryPort and TelemetryForza settings.
 
 
 ============================================
@@ -1684,6 +1700,52 @@ All settings are case sensitive.
     Description:    When using 'net' option for 'Outputs', this setting determines the
                     UDP broadcast port to use for network messages. Can only be set
                     in 'Global' section.
+
+    ----------------
+
+    Name:           TelemetryPort
+
+    Argument:       Integer value, 0 to 65535.
+
+    Description:    The racing games' telemetry: a TCP port on which each
+                    client gets one JSON line a frame.  0, the default, serves
+                    none.  The keys, in metres, seconds, radians, m/s and
+                    m/s^2, with y up and a value the game does not give null:
+                    frame, game, state (attract, select, race, pause, over,
+                    replay or unknown: a motion platform should park unless it
+                    is race, and after 200 ms without a line), racing,
+                    time_left, lap_time, last_lap, best_lap, race_time, stage,
+                    player and others (the other cars), each car with x, y, z,
+                    heading, pitch, roll, rotation, speed, vx, vy, vz, ax, ay,
+                    az, along, alat, avert (in the car's frame: speeding up,
+                    towards its right, up), yaw_rate, pitch_rate, roll_rate,
+                    impact, gear (-1 reverse, 0 neutral), rpm, rpm_max,
+                    rpm_idle, lap, progress, position, gaps and controls.  A
+                    client's lines, each answered with one JSON line:
+                      fields all | fields KEY,KEY...  The keys sent, dotted
+                                                      paths ('player.speed',
+                                                      'others.x').
+                      others N | others all           The nearest other cars.
+                      every N                         One frame in N.
+                      udp forza HOST:PORT | udp off   The Forza datagrams.
+                      list                            The keys the game fills.
+                    The games decoded so far: Daytona USA 2 (daytona2) and
+                    Sega Rally 2 (srally2).  The same protocol as sm2-emu's,
+                    the Model 2 emulator.  Can only be set in the 'Global'
+                    section; '-telemetry=<port>' on the command line.
+
+    ----------------
+
+    Name:           TelemetryForza
+
+    Argument:       String, HOST:PORT.
+
+    Description:    Sends the racing games' telemetry as Forza Motorsport 7
+                    "Data Out" datagrams ("Car Dash", 311 bytes) to this UDP
+                    host and port, for motion and dashboard software.  Empty,
+                    the default, sends none.  Can only be set in the 'Global'
+                    section; '-telemetry-forza=<host:port>' on the command
+                    line.
 
     ----------------
 

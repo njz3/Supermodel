@@ -107,6 +107,7 @@
 
 #include "Crosshair.h"
 #include "Agent.h"
+#include "TelemetryServer.h"
 #include "OSD/ConfigFile.h"
 #include "Gui.h"
 
@@ -1041,6 +1042,10 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
   if (!initialState.empty())
     LoadState(Emu, initialState);
 
+  // The racing games' telemetry (TelemetryPort, TelemetryForza; the agent's tel command)
+  Telemetry::Service().Init(s_runtime_config, Emu, Agent::Enabled());
+  uint64_t telemetryFrame = 0;
+
 #ifdef SUPERMODEL_DEBUGGER
   // If debugger was supplied, set it as logger and attach it to system
   oldLogger = GetLogger();
@@ -1081,9 +1086,15 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
 
     // Render if paused, otherwise run a frame
     if (paused)
+    {
       Emu->RenderFrame();
+      Telemetry::Service().OnPause();
+    }
     else
+    {
       Emu->RunFrame();
+      Telemetry::Service().OnFrame(++telemetryFrame);
+    }
 
 #ifdef SUPERMODEL_DEBUGGER
     bool processUI = true;
@@ -1388,6 +1399,8 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
   // Save NVRAM
   SaveNVRAM(Emu);
 
+  Telemetry::Service().Shutdown();
+
   // Close audio
   CloseAudio();
 
@@ -1638,6 +1651,8 @@ Util::Config::Node DefaultConfig()
   config.Set<bool>("OutputsWithLF", false, "Misc");
   config.Set<unsigned int>("OutputsTCPPort", 8000, "Misc", 1024, 65535);
   config.Set<unsigned int>("OutputsUDPBroadcastPort", 8001, "Misc", 1024, 65535);
+  config.Set<unsigned int>("TelemetryPort", 0, "Misc", 0, 65535);
+  config.Set<std::string>("TelemetryForza", "", "Misc", "", "");
 
   config.Set("DumpMemory", false, "Misc");
   config.Set("DumpTextures", false, "Misc");
@@ -1963,6 +1978,10 @@ static void Help(void)
   puts("");
   puts("Output Options:");
   printf("  -outputs=<s>            Outputs [Default: %s]\n", defaultConfig["Outputs"].ValueAs<std::string>().c_str());
+  puts("  -telemetry=<port>       Racing games' telemetry, JSON lines on this TCP port");
+  puts("                          [Default: 0, none]");
+  puts("  -telemetry-forza=<host:port>");
+  puts("                          The same as Forza Data Out datagrams (UDP)");
   puts("");
   puts("Debug Options:");
   puts("  -dump-memory            Write memory regions to files on exit");
@@ -2023,6 +2042,8 @@ static ParsedCommandLine ParseCommandLine(int argc, char **argv)
     { "-soundfreq",             "SoundFreq"               },
     { "-input-system",          "InputSystem"             },
     { "-outputs",               "Outputs"                 },
+    { "-telemetry",             "TelemetryPort"           },
+    { "-telemetry-forza",       "TelemetryForza"          },
     { "-log-output",            "LogOutput"               },
     { "-log-level",             "LogLevel"                }
   };
