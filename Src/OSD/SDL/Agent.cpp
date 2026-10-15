@@ -75,6 +75,9 @@
  *                       at most 1 MB): "ram LENGTH", a new line, the bytes.
  *   mem ADDRESS LENGTH  The same (sm2-emu's name): "mem LENGTH", the bytes.
  *   frame               "frame N", the number of frames run.
+ *   tel                 The racing game's telemetry this frame, one JSON line
+ *                       (the keys of TelemetryServer.h, as sm2-emu's tel), or
+ *                       "tel none" for a game without a decoder.
  *   settle [MS]         Waits MS milliseconds before each frame (0 by default),
  *                       so that a device set just before a step (vJoy) is read
  *                       in that frame even with -no-throttle; real-time pacing
@@ -85,6 +88,7 @@
  */
 
 #include "Agent.h"
+#include "TelemetryServer.h"
 
 #include "Supermodel.h"
 #include "SDLIncludes.h"
@@ -555,6 +559,7 @@ namespace Agent
           s_running = s_frame + 1;  // what the drive board sends during this frame is labelled with its number
           emulator->RunFrame();
           s_frame = s_running.load();
+          Telemetry::Service().OnFrame(s_frame);
           pacer.Wait();
         }
         std::string reply = "ok " + std::to_string(s_frame.load());
@@ -752,6 +757,8 @@ namespace Agent
       }
       else if (command == "frame")
         Reply("frame %llu", (unsigned long long)s_frame.load());
+      else if (command == "tel")
+        Reply("%s", Telemetry::Service().Json().c_str());
       else if (command == "quit")
       {
         Reply("bye");
