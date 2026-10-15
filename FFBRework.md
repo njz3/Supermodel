@@ -23,10 +23,14 @@ conversation.
   `dev`, comme outil de ses développements sur le retour de force. Pas de branche `pr/*` pour lui.
   `BackgroundInput` a la sienne, `pr/dinput-background-input`, posée sur
   `pr/dinput-ffb-exclusive`.
-- **Branches PR vers upstream** (14 octobre, parties de `c65edb1`, upstream `aa8ec00` fusionné,
-  poussées sur origin, aucune PR ouverte) : `pr/ff-effects-count`, `pr/dinput-ffb-exclusive`,
-  `pr/wheelboard-servo-registers`, `pr/wheelboard-epr18261` (sur la précédente),
-  `pr/driveboard-command-queue`, `pr/joystickboard-swtrilgy` (sur `pr/ff-effects-count`).
+- **Branches PR vers upstream** (14 octobre, parties de `c65edb1`, poussées sur origin) :
+  - **fusionnées par upstream le 15 octobre**, telles quelles : `pr/ff-effects-count` (#344),
+    `pr/wheelboard-servo-registers` (#345), `pr/driveboard-command-queue` (#346) ;
+  - encore à proposer, upstream `d795141` fusionné le 15 octobre (compilées, poussées) :
+    `pr/dinput-ffb-exclusive`, `pr/dinput-background-input` (sur la précédente),
+    `pr/wheelboard-epr18261`, `pr/joystickboard-swtrilgy`.
+  - `dev` a fusionné upstream `d795141` le 15 octobre (`cb094e7`) : Real3D Pro-1000 ; dans
+    `Main.cpp`, l'émulateur s'appelle maintenant `Emu`.
   `c65edb1` ne compilait pas sous MSVC (`std::min`/`std::max` dans `Gui.cpp`) ; `aa8ec00` l'a
   corrigé, `NOMINMAX` n'est plus nécessaire.
 - **Pousser, committer** : seulement à la demande du propriétaire.
