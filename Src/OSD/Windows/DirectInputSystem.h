@@ -84,6 +84,7 @@ struct DIJoyInfo
 	int dInputNum;
 	bool hasFFeedback;  // Device has force feedback: DirectInput plays it only when acquired exclusively
 	LPDIRECTINPUTEFFECT dInputEffects[NUM_JOY_AXES][NUM_FF_EFFECTS];
+	bool dInputEffectPlaying[NUM_JOY_AXES][NUM_FF_EFFECTS];  // Started, and not stopped since: an update leaves it playing
 
 	// XInput details
 	bool isXInput;  // True if joystick is XInput controller
