@@ -68,6 +68,17 @@ class SMAgent:
         words = self._ok(f"step {n}").split()
         return int(words[1]), [int(b, 16) for b in words[2:]]
 
+    def step_send(self, n=1):
+        """Start n frames without waiting: several Supermodels then run together (step_wait gets the answer)."""
+        self._send(f"step {n}")
+
+    def step_wait(self):
+        answer = self._line()
+        if not answer.startswith("ok"):
+            raise RuntimeError(f"step: {answer}")
+        words = answer.split()
+        return int(words[1]), [int(b, 16) for b in words[2:]]
+
     def set(self, name, value):
         """Hold an input: an axis -1..1, a pedal 0..1, a button 0 or 1 (names: Supermodel.ini's, without 'Input').
         An axis goes the trigonometric way, as a real wheel and BackForceFeeder: +1 fully left (or up), -1 fully
