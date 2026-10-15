@@ -494,8 +494,11 @@ void CWheelBoard::ProcessEncoderCmd(void)
           }
           else
           {
-            // Bits 3-6 = centering strength 0x0-0xF.  This is scaled to range 0x0F-0xFF
-            UINT8 strength = ((m_port42Out&0x78)>>3) * 0x10 + 0xF;
+            // Bits 3-6 = the servo board's spring gain, 1 to 15 (0C-7C). Its spring is a stiff position loop: on a
+            // cabinet it is strong at the gains the games send (5 to 8 in Dirt Devils, with DIP row 4), while a
+            // DirectInput spring grows with the angle over the wheel's whole travel. 47 % at 5, 75 % at 8, full from
+            // 11: full from 8 made the wheel oscillate on a cabinet
+            UINT8 strength = (UINT8)std::min(((m_port42Out&0x78)>>3) * 0x18, 0xFF);
             SendSelfCenter(strength);
           }
         }
@@ -527,7 +530,11 @@ void CWheelBoard::ProcessEncoderCmd(void)
         break;
 
       case 0xFD:
-        // TODO - unsure?  Sent as velocity changes, similar to self-centering
+        // [guess] A damping: with each spring the high nibble grows with its gain (11 to 51 with FC 4 0C to 7C on
+        // Scud Race; 11 to 51 by the strength row on Sega Rally 2, 11 with each of its torques), 00 with Scud's
+        // torques and always on Daytona 2, 66 at start-up. Without it the spring oscillated on a cabinet. Sent as a
+        // friction, which a wheel feeder may play as a force against the wheel's speed: 1 = 12 %, 5 = 62 %
+        SendFriction((UINT8)std::min((m_port42Out >> 4) * 0x20, 0xFF));
         break;
 
       case 0xFE:
@@ -586,9 +593,12 @@ void CWheelBoard::ProcessMotorPowers(void)
 
 void CWheelBoard::UpdateForceFeedback(void)
 {
-  // The servo board's gain scales the torque and the vibration, not its own spring
+  // The servo board's gain scales the torque only: on a cabinet, with Dirt Devils' STEERING FORCE at 50 % (FB BF),
+  // its vibration and its spring stay strong. Not the frame's strongest torque: Sega Rally 2's road is its torque on
+  // for 8 NMIs, off for 8, which the last torque of each frame keeps (on one frame, off the next) and the strongest
+  // filled in (on all the time)
   SendConstantForce(m_constForce * m_servoGain / 0x7F);
-  SendVibrate(m_vibrate * m_servoGain / 0x7F);
+  SendVibrate(m_vibrate);
 }
 
 

@@ -563,12 +563,12 @@ void CJoyBoard::ProcessServoRegister(int servoNum, UINT8 reg)
 
 void CJoyBoard::UpdateForceFeedback(void)
 {
-  // The servo board's gain scales the torque and the vibration. The program never sets it
+  // The servo board's gain scales the torque only, as on the wheel boards. The program never sets it
   for (int axisNum = 0; axisNum < 2; axisNum++)
   {
     const Servo &servo = m_servo[axisNum];
     SendConstantForce(axisNum, servo.constForce * servo.gain / 0x7F);
-    SendVibrate(axisNum, servo.vibrate * servo.gain / 0x7F);
+    SendVibrate(axisNum, servo.vibrate);
   }
 }
 
