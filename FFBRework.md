@@ -14,8 +14,11 @@ conversation.
   partie d'upstream `7da4f9a` (13 octobre 2026), upstream `aa8ec00` fusionné le 14 octobre. Le
   `master` du fork a été aligné sur upstream le 13 (`587da80..7da4f9a`). Le remote `upstream`
   pointe sur `https://github.com/trzy/Supermodel.git`.
-- **État** : §2.1 à §2.7 (`BackgroundInput`, le mode agent), le banc et ce fichier sont
-  committés et poussés sur `origin/dev/driveboard-ffb-fixes`.
+- **État** : §2.1 à §2.8 (`BackgroundInput`, le mode agent ; le 15 octobre, ressort, gain et
+  `FD` des cartes servo, effets DirectInput sans redémarrage, GPU des portables, `smagent.py`),
+  le banc et ce fichier sont committés et poussés sur `origin/dev/driveboard-ffb-fixes`. Les
+  branches `pr/*` n'ont pas encore les changements de §2.8. Version d'essai pour la borne, faite
+  avant ces commits avec le même code : `pkg/supermodel-0.3a-20261014-git-7999a82-ffbac-windows.zip`.
 - **Le mode agent n'ira pas upstream** (décision du propriétaire, le 14 octobre) : il reste sur
   `dev`, comme outil de ses développements sur le retour de force. Pas de branche `pr/*` pour lui.
   `BackgroundInput` a la sienne, `pr/dinput-background-input`, posée sur
@@ -211,6 +214,21 @@ touché qu'aux endroits indispensables :
   `step` positionnel. `mem` est un alias de `ram`. La télémétrie (`tel`) reprendra les clés JSON
   de sm2-emu quand la carte mémoire de Scud sera faite.
 
+### 2.8 Après l'essai de la borne (15 octobre)
+
+| Fichier | Changement | Pourquoi |
+|:--|:--|:--|
+| `WheelBoard.cpp` | `FB` (gain) ne multiplie plus que le couple, plus la vibration (§2.1). Ressort `FC` 4 : gain × `18`, 47 % au gain 5, 75 % au gain 8, plein dès 11 (avant : gain × `10` + `0F`, 33 % et 56 %) | Dirt Devils trop faible sur la borne, alors que la vraie borne et le mode m2pac donnaient des vibrations et un ressort très forts. Avec STEERING FORCE à 50 % (`FB BF`), la vibration était divisée par deux. Le ressort de la carte servo est une boucle de position raide, fort aux gains envoyés (5 à 8 dans Dirt Devils, rangée DIP 4), alors qu'un ressort DirectInput croît avec l'angle sur toute la course du volant. Un premier essai (gain × `20`, plein dès 8) a oscillé sur Racecab1 (§3.4) : adouci le 15 octobre (correction C, §4 point 3) |
+| `WheelBoard.cpp` | **`FD` → frottement** (`FFFriction`) : quartet haut × `20` (1 = 12 %, 5 = 62 %) | Correction C (§3.4, §4 point 3). `FD` est sans doute l'amortissement de la carte servo : 11 à 51 avec les ressorts de Scud et de Sega Rally 2, `00` avec les poussées de Scud et toujours sur Daytona 2. BFF joue le frottement comme une force proportionnelle à la vitesse du volant (`TrqFromFriction`), donc comme un amortisseur. Réglable par `DirectInputFrictionMax` |
+| `DirectInputSystem.cpp/.h` | **Les effets ne sont plus redémarrés à chaque mise à jour** : `DIEP_START` (et `DIEP_DIRECTION`) seulement au premier envoi d'un effet et après un arrêt (« stop all », perte de l'acquisition) ; sinon `DIEP_TYPESPECIFICPARAMS` seul. `dInputEffectPlaying` suit l'état de chaque effet | Correction A (§3.4). Vérifié par vJoy le 15 octobre : campagne 4 (avant), 1514 « start » pour 1514 mises à jour ; maintenant Dirt Devils 131 pour 3782 (une création et un redémarrage après chacun des 34 « stop all »), Sega Rally 2 2 pour 2268. Valeurs justes, même image. Candidat à une PR upstream |
+| `JoystickBoard.cpp` | Vibration sans le gain, comme les volants | Cohérence |
+| `Src/OSD/SDL/Main.cpp` | Exports `NvOptimusEnablement` et `AmdPowerXpressRequestHighPerformance` (Windows) | Sur un portable à deux GPU, Supermodel tournait sur l'Intel intégré. Vérifié le 15 octobre, avec la préférence globale NVIDIA sur « Sélection automatique » : la copie sans exports prend l'Intel, celle avec la NVIDIA. Intel n'a pas d'équivalent pour ses GPU Arc : seul le réglage Graphiques de Windows les choisit. Candidat à une PR upstream |
+| `Scripts/ffbtest/smagent.py` | `step_send` / `step_wait` | Faire avancer plusieurs instances en parallèle |
+
+Le pilote automatique (courses, campagnes, apprentissage par renforcement) a déménagé dans BFF,
+`autopilot/supermodel/` (BFF `7cca76a`), avec l'analyse commune `autopilot/analyze_ffb.py`. La
+copie locale non suivie, `Scripts/ffbtest/autopilot/`, a été supprimée le 15 octobre.
+
 ## 3. Les essais
 
 ### 3.1 Le banc
@@ -287,6 +305,58 @@ centre la valeur que le jeu lit ; `agent_drive.py --deadzone` en tient compte.
 - **Hors piste** : `37 35`.
 - **Fin** : `17 10 17 10…`, puis `C9 C8 C1`.
 
+### 3.4 Essai sur la borne Racecab1 (15 octobre)
+
+**Montage** (rapporté par la session BFF) : carte EPR-18261 avec l'EPROM njz3 (mode direct `D1`,
+couple 0-63 dans chaque sens), BFF `055791d` en `COMP_M3_LEMANS`, chaque effet calculé par BFF
+en couple (`ForceTrqForAllCommands`), `D1` sans impulsions. Supermodel passe par DirectInput et
+vJoy, sans M2PAC : cette carte lirait les octets de ces jeux comme ses propres commandes.
+
+**Supermodel, de 18:33 à 18:42** (Emergency Call Ambulance, Dirt Devils, Sega Rally 2). Le
+propriétaire : « Le volant oscillait pas mal pour le ressort. On ne sentait pas de chocs. J'ai
+l'impression qu'il manque des effets. On sentait bien les vibrations de la route ou la perte
+d'adhérence (volant mou) dans sega rally 2 ». Juste avant, les jeux Model 2 de sm2-emu étaient
+« très bien » à « parfaits ».
+
+Ce que BFF a reçu :
+
+| Jeu | Effets | « start effect » |
+|:--|:--|:--|
+| ECA | ressort, force constante | 2514 en 1 min 37 s, environ 26 par seconde |
+| Dirt Devils | ressort, force constante, sinus | 2344 en 2 min, environ 20 par seconde |
+| Sega Rally 2 | ressort, force constante | 9158 en 4 min 40 s, environ 33 par seconde |
+
+S'y ajoutent 4 « stop all effects » et un « set device gain ».
+
+**Réserve** : pendant l'essai, 10 instances de Supermodel en mode agent tournaient sur le même PC.
+C'était la série de 200 parties du pilote automatique, en `-no-throttle`, de 15:50 à 18:49.
+Indy 500 y est tombé à 26,3 Hz. Supermodel a donc pu tourner sous 57,5 images par seconde :
+**refaire l'essai avec le PC au repos.**
+
+**Diagnostic** :
+1. **Les effets sont redémarrés à chaque mise à jour.** `DirectInputSystem.cpp` (ligne 1976)
+   appelle `SetParameters(… | DIEP_START)` à chaque changement d'un effet. C'est le code
+   d'upstream, pas le rework. Chaque redémarrage remet à zéro la phase de la vibration. sm2-emu
+   crée ses effets une fois et ne fait que les mettre à jour.
+2. **Les chocs se perdent en partie.**
+   - La carte écrit le couple à 500 Hz, mais Supermodel n'envoie que la dernière valeur de
+     chaque image (§2.1). Tout ce qui dure moins d'une image disparaît : l'impulsion de 2 ms à
+     pleine échelle de l'effet `02` de Dirt Devils, les vibrations de route de 8 à 33 Hz (§4,
+     point 10).
+   - Ces programmes n'ont pas de commande de choc. Dans Scud et Dirt Devils, un impact donne
+     surtout un moteur libre bref (`9x`, 60-90 ms, §5) suivi d'un ressort dur ; un choc de Scud :
+     `20 17 9C 2F`, le gain baissé, le ressort le plus fort, le moteur libre.
+   - Par DirectInput, `FF` devient un « stop all » puis un ressort redémarré, que BFF lisse
+     facilement.
+3. **Le ressort oscille.**
+   - Avec le premier essai de §2.8, le ressort de la carte servo était plein dès le gain 8.
+   - BFF calcule le ressort à partir du potentiomètre, par la liaison série. Sa pleine échelle
+     en `D1` est 63, contre 46 au plus pour la carte d'origine.
+   - `FD`, sans doute l'amortissement de la carte servo, est ignoré.
+   - Un ressort fort et sans amortissement oscille facilement.
+4. Dans Sega Rally 2, les vibrations de route et le volant mou passent : EPR-20512 n'envoie que
+   du couple, calculé par le Z80, et son ressort (rangée 0, toujours).
+
 ## 4. Ce qui reste, dans l'ordre
 
 1. ~~Pourquoi Supermodel s'est arrêté à 384 s~~ — **élucidé le 14 octobre : une fermeture normale,
@@ -303,24 +373,77 @@ centre la valeur que le jeu lit ; `agent_drive.py --deadzone` en tient compte.
 2. ~~Valider la file de commandes~~ : **validée le 14 octobre** (§3.2). Sur 3 parties de Scud, aucune
    commande perdue, et les poussées `5x`/`6x` sont toutes justes (116/116, contre 84/96 avant la
    file, quand un `2F` perdu laissait le gain à 4 %).
-3. **Comparatif avant/après** : la même série avec upstream plus le seul correctif DirectInput.
-4. **Daytona 2** : son ressort est calculé par le Z80 et envoyé en force constante à 57,5 Hz ;
+3. **Corrections après l'essai Racecab1** (§3.4), demandées par le propriétaire le 15 octobre,
+   **à essayer sur la borne le 16** (`pkg/supermodel-…-ffbac-windows.zip`, PC au repos) :
+   - **A. DirectInput, faite** (§2.8) : les effets ne sont démarrés qu'à leur création et après
+     un arrêt. Vérifiée par vJoy.
+   - **B. Couple, essayée puis retirée** : envoyer la valeur la plus forte des NMI de l'image au
+     lieu de la dernière. Mesuré sur les journaux servo (`servo.tsv`, couple NMI par NMI) :
+     - aucune impulsion d'une seule NMI (≥ 40/128) dans 5 courses de Scud, Dirt Devils et Sega
+       Rally 2 : rien à sauver ;
+     - **Sega Rally 2 abîmé** : sa route est le couple tenu 8 NMI puis 0 pendant 8 NMI (une
+       texture à ~31 Hz). La dernière valeur de l'image la garde (une image sur deux à 0 : 26 %
+       des mises à jour à 0) ; la plus forte comble les trous (5 % à 0), le couple moyen monte de
+       14,9 à 22,6/128 et la bande 8-40 Hz baisse de 10,8 à 6,8. Or c'est le jeu que le
+       propriétaire trouvait juste.
+
+     Une version A/B/C reste pour comparer : `pkg/supermodel-…-ffbabc-windows.zip`.
+   - **C. Ressort, faite** (§2.8) : `FD` en frottement, ressort `FC` 4 adouci (gain × `18`).
+
+   L'analyse commune (BFF `autopilot/analyze_ffb.py`) rejoue les trois traductions (avant, A/C,
+   A/B/C), retient celle de la course, et compte les « start » par rapport aux mises à jour.
+4. **Sega Rally 2 : le ressort est perdu au chargement d'une sauvegarde d'état** (vu avec le
+   pilote automatique). Supermodel ne renvoie pas ses effets après un chargement, et le jeu ne
+   réécrit pas le ressort de lui-même.
+5. **Comparatif avant/après** : la même série avec upstream plus le seul correctif DirectInput.
+6. **Daytona 2** : son ressort est calculé par le Z80 et envoyé en force constante à 57,5 Hz ;
    vérifier qu'il ne vibre pas au centre (cabinet `B0` par défaut : jusqu'à 100 %).
-5. **Le Mans 24** : en STANDARD avec EPR-18261 (le nouveau décodage), puis en LE MANS avec
+7. **Le Mans 24** : en STANDARD avec EPR-18261 (le nouveau décodage), puis en LE MANS avec
    EPR-19338A.
-6. ~~Acquisition exclusive en arrière-plan~~ : faite, c'est l'option `BackgroundInput` (§2.3).
-7. **Les amortissements** : `FD` des cartes servo, probablement un amortissement, et le frein
+8. ~~Acquisition exclusive en arrière-plan~~ : faite, c'est l'option `BackgroundInput` (§2.3).
+9. **Les amortissements** : `FD` des cartes servo, probablement un amortissement, et le frein
    `2x` d'EPR-18261 (les deux puissances à la fois), **mesuré comme un amortisseur** sur la
    carte réelle. Aujourd'hui Supermodel n'en tire aucune force : les traduire en `GUID_Damper`,
-   à étalonner.
-8. **Cadence** : faire tourner la driveboard en temps réel à 500 Hz, avec la position du volant lue
-   à cette cadence. Les effets de route (8-33 Hz) et les impulsions de 2 ms de l'effet `02` se
-   perdent à 57,5 Hz.
-9. **Star Wars** : savoir quel axe est X et dans quel sens, par le test de retour de force du menu
-   de test (journaliser ses octets en regard de ce que dit l'écran). Aujourd'hui servo 1 = X est
-   une supposition. Le ressort reste stable quel que soit le choix, puisque le Z80 le calcule sur
-   l'axe qu'il lit.
-10. **Committer**, puis décider d'une PR vers `trzy/Supermodel`, sur demande du propriétaire.
+   à étalonner. L'oscillation du ressort sur Racecab1 le rend prioritaire (point 3 C).
+10. **Cadence** : faire tourner la driveboard en temps réel à 500 Hz, avec la position du volant lue
+    à cette cadence. Les effets de route (8-33 Hz) et les impulsions de 2 ms de l'effet `02` se
+    perdent à 57,5 Hz. **Étude du 15 octobre** (une image en 8 tranches d'environ 2,2 ms) :
+    - **Aujourd'hui** : le fil de la driveboard fait son image (~8,7 NMI) d'un bloc, en moins
+      d'une milliseconde, en parallèle de l'image du PowerPC (`CModel3::RunFrame`), puis envoie
+      couple et vibration à la fin ; le ressort, le frottement et les arrêts partent pendant ce
+      bloc. La position du volant est lue une fois par image (fil principal).
+    - **Couper `RunFrame` en 8 ne suffit pas** : les 8 envois partiraient dans la même
+      milliseconde, puis plus rien pendant 16 ms. Il faut les espacer en temps réel :
+      - **(i) relecture** : garder les sorties de chaque tranche, et les jouer depuis un fil à
+        part toutes les 2,2 ms pendant l'image suivante. L'émulation ne change pas
+        (déterministe, sauvegardes d'état et mode agent intacts), mais le couple prend une image
+        de retard (17 ms) de plus : mauvais pour les ressorts calculés par le Z80 (Daytona 2,
+        Star Wars, courbes du cabinet `B0`), déjà en retard d'une à deux images ;
+      - **(ii) driveboard au rythme réel** : son fil fait une tranche puis attend son heure, et
+        le fil principal ne l'attend qu'au début de l'image suivante au lieu d'avant le rendu.
+        Pas de retard ajouté, sorties envoyées tout de suite ; mais le PowerPC, qui finit son
+        image en quelques ms, lit des réponses (`29`) d'un point plus tôt de l'image de la
+        carte : à vérifier sur les poignées de main du démarrage. Seulement en multithread et
+        avec la cadence réelle : en `-no-throttle` et en mode agent, l'image reste d'un bloc ;
+      - **(iii) volant à 500 Hz** : pour que les ressorts du Z80 en profitent, son fil doit lire
+        le volant entre les tranches (DirectInput depuis un second fil, verrou avec la lecture du
+        fil principal).
+    - **En aval** : BFF recalcule son couple toutes les 5 ms (200 Hz, `GlobalRefreshPeriod_ms`).
+      Les effets de route (8-33 Hz) passeraient en entier, une impulsion de 2 ms une fois sur
+      deux ou trois. Un volant USB prend 500 à 1000 mises à jour par seconde. Avec A, une mise à
+      jour n'est plus qu'un paquet.
+    - **Ce que l'image perd, mesuré** (`servo.tsv` de 5 courses) : peu. Aucune impulsion d'une
+      NMI ; la bande 8-40 Hz reste à peu près la même à une valeur par image (Dirt Devils 3,3
+      contre 3,5 ; Sega Rally 2 10,8 contre 10,8), mais repliée sous 28,75 Hz (une oscillation
+      à 33 Hz sort à 24,5 Hz).
+    - **Recommandation** : (ii), derrière une option désactivée par défaut, après l'essai de A et
+      C sur la borne ; (iii) ensuite si Daytona 2 en a besoin. Le banc mesure le résultat : vJoy
+      horodate chaque paquet (`t` dans `vjoy.jsonl`).
+11. **Star Wars** : savoir quel axe est X et dans quel sens, par le test de retour de force du menu
+    de test (journaliser ses octets en regard de ce que dit l'écran). Aujourd'hui servo 1 = X est
+    une supposition. Le ressort reste stable quel que soit le choix, puisque le Z80 le calcule sur
+    l'axe qu'il lit.
+12. **Committer**, puis décider d'une PR vers `trzy/Supermodel`, sur demande du propriétaire.
     `NUM_FF_EFFECTS` est un correctif à part entière, à proposer seul s'il le faut.
 
 ## 5. Ce qu'il faut savoir des programmes
