@@ -103,8 +103,8 @@ namespace Telemetry
     // Each pass of the loop while Supermodel is paused: the last frame again, its state pause
     void OnPause();
 
-    // The last frame as JSON, or "tel none" when the game is not decoded or says nothing
-    std::string Json() const;
+    // The last frame as JSON (the keys selected), or "tel none" when the game is not decoded or says nothing
+    std::string Json(const Selection &selection = Selection()) const;
 
   private:
     CModel3 *m_model3 = nullptr;

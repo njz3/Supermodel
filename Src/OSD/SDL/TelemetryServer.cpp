@@ -394,11 +394,11 @@ namespace Telemetry
     m_server.Publish(f);
   }
 
-  std::string CService::Json() const
+  std::string CService::Json(const Selection &selection) const
   {
     if (!m_decoder || !m_haveLast)
       return "tel none";
-    return ToJson(m_last);
+    return ToJson(m_last, selection);
   }
 
   CService &Service()

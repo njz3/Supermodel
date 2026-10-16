@@ -22,7 +22,9 @@
 /*
  * Agent.cpp
  *
- * Agent mode. The protocol: one command a line on stdin, one answer on stdout
+ * Agent mode (-agent: the window hidden; -agent-show: shown, to watch a race
+ * played by a program, with -throttle for real time and -sound to hear it).
+ * The protocol: one command a line on stdin, one answer on stdout
  * (everything else Supermodel prints goes to stderr). Once the game is loaded:
  *
  *   ready GAME WIDTH HEIGHT
@@ -74,10 +76,14 @@
  *   ram ADDRESS LENGTH  Memory read by the main CPU (hex address and length,
  *                       at most 1 MB): "ram LENGTH", a new line, the bytes.
  *   mem ADDRESS LENGTH  The same (sm2-emu's name): "mem LENGTH", the bytes.
+ *   poke ADDRESS VALUE [SIZE]  Writes VALUE (hex, SIZE 1, 2 or 4 bytes, 4 by
+ *                       default) at ADDRESS through the main CPU's bus: "ok".
  *   frame               "frame N", the number of frames run.
  *   tel                 The racing game's telemetry this frame, one JSON line
  *                       (the keys of TelemetryServer.h, as sm2-emu's tel), or
  *                       "tel none" for a game without a decoder.
+ *   tel fields LIST|all The keys the next tel lines hold, as the telemetry
+ *   tel others N|all    server's commands (Telemetry.md): "ok".
  *   settle [MS]         Waits MS milliseconds before each frame (0 by default),
  *                       so that a device set just before a step (vJoy) is read
  *                       in that frame even with -no-throttle; real-time pacing
@@ -131,6 +137,7 @@ namespace Agent
   static int s_settleMs = 0;                     // wait before each frame (settle)
 
   static bool s_enabled = false;
+  static bool s_show = false;           // -agent-show: the window shown
 
   static void TakeStdout()
   {
@@ -155,6 +162,8 @@ namespace Agent
     {
       if (strcmp(argv[i], "-agent") == 0)
         s_enabled = true;
+      else if (strcmp(argv[i], "-agent-show") == 0)
+        s_enabled = s_show = true;
       else
         argv[kept++] = argv[i];
     }
@@ -173,8 +182,10 @@ namespace Agent
   {
     if (!s_enabled)
       return;
-    // The window is hidden and never has the focus
-    config.Get("FullScreen").SetValue(false);
+    // The window is hidden and never has the focus (-agent-show: shown, to watch a race played by a program,
+    // in real time with -throttle and heard with -sound)
+    if (!s_show)
+      config.Get("FullScreen").SetValue(false);
     config.Get("VSync").SetValue(false);
 #ifdef SUPERMODEL_WIN32
     config.Get("BackgroundInput").SetValue(true);
@@ -183,7 +194,7 @@ namespace Agent
 
   uint32_t WindowFlags()
   {
-    return s_enabled ? SDL_WINDOW_HIDDEN : 0;
+    return s_enabled && !s_show ? SDL_WINDOW_HIDDEN : 0;
   }
 
   static void Reply(const char *format, ...)
@@ -748,6 +759,26 @@ namespace Agent
           bytes[i] = model3->Read8(address + i);
         ReplyBytes(command + " " + std::to_string(length), bytes.data(), bytes.size());
       }
+      else if (command == "poke")
+      {
+        // A value written by the main CPU's bus (the autopilot's tools: a race's clock held while lines are made)
+        unsigned address = 0, value = 0, size = 4;
+        bool parsed = bool(in >> std::hex >> address >> value);
+        if (parsed && !(in >> std::dec >> size))
+          size = 4;
+        if (!parsed || model3 == nullptr || (size != 1 && size != 2 && size != 4))
+        {
+          Reply("err usage: poke ADDRESS VALUE [SIZE] (hex address and value, size 1, 2 or 4)");
+          continue;
+        }
+        if (size == 1)
+          model3->Write8(address, UINT8(value));
+        else if (size == 2)
+          model3->Write16(address, UINT16(value));
+        else
+          model3->Write32(address, value);
+        Reply("ok");
+      }
       else if (command == "settle")
       {
         int ms = s_settleMs;
@@ -758,7 +789,34 @@ namespace Agent
       else if (command == "frame")
         Reply("frame %llu", (unsigned long long)s_frame.load());
       else if (command == "tel")
-        Reply("%s", Telemetry::Service().Json().c_str());
+      {
+        static Telemetry::Selection selection;
+        std::string what, arg;
+        in >> what;
+        arg = RestOfLine(in);
+        if (what.empty())
+          Reply("%s", Telemetry::Service().Json(selection).c_str());
+        else if (what == "fields")
+        {
+          selection.fields.clear();
+          std::stringstream list(arg == "all" ? std::string() : arg);
+          std::string f;
+          while (std::getline(list, f, ','))
+          {
+            f.erase(std::remove_if(f.begin(), f.end(), [](char c) { return c == ' ' || c == '\t'; }), f.end());
+            if (!f.empty())
+              selection.fields.push_back(f);
+          }
+          Reply("ok");
+        }
+        else if (what == "others")
+        {
+          selection.others = arg == "all" ? -1 : atoi(arg.c_str());
+          Reply("ok");
+        }
+        else
+          Reply("err usage: tel | tel fields LIST|all | tel others N|all");
+      }
       else if (command == "quit")
       {
         Reply("bye");
