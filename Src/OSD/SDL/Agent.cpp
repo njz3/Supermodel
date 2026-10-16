@@ -714,6 +714,9 @@ namespace Agent
         if (done)
         {
           outputs->TakeDriveBytes();
+          // The telemetry of the state loaded, not of the last frame run before it (tel answers at once)
+          if (command == "load")
+            Telemetry::Service().OnFrame(s_frame);
           Reply("ok");
         }
         else
