@@ -241,9 +241,46 @@ Réglage strict (`ap_speed.py --severe --up 1`) : seuls les incidents (mur sans 
 3 m au-delà de la largeur vue, tête-à-queue) font baisser le plan sur les 120 m qui les précèdent ; il
 ne monte jamais (il part du plan de pleine adhérence).
 
-### 5.6 En cours
+### 5.6 Recherches et réglages (16 octobre, après-midi)
 
-- Recherche sur Daytona 2 (trajectoire minimale) et Scud ; passe d'état sur les autres circuits.
-- `ap_imitate.py` : la politique apprend les décisions des courses trouvées, puis PPO repart de là
-  (itération d'expert). Le PPO seul sur Daytona 2 n'avait pas dépassé le pilote de base en 160 mises
-  à jour.
+- Recherche Daytona 2 Beginner sur la trajectoire minimale : **9e** (pénalité de choc 15 m) ; avec 40 m,
+  12e. Plan de courbure à 150 m/s² : 10e mais 80 chocs ; à 190 m/s², 21e.
+- **L'élastique** sur la trajectoire minimale : l'écart au meneur tombe à 0,18-0,20 tour (290 m), le meneur
+  tournant comme le pilote en 18,0 s ; l'aspiration de Daytona 2 est faible (304 → 309 km/h au mieux).
+- Réglage strict (`--severe`) : Daytona 2 Advanced finit son 4e tour (temps écoulé dans le dernier, 12e,
+  15 chocs au lieu de 50) ; Scud Beginner 2 : 11 chocs au lieu de 54 ; Scud Beginner et Medium moins bons
+  qu'avec le plan de base.
+- Recherche Scud Beginner (facteurs 0,9 / 1 / 1,12, pénalité de choc 30 m) : **17e**, temps écoulé au
+  dernier tour à 11 562 m (le pilote de base à 11 453 m, 21e) : il manque 1 à 2 s ; 87 chocs. Une recherche
+  avec une pénalité de 60 m tourne.
+- Championnat de Sega Rally 2 : temps écoulé dans Desert à 3388 m, à ~1 s de l'arrivée.
+- Dirt Devils : le cap lu dans l'enregistrement de trace du joueur (ses deux points), sans le retard
+  du cap tiré du mouvement ; contrôle prédictif 0,2 s, amortissement du lacet 0,3 : Canyon **fini**
+  (8e, 229 chocs).
+- **Défaut corrigé** : après `load`, `tel` répondait la dernière image jouée avant le chargement ; les
+  recherches voyaient la voiture « téléportée » (fausse fin de spéciale du championnat à 2,4 km) et le
+  pilote avait une image fausse toutes les 2 s. Supermodel décode maintenant la télémétrie de l'état
+  chargé (a1b9e89) ; exécutable `MSVC/x64/ReleaseLive/Supermodel.exe`.
+
+### 5.7 Les courses enregistrées pour le rejeu à retour de force
+
+`pkg/autopilot_data/records/` (avec l'exécutable ReleaseLive, `--ffb` en plus) :
+
+| Dossier | Course | Résultat |
+|:--|:--|:--|
+| `daytona2_beginner_record` | Daytona 2 Beginner | fini, **9e**, 25 chocs |
+| `srally2_mountain_record` | Sega Rally 2 Mountain | fini en 89 s |
+| `srally2_snowy_record` | Sega Rally 2 Snowy | fini en 79 s |
+| `scud_beginner_record` | Scud Beginner | temps écoulé au dernier tour, 21e |
+| `dirtdvls_canyon_record` | Dirt Devils Canyon | fini, 8e, 229 chocs |
+
+Sur Racecab1 : `ap_replay.py RECORD_DIR ROMS RUNDIR --device --live` avec l'exécutable ReleaseLive, les
+scripts BFF et numpy, le dossier Supermodel de la borne comme RUNDIR, BackForceFeeder lancé, une force
+basse pour commencer (le jeu ne sait pas où sont les mains : les chocs arrivent à pleine puissance).
+
+### 5.8 À faire
+
+- Gagner : l'élastique de Daytona 2, les 1 à 2 s qui manquent à Scud et au championnat de Sega Rally 2.
+- `ap_imitate.py` puis PPO depuis les courses trouvées (itération d'expert).
+- Les autres circuits dans le temps (Daytona 2 Expert, Scud Medium et Expert, Riviera), Dirt Devils
+  Stadium et Desert, ECA.
