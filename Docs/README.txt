@@ -132,6 +132,14 @@ example:
 
 This will load 'scud.zip' (Scud Race) and run it in full screen mode.
 
+A MAME merged ROM set keeps the parent and all of its clones in the parent's ZIP
+file.  Supermodel then loads one of the clones; '-game' picks the game instead:
+
+    supermodel daytona2.zip -game=dayto2pe
+
+A clone can also come from a ZIP file of its own holding only its own files,
+next to its parent's ZIP file, from which the rest is read.
+
 Initially, inputs are assigned according to the settings in 'Supermodel.ini',
 located in the 'Config' subdirectory.
 
@@ -1178,6 +1186,19 @@ not.  All options are case sensitive.
 
     ----------------
 
+    Option:         -game=<name>
+
+    Description:    The game to load when the ZIP file holds several, as a
+                    MAME merged ROM set does: the parent and its clones in the
+                    parent's ZIP file.  <name> is the ROM set's name, as listed
+                    by -print-games (e.g., 'supermodel daytona2.zip
+                    -game=dayto2pe').  A clone whose own files are in the ZIP
+                    file but not its parent's reads them from the parent's ZIP
+                    file in the same directory.  Without this option, a merged
+                    ROM set loads one of its clones.
+
+    ----------------
+
     Option:         -no-threads
 
     Description:    Disables multi-threading.  When enabled (the default), the
@@ -1381,9 +1402,11 @@ All settings are case sensitive.
     Argument:       String.
 
     Description:    Directory in which the settings GUI looks for ROM sets
-                    (<romset>.zip) when a game is loaded from it.  The default
-                    is 'ROMs', relative to the working directory.  Not used
-                    when a ROM set is given on the command line.
+                    (<romset>.zip) when a game is loaded from it; a clone
+                    without a ZIP file of its own is loaded from its parent's
+                    when that holds it, as a MAME merged ROM set does.  The
+                    default is 'ROMs', relative to the working directory.  Not
+                    used when a ROM set is given on the command line.
 
     ----------------
 

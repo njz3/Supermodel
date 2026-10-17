@@ -96,13 +96,18 @@ private:
     const ZipArchive &zip,
     const std::map<std::string, RegionsByName_t> &regions_by_game) const;
   bool ComputeRegionSize(uint32_t *region_size, const Region::ptr_t &region, const ZipArchive &zip) const;
-  void ChooseGameInZipArchive(std::string *chosen_game, bool *missing_parent_roms, const ZipArchive &zip, const std::string &zipfilename) const;
+  void ChooseGameInZipArchive(std::string *chosen_game, bool *missing_parent_roms, const ZipArchive &zip, const std::string &zipfilename, const std::string &requested_game) const;
   bool LoadRegion(ROM *buffer, const GameLoader::Region::ptr_t &region, const ZipArchive &zip) const;
   bool LoadROMs(ROMSet *rom_set, const std::string &game_name, const ZipArchive &zip) const;
 
 public:
   GameLoader(const std::string &xml_file);
-  bool Load(Game *game, ROMSet *rom_set, const std::string &zipfilename) const;
+  // requested_game: the game to load when the zip file holds several (a MAME
+  // merged ROM set: the parent and its clones); empty to let the loader choose
+  bool Load(Game *game, ROMSet *rom_set, const std::string &zipfilename, const std::string &requested_game = "") const;
+  // Whether the zip file holds every file the game defines itself (for a clone,
+  // only its own: the rest is its parent's), reading only the zip file's index
+  bool HoldsFilesOf(const std::string &zipfilename, const std::string &game_name) const;
   const std::map<std::string, Game> &GetGames() const
   {
     return m_game_info_by_game;

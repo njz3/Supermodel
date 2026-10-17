@@ -1860,6 +1860,8 @@ static void Help(void)
   puts("General Options:");
   puts("  -?, -h, -help, --help   Print this help text");
   puts("  -print-games            List supported games and quit");
+  puts("  -game=<name>            Game to load from a ROM set holding several (a MAME");
+  puts("                          merged set: the parent and its clones)");
   printf("  -game-xml-file=<file>   ROM set definition file [Default: %s]\n", s_gameXMLFilePath.c_str());
   printf("  -log-output=<outputs>   Log output destination(s) [Default: %s]\n", s_logFilePath.c_str());
   puts("  -log-level=<level>      Logging threshold [Default: info]");
@@ -1959,6 +1961,7 @@ struct ParsedCommandLine
 {
   Util::Config::Node config = Util::Config::Node("CommandLine");
   std::vector<std::string> rom_files;
+  std::string game;         // -game: the game to load from a zip file holding several
   bool error = false;
   bool print_help = false;
   bool print_games = false;
@@ -2099,6 +2102,13 @@ static ParsedCommandLine ParseCommandLine(int argc, char **argv)
         cmd_line.print_help = true;
       else if (arg == "-print-games")
         cmd_line.print_games = true;
+      else if (arg.find("-game=") == 0)
+        cmd_line.game = arg.substr(6);
+      else if (arg == "-game")
+      {
+        ErrorLog("'-game' requires the name of a game (e.g., '-game=dayto2pe').");
+        cmd_line.error = true;
+      }
       else if (arg == "-res" || arg.find("-res=") == 0)
       {
         std::vector<std::string> parts = Util::Format(arg).Split('=');
@@ -2289,7 +2299,7 @@ int main(int argc, char **argv)
       Util::Config::Node fileConfig("Global");
       Util::Config::FromINIFile(&fileConfig, s_configFilePath);
 
-      cmd_line.rom_files = RunGUI(s_configFilePath, fileConfig);
+      cmd_line.rom_files = RunGUI(s_configFilePath, fileConfig, &cmd_line.game);
 
       if (cmd_line.rom_files.empty()) {
           return 0;
@@ -2357,7 +2367,7 @@ int main(int argc, char **argv)
         PrintGameList(xml_file, loader.GetGames());
         return 0;
       }
-      if (loader.Load(&game, &rom_set, *cmd_line.rom_files.begin()))
+      if (loader.Load(&game, &rom_set, *cmd_line.rom_files.begin(), cmd_line.game))
         return 1;
       Util::Config::MergeINISections(&config4, config3, fileConfig[game.name]);   // apply game-specific config
     }

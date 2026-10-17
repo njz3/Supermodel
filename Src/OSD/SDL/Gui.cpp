@@ -57,7 +57,8 @@ Quick description on the GUI stuff
 
 
 // ---------------------------------------------------------------------------------------------------------------
-// ROM folder scan: only games whose "<name>.zip" exists in the ROM folder are shown as owned
+// ROM folder scan: only games with a zip file in the ROM folder are shown as owned: "<name>.zip", or for a clone, its
+// parent's zip file when that holds the clone too (a MAME merged ROM set)
 // ---------------------------------------------------------------------------------------------------------------
 
 static const bool  s_hideUnownedGames = false;   // true: unowned games are removed from the list
@@ -69,10 +70,12 @@ static std::string ToLowerStr(std::string s)
     return s;
 }
 
-// Returns the lower case file names (without extension) of all *.zip files in the given directory
-static std::set<std::string> ScanRomZips(const std::string& dir)
+// The zip file each game loads from, by game name: its own "<name>.zip" in the given directory, else, for a clone, its
+// parent's when that holds the clone's own files too, as a MAME merged ROM set keeps every clone in its parent's zip
+// file (a split set's parent zip file does not)
+static std::map<std::string, std::string> ScanRomZips(const std::string& dir, const GameLoader& loader, const std::map<std::string, Game>& games)
 {
-    std::set<std::string> found;
+    std::map<std::string, std::string> found;  // lower case file name without extension -> path
     std::error_code ec;
 
     for (std::filesystem::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec)) {
@@ -83,10 +86,27 @@ static std::set<std::string> ScanRomZips(const std::string& dir)
         if (ToLowerStr(it->path().extension().string()) != ".zip") {
             continue;
         }
-        found.insert(ToLowerStr(it->path().stem().string()));
+        found[ToLowerStr(it->path().stem().string())] = it->path().string();
     }
 
-    return found;
+    std::map<std::string, std::string> zips;
+    for (const auto& g : games) {
+        const Game& game = g.second;
+        auto own = found.find(ToLowerStr(game.name));
+        if (own != found.end()) {
+            zips[game.name] = own->second;
+            continue;
+        }
+        if (game.parent.empty()) {
+            continue;
+        }
+        auto parent = found.find(ToLowerStr(game.parent));
+        if (parent != found.end() && loader.HoldsFilesOf(parent->second, game.name)) {
+            zips[game.name] = parent->second;
+        }
+    }
+
+    return zips;
 }
 
 static void WriteGameNode(Util::Config::Node& baseNode, const Util::Config::Node& diffNode, Util::Config::Node& writeNode, const std::string& group)
@@ -924,7 +944,7 @@ static Game GetGame(const std::map<std::string, Game>& games, int selectedGameIn
     return {};
 }
 
-static void GUI(const ImGuiIO& io, Util::Config::Node& config, const std::map<std::string, Game>& games, const std::set<std::string>& ownedZips, int& selectedGameIndex, bool& exit, bool& saveSettings, SDL_Window* window, std::shared_ptr<CInputs>& inputs, KeyBindState& kb, CalibrationState& cal, bool closeRequested, bool& exitPromptOpen)
+static void GUI(const ImGuiIO& io, Util::Config::Node& config, const std::map<std::string, Game>& games, const std::map<std::string, std::string>& romZips, int& selectedGameIndex, bool& exit, bool& saveSettings, SDL_Window* window, std::shared_ptr<CInputs>& inputs, KeyBindState& kb, CalibrationState& cal, bool closeRequested, bool& exitPromptOpen)
 {
     ImVec4 clear_color = ImVec4(0.0f, 0.5f, 192/255.f, 1.00f);
 
@@ -953,7 +973,7 @@ static void GUI(const ImGuiIO& io, Util::Config::Node& config, const std::map<st
         int row = 0;
         for (const auto& g : games) {
 
-            const bool owned = ownedZips.count(ToLowerStr(g.second.name)) > 0;
+            const bool owned = romZips.count(g.second.name) > 0;
 
             // row must always advance, GetGame() / GetRomPath() index the full games map
             if (!owned && s_hideUnownedGames) {
@@ -1106,13 +1126,19 @@ static void GUI(const ImGuiIO& io, Util::Config::Node& config, const std::map<st
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
 
-static std::string GetRomPath(int selectedGame, const std::map<std::string, Game>& games, const std::string& romDirectory)
+// The selected game's zip file, and its name in *game: a zip file can hold several games (a MAME merged ROM set)
+static std::string GetRomPath(int selectedGame, const std::map<std::string, Game>& games, const std::map<std::string, std::string>& romZips, std::string* game)
 {
     if (selectedGame >= 0) {
         int index = 0;
         for (auto& g : games) {
             if (selectedGame == index) {
-                return (std::filesystem::path(romDirectory) / (g.second.name + ".zip")).string();
+                auto zip = romZips.find(g.second.name);
+                if (zip == romZips.end()) {
+                    break;
+                }
+                *game = g.second.name;
+                return zip->second;
             }
             index++;
         }
@@ -1138,7 +1164,7 @@ static float GetDPIScale()
 #endif
 }
 
-std::vector<std::string> RunGUI(const std::string& configPath, const Util::Config::Node& fileConfig)
+std::vector<std::string> RunGUI(const std::string& configPath, const Util::Config::Node& fileConfig, std::string* game)
 {
     // Our own copy of the complete config file. The GUI only ever edits the global
     // section but the game-specific sections are carried along so that they survive
@@ -1217,7 +1243,7 @@ std::vector<std::string> RunGUI(const std::string& configPath, const Util::Confi
     GameLoader loader(xmlFile);
     auto& games = loader.GetGames();
     std::string scannedRomDirectory = config["ROMDirectory"].ValueAs<std::string>();
-    std::set<std::string> ownedZips = ScanRomZips(scannedRomDirectory);
+    std::map<std::string, std::string> romZips = ScanRomZips(scannedRomDirectory, loader, games);
     int selectedGame = -1;  // -1 means no selection
     std::vector<std::string> romFiles;
     std::string path;
@@ -1253,11 +1279,11 @@ std::vector<std::string> RunGUI(const std::string& configPath, const Util::Confi
         const std::string romDirectory = config["ROMDirectory"].ValueAs<std::string>();
         if (romDirectory != scannedRomDirectory) {
             scannedRomDirectory = romDirectory;
-            ownedZips = ScanRomZips(scannedRomDirectory);
+            romZips = ScanRomZips(scannedRomDirectory, loader, games);
             selectedGame = -1;
         }
 
-        GUI(io, config, games, ownedZips, selectedGame, exit, saveSettings, window, inputs, kb, cal, closeRequested, exitPromptOpen);
+        GUI(io, config, games, romZips, selectedGame, exit, saveSettings, window, inputs, kb, cal, closeRequested, exitPromptOpen);
 
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
 
@@ -1268,7 +1294,7 @@ std::vector<std::string> RunGUI(const std::string& configPath, const Util::Confi
         }
     }
 
-    path = GetRomPath(selectedGame, games, config["ROMDirectory"].ValueAs<std::string>());
+    path = GetRomPath(selectedGame, games, romZips, game);
     if (!path.empty()) {
         romFiles.emplace_back(path);
     }
