@@ -429,14 +429,22 @@ namespace Telemetry
 
     /*
      * Le Mans 24 (lemans24). Its unit: 9.26 a metre of its speedometer (the speed from the positions is then the one
-     * the game shows). The player's car: 0x1FDBC0/C4/C8 x, y, z (floats, set once the race runs, cleared one frame in
-     * 256; else x and z at 0x17E610/18, or the middle of its four points on the ground, x, y and z floats every 12
-     * bytes from 0x190124), 0x195474 and 0x195478
-     * sin and cos of its heading (no pitch nor roll found yet), 0x195564 its speed (km/h, float). The dashboard:
-     * 0x1AD5DC u16 rpm, 0x1AD5E1 u8 the gear less one (the automatic gearbox's 6). 0x17FD70 the time left (s, float).
+     * the game shows). The player's car, in a block set once the race runs (cleared one frame in 256, garbage in a
+     * few others): 0x1FDBB0/B4/B8 its angles (radians, 0..2 pi: the nose going down, pi less the heading, leaning
+     * left; the roll's sign from the body leaning out of the bends), 0x1FDBC0/C4/C8 x, y, z (floats); else x and z
+     * at 0x17E610/18, or the middle of its four points on the ground, x, y and z floats every 12 bytes from 0x190124.
+     * 0x195474 and 0x195478 sin and cos of its heading (one frame behind the block), 0x195564 its speed (km/h,
+     * float), 0x195488 u32 its track segment (2098 a lap of about 5932 m, the line at about 2082; numbered otherwise
+     * in the pit lane), 0x1902B0 u32 the lap's percentage (from 1.24 % before the line; right in the pit lane too).
+     * The dashboard: 0x1AD5DC u16 rpm, 0x1AD5E1 u8 the gear less one (the automatic gearbox's 6). The race: 0x17FD70
+     * the time left (s, float), 0x17E509 u8 the laps done, 0x1799D4 u16 the position (1 leading) of 0x1799D6's cars
+     * (40), 0x17E0D4 the lap time and 0x181E8C the race time (floats, ms of the game's clocks, 1000/60 a frame),
+     * 0x17FD28 the 24 hours' clock (hours, float; not sent). No last or best lap kept: from the lap time's resets.
      * The other cars: entries of 0x1EC bytes from 0x17CED4 (x at +0, z at +8, the track segment u32 at +0x18; 6 on
      * the track, already spread around it as the player leaves the pits), their heading's sin and cos at +0x20/+0x24
-     * of entries of 0x21C bytes from 0x1858D8 (with the next points of their path). Its world is not mirrored.
+     * of entries of 0x21C bytes from 0x1858D8 (with the next points of their path). No laps nor positions found for
+     * them (the game ranks them from the player's): their progress is the player's, plus the shorter way round to
+     * their segment. Its world is not mirrored.
      */
     class CLeMans24 : public IDecoder
     {
@@ -445,8 +453,10 @@ namespace Telemetry
       {
         CRam ram(model3);
         const float unit = 1.0f / 9.26f;
+        const float pi = 3.14159265f;
         out.game = "lemans24";
         out.frame = frame;
+        out.lapLength = kLapLength;
         // Racing: the time left counting down
         out.time_left = ram.F32(0x17FD70);
         if (std::isfinite(out.time_left) && out.time_left != m_lastTimeLeft)
@@ -458,48 +468,107 @@ namespace Telemetry
         bool racing = frame - m_lastCount < 8;
         out.racing = racing;
         out.state = racing ? State::Race : State::Unknown;
+        // The clocks; the last and best laps from the lap time going back to 0 while the race time goes on
+        float lapTime = ram.F32(0x17E0D4) / 1000, raceTime = ram.F32(0x181E8C) / 1000;
+        if (Clock(raceTime) && Clock(m_raceTime) && raceTime < m_raceTime - 1)
+          m_lastLap = m_bestLap = NAN;
+        else if (Clock(lapTime) && Clock(m_lapTime) && lapTime < m_lapTime - 1 && m_lapTime > 10)
+        {
+          // The frames since the last read went to the lap done, less what the new lap has counted (the lap time
+          // reads 0 on the frame the line is crossed: the game shows the lap one frame longer than its last read)
+          float since = frame > m_clockFrame && frame - m_clockFrame <= 2 ? float(frame - m_clockFrame) / 60 : 0;
+          m_lastLap = m_lapTime + std::max(since - lapTime, 0.0f);
+          m_bestLap = std::isnan(m_bestLap) ? m_lastLap : std::min(m_bestLap, m_lastLap);
+        }
+        m_lapTime = Clock(lapTime) ? lapTime : NAN;
+        m_raceTime = Clock(raceTime) ? raceTime : NAN;
+        m_clockFrame = frame;
+        out.lap_time = m_lapTime;
+        out.race_time = m_raceTime;
+        out.last_lap = m_lastLap;
+        out.best_lap = m_bestLap;
         Vehicle v;
-        // The position cleared one frame in 256 once the car has left the pits (x first): then its copy at 0x17E610
-        // (whose height is not the car's, 2 m above it), and before the race runs the four points on the ground
+        float a = ram.F32(0x1FDBB0), b = ram.F32(0x1FDBB4), c = ram.F32(0x1FDBB8);
         float x = ram.F32(0x1FDBC0), y = ram.F32(0x1FDBC4), z = ram.F32(0x1FDBC8);
-        if (x == 0 || z == 0)
+        if (Angle(a) && Angle(b) && Angle(c) && Place(x) && Place(z))
         {
-          x = ram.F32(0x17E610);
-          z = ram.F32(0x17E618);
-          y = ram.F32(0x190134);
+          m_x = x;
+          m_y = y;
+          m_z = z;
+          m_heading = Wrap(pi - b);
+          m_pitch = -Wrap(a);
+          m_roll = -Wrap(c);
+          m_blockFrame = frame;
         }
-        if (x == 0 || z == 0)
+        else if (frame - m_blockFrame > 8)
         {
-          x = z = 0;
-          for (int j = 0; j < 4; j++)
+          // No block for a while (before the race): the copy at 0x17E610 (whose height is not the car's, 2 m above
+          // it), else the four points on the ground; the heading alone
+          m_x = ram.F32(0x17E610);
+          m_z = ram.F32(0x17E618);
+          m_y = ram.F32(0x190134);
+          if (!Place(m_x) || !Place(m_z))
           {
-            x += ram.F32(0x190124 + 12 * j) / 4;
-            z += ram.F32(0x190124 + 12 * j + 8) / 4;
+            m_x = m_z = 0;
+            for (int j = 0; j < 4; j++)
+            {
+              m_x += ram.F32(0x190124 + 12 * j) / 4;
+              m_z += ram.F32(0x190124 + 12 * j + 8) / 4;
+            }
           }
+          m_heading = std::atan2(ram.F32(0x195474), ram.F32(0x195478));
+          m_pitch = m_roll = 0;
         }
-        v.x = x * unit;
-        v.y = y * unit;
-        v.z = z * unit;
+        // (else the block held: the derived values take it for a frame the game did not move the car)
+        v.x = m_x * unit;
+        v.y = m_y * unit;
+        v.z = m_z * unit;
         if (!std::isfinite(v.x) || !std::isfinite(v.z) || (v.x == 0 && v.z == 0))
           return false;
-        float s = ram.F32(0x195474), c = ram.F32(0x195478);
-        float up[3] = { 0, 1, 0 }, forward[3] = { s, 0, c }, right[3] = { c, 0, -s };
-        SetOrientation(v, right, up, forward);
+        SetAngles(v, m_heading, m_pitch, m_roll);
         v.speed = ram.F32(0x195564) / 3.6f;
         v.gear = ram.U8(0x1AD5E1) + 1;
         v.gears = 6;
         v.rpm = ram.U16(0x1AD5DC);
         v.rpm_max = 10000;
+        int cars = ram.U16(0x1799D6), position = ram.U16(0x1799D4);
+        v.position = position >= 1 && position <= cars ? position : 0;
+        int lapsDone = ram.U8(0x17E509);
+        v.lap = lapsDone + 1;
+        // Along the lap: the segment, or in the pit lane (where it is numbered otherwise) the percentage
+        float along = Along(ram.U32(0x195488));
+        uint32_t percent = ram.U32(0x1902B0);
+        if (percent < 100)
+        {
+          float p = std::fmod(percent + 1.24f, 100.0f) / 100;
+          if (std::fabs(Half(along - p)) > 0.05f)
+            along = p;
+        }
+        // The laps counted a few segments away from the line: the nearer to the last frame's
+        float progress = lapsDone + along;
+        if (frame - m_progressFrame <= 2)
+        {
+          float d = progress - m_progress;
+          if (d > 0.5f && d < 1.5f)
+            progress -= 1;
+          else if (d < -0.5f && d > -1.5f)
+            progress += 1;
+        }
+        m_progress = progress;
+        m_progressFrame = frame;
+        v.progress = progress;
         out.player = v;
         out.others.clear();
+        float up[3] = { 0, 1, 0 };
         for (int k = 0; k < 6; k++)
         {
           uint32_t e = 0x17CED4 + k * 0x1EC;
           Vehicle o;
           float ox = ram.F32(e), oz = ram.F32(e + 8);
-          if (!std::isfinite(ox) || !std::isfinite(oz) || (ox == 0 && oz == 0))
+          if (!Place(ox) || !Place(oz))
           {
             o.x = o.y = o.z = NAN;
+            o.progress = NAN;
             out.others.push_back(o);
             continue;
           }
@@ -511,14 +580,62 @@ namespace Telemetry
           float os = ram.F32(p + 0x20), oc = ram.F32(p + 0x24);
           float of[3] = { os, 0, oc }, orr[3] = { oc, 0, -os };
           SetOrientation(o, orr, up, of);
+          o.progress = progress + Half(Along(ram.U32(e + 0x18)) - along);
           out.others.push_back(o);
         }
         return true;
       }
 
     private:
+      static constexpr int kSegments = 2098, kLine = 2082;
+      static constexpr float kLapLength = 5932;
+
+      // The lap's part from the line at a track segment
+      static float Along(uint32_t segment)
+      {
+        return float((int(segment % kSegments) - kLine + kSegments) % kSegments) / kSegments;
+      }
+
+      // A part of a lap the shorter way round: -0.5..0.5
+      static float Half(float d)
+      {
+        return d - std::round(d);
+      }
+
+      static float Wrap(float t)
+      {
+        const float pi = 3.14159265f;
+        return t > pi ? t - 2 * pi : t;
+      }
+
+      static bool Angle(float t) { return std::isfinite(t) && t > -0.1f && t < 6.4f; }
+      static bool Place(float t) { return std::isfinite(t) && std::fabs(t) > 1e-20f && std::fabs(t) < 1e6f; }
+      static bool Clock(float t) { return std::isfinite(t) && t >= 0 && t < 1e6f; }
+
+      // A car's right, up and forward from its heading, pitch and roll (which SetOrientation reads back)
+      static void SetAngles(Vehicle &v, float heading, float pitch, float roll)
+      {
+        float sh = std::sin(heading), ch = std::cos(heading), sp = std::sin(pitch), cp = std::cos(pitch);
+        float sr = std::sin(roll), cr = std::cos(roll);
+        float forward[3] = { sh * cp, sp, ch * cp };
+        float right0[3] = { ch, 0, -sh }, up0[3] = { -sh * sp, cp, -ch * sp };
+        float right[3], up[3];
+        for (int i = 0; i < 3; i++)
+        {
+          right[i] = cr * right0[i] - sr * up0[i];
+          up[i] = sr * right0[i] + cr * up0[i];
+        }
+        SetOrientation(v, right, up, forward);
+      }
+
       float m_lastTimeLeft = 0;
       uint64_t m_lastCount = ~0ull >> 1;
+      float m_lapTime = NAN, m_raceTime = NAN, m_lastLap = NAN, m_bestLap = NAN;
+      uint64_t m_clockFrame = 0;
+      float m_x = 0, m_y = 0, m_z = 0, m_heading = 0, m_pitch = 0, m_roll = 0;
+      uint64_t m_blockFrame = ~0ull >> 1;
+      float m_progress = 0;
+      uint64_t m_progressFrame = ~0ull >> 1;
     };
   }
 

@@ -53,7 +53,7 @@ au milieu du flux.
 | Scud Race / Scud Race Plus | `scud`, `scudau`, `scuddx`, `scuddxo`, `scudplus`, `scudplusa` | EPR-19338A | 40 voitures, table à 0x181100 |
 | Daytona USA 2 (Battle on the Edge, Power Edition) | `daytona2`, `dayto2pe` | EPR-20985 | Adresses différentes entre les deux versions |
 | Sega Rally 2 | `srally2`, `srally2p`, `srally2pa`, `srally2dx` | EPR-20512 | Spéciales, revêtements, sauts ; frein à main |
-| Le Mans 24 | `lemans24` | EPR-18261 / EPR-19338A | Nuit, relais : rien de connu encore |
+| Le Mans 24 | `lemans24` | EPR-18261 / EPR-19338A | Course de 24 heures en accéléré, 40 voitures dont 6 simulées autour du joueur |
 | Dirt Devils | `dirtdvls`, `dirtdvlsu`, `dirtdvlsau`, `dirtdvlsj`, `dirtdvlsg` | EPR-19338A | Tout-terrain, sauts |
 | Emergency Call Ambulance | `eca`, `ecap`, `ecau`, `ecaj` | EPR-19338A | L'état du patient, une jauge de « dégâts » |
 | Harley-Davidson & L.A. Riders | `harley`, `harleya` | (moto) | Inclinaison de la moto = roulis |
@@ -120,13 +120,15 @@ Déjà connu (carte mémoire du pilote automatique, BFF `autopilot/supermodel/ga
 | Sega Rally 2 | 16 roues à 0x13AC68 (pas 0x198) ; vitesse en flottant à 0x224500. **Trouvés le 15 octobre** : **rapport** 0x22F358 (u32 : 0 point mort, 1 à 4, auto et manuelle ; copie à 0x225A24), **régime affiché** 0x22F368 (flottant, tr/min, ralenti 500), vérifié sur le compte-tours (500 à l'arrêt = aiguille à 0,5 ; 7062 = 7 ; 7796 = 7,8) ; le régime du moteur lui-même est à 0x22F364 (flottant, négatif à l'arrêt). Cadran jusqu'à 8000, maximum vu 8139. Le jeu affiche « AT 4 » / « MT 4 » en permanence. Pas de marche arrière. **Caisse de la voiture** (bloc de 0x224490) : **position** 0x22449C, 0x2244A0, 0x2244A4 (flottants, m) ; **vitesse** 0x2244A8 (vx), 0x2244B0 (vz), en m par image, horizontale seulement (0x2244AC reste à 0) ; quatre valeurs par roue (avant gauche, avant droite, arrière gauche, arrière droite, à confirmer) : 0x2244C0..CC de 0 à 0,2 (la suspension : leur différence gauche-droite suit le roulis, corrélation 0,61 ; compression ou détente à trancher sur un saut), 0x2244D0..DC la hauteur du sol sous chaque roue (~0,37 m sous la caisse) ; 0x2244F0 (×4) une distance qui croît ; 0x224500 (×4) la vitesse (× 216,85 = km/h). **Orientation** : matrice à 0x224A10 suivie de sa position (transformation d'affichage) : ligne 0 = droite, ligne 1 = haut, ligne 2 = avant (repère direct), donc `heading` = atan2(M20, M22), `pitch` = asin(M21), `roll` = asin(−M01) ; ±6° de tangage et de roulis. Les autres voitures : d'autres matrices tous les 0x190. **Course** (vérifiés sur l'écran, 15 octobre) : **temps restant** 0x22CF88 (u32, 1/60 s, −1 par image ; l'écran affiche valeur / 60 tronqué, avec ~2 images de retard) ; **temps total** 0x1B0EB0 (u32, 1/60 s : exactement l'écran) ; **place** 0x22D01A (u16, 0 = premier ; copies 0x225A16, 0x13AB76) ; **spéciale** probablement 0x22CFA7 (0 = Desert, 1 = Mountain ; à confirmer sur d'autres spéciales). La spéciale Desert finit à 4353 (1'12"55), le temps restant passe à la suivante. **État** : ~~0x1B0C57 = 1 en course seulement~~ : **faux** (16 octobre) : cet octet suit le **rapport** (1, 2, 3, 4, 0 au point mort), il valait 1 au départ en première et 0 ailleurs par hasard. La course se reconnaît désormais au **temps total 0x1B0EB0 qui avance** (il s'arrête à la fin de la spéciale, au temps écoulé et en attract). **Les autres voitures** (16 octobre) : les blocs de quatre roues à 0x13AC68 + k × 0x198 (avant gauche, avant droite, arrière gauche, arrière droite : vérifié contre la matrice du joueur, empattement 2,58 m, voie 1,48 m), le joueur en 0 ; seules les voitures proches sont là (5 en championnat, le rival en Practice), les autres blocs à zéro ; position = centre des roues, avant = essieu arrière → avant, droite = roues gauches → droites | temps des tours (une seule boucle dans Desert), attract contre menus, revêtement |
 | Dirt Devils | Traces des roues à 0x2230D8 (8 voitures × 10 enregistrements de 0x38 : deux points **le long** de la trace, la normale du sol à +18 ; monde à y vers le bas : y retourné ; ~0,0608 m l'unité) ; km/h 0x25B2AA. **Trouvés le 15 octobre** : la voiture des joueurs elle-même n'est pas en flottants (introuvable par `table_find`) : position = milieu de l'enregistrement le plus récent, haut = la normale, avant = le mouvement ; **rapport** 0x2230AB (u8, 1 à 5, **boîte manuelle seulement**, 0 en automatique : trouvé par la méthode du propriétaire, à l'arrêt, montées et descentes de rapport toutes les 20 images) ; **régime** 0x25DA22 (u16, jusqu'à ~9120, vérifié sur le compte-tours) ; **temps restant** 0x228EC2 (u16, 1/60 s) ; temps total en secondes 0x25B2C0 et centièmes 0x25B2CC (u32 chacun ; les minutes restent à trouver). Boîte manuelle : maintenir un bouton de rapport en validant la voiture | minutes, tours, place, état, autres voitures (orientation) |
 | ECA | Position 0x2AC438/0x2AC440 ; vitesse 0x3B3DEC. **Trouvés le 15 octobre** : y 0x2AC43C ; **vitesse** 0x2AC474/78/7C (m par image) ; **matrice** 0x2AC258 (lignes gauche, haut, avant ; monde en miroir ; tangage jusqu'à −37° dans les côtes) ; **rapport** 0x2AD790 (u32, 1 à 4) ; **régime** 0x2AD788 (flottant, jusqu'à ~5000) | chronos, état du patient (« dégâts »), état |
-| Le Mans 24 | **Décodeur le 16 octobre** (voir §4.2) : position, cap, vitesse, rapport, régime, temps restant, état, 6 adversaires | tangage et roulis, tours, place, temps de course, attract contre menus |
+| Le Mans 24 | **Décodeur le 16 octobre, complété le 17** (voir §4.2) : position, orientation complète, vitesse, rapport, régime, tours, place, progression, temps du tour, de course, dernier et meilleur tour, temps restant, état, 6 adversaires avec leur progression | attract contre menus, tours et places des adversaires, boîte manuelle |
 | Harley-Davidson | rien | à trouver |
 
 ### 4.2 Le Mans 24 (16 octobre)
 
 **Décodeur `CLeMans24`** (`Model3Games.cpp`), vérifié en mode agent : vitesse lue 57,6 m/s contre 58,8 tirée des
-positions, cap égal à celui du mouvement, état `race` dès que le temps restant décompte.
+positions, cap égal à celui du mouvement, état `race` dès que le temps restant décompte. **Complété le 17 octobre**
+(dernier paragraphe) d'après une course de deux tours rejouée (`ap/lm_ramrec.py` : une grande fenêtre de RAM toutes
+les 30 images, de petites à chaque image, les images de l'écran ; `pkg/autopilot_data/lm_tel/race2laps.npz`).
 
 - **Échelle** : toutes les copies de la position bougent de **9,26 unités par mètre du compteur** (corrélation 0,993
   avec les km/h lus sur les images) : 1 unité = 0,108 m, pour que la vitesse tirée des positions soit celle du jeu.
@@ -137,7 +139,6 @@ positions, cap égal à celui du mouvement, état `race` dès que le temps resta
   0x195474, cos 0x195478 ; **km/h** flottant 0x195564 ; tableau de bord : **régime** u16 0x1AD5DC (limiteur 9990),
   **rapport** u8 0x1AD5E1 = rapport − 1 (17 images sur 19 contre l'écran ; boîte automatique, 6 rapports), km/h
   affichés u16 0x1AD5DA, un compteur à 0x1AD5E4 (+1 par seconde environ) ; **temps restant** flottant 0x17FD70 (s).
-  Pas encore de tangage ni de roulis (orientation tirée du cap seul).
 - **Adversaires** : 6 entrées de 0x1EC octets depuis 0x17CED4 (x à +0, z à +8, le tronçon u32 à +0x18, les coins
   d'un quadrilatère à +0x40), leur cap (sin, cos) à +0x20/+0x24 des entrées de 0x21C octets depuis 0x1858D8 (avec les
   prochains points de leur trajectoire). Déjà répartis sur le circuit quand le joueur sort des stands (la course de
@@ -147,8 +148,44 @@ positions, cap égal à celui du mouvement, état `race` dès que le temps resta
   après le GO (image 4497), position valable dès la première image. **Boîte manuelle pas obtenue** : volant tenu à
   droite ou à gauche, coups de volant, `GearShiftUp` sur l'écran de la boîte, toujours « AT ». Le jeu a un levier
   séquentiel (`shiftupdown`) et quatre boutons VIEW.
-- **Reste** : tangage et roulis, tours (le circuit fait ~5,9 km, des tours d'IA de 167 à 249 s), place, temps de
-  course, attract contre menus (`state_record.py`), les arrêts au stand (« Return to pit! »).
+- **Trouvés le 17 octobre** (contre l'écran : « Total Position 20th/40 », les temps des tours, l'horloge HOURS) :
+  - **Angles** juste avant la position, 0x1FDBB0/B4/B8 (flottants, radians de 0 à 2π, **une image d'avance** sur
+    sin/cos du cap) : A = le nez qui plonge (`pitch` = −A ramené à ±π ; A > 0 au freinage, corrélation −0,73 avec
+    dv/dt ; −2° à +1°), B = π − cap (0,4° de 0x195474/78 à une image près), C = penché à gauche (`roll` = −C ;
+    corrélation +0,55 avec vitesse × vitesse de lacet : la caisse penche vers l'extérieur des virages, **signe à
+    confirmer sur la borne** ; ±3,5°). Le bloc (angles et position) est effacé une image sur 256 et contient
+    n'importe quoi dans quelques autres (−2,2e38, des dénormaux, x à −2,2e38 et z à 10 : **l'ancien décodeur y
+    envoyait la voiture à 10³⁷ m**) : le décodeur garde alors la dernière valeur (8 images au plus, ensuite la copie
+    de 0x17E610 et le cap seul). Pas maximal de la position ainsi lue sur toute la course : 2,8 m d'une image à
+    l'autre.
+  - **Tours** : u8 0x17E509 = tours finis (copies 0x17F651, 0x18DE03, 0x19A89F). **Place** : u16 0x1799D4 (1 =
+    premier ; copie u8 0x17FE63), **nombre de voitures** u16 0x1799D6 (40).
+  - **Tronçon** du joueur u32 0x195488 : 2098 par tour (~2,83 m chacun ; tour mesuré 5928 m sur les positions, 5932
+    retenu), la ligne vers 2082 (le compteur de tours change entre 2071 et 2084). **Numéroté autrement dans la voie
+    des stands** (227 à 281 en sortant des stands, puis 36 sur la piste) : le **pourcentage du tour** u32 0x1902B0
+    (0 à 99, compté depuis 1,24 % avant la ligne) y reste juste et le remplace quand les deux s'écartent de plus de
+    5 %. `progress` = tours finis + part du tour ; près de la ligne, la plus proche de celle de l'image précédente.
+  - **Temps du tour** 0x17E0D4 et **temps de course** 0x181E8C (flottants, ms des chronos du jeu : 1000/60 par
+    image, une seconde du jeu dure 1,04 s à 57,5 images par seconde). **Pas de dernier ni de meilleur tour en RAM**
+    (le record du circuit, 2'00"000 par défaut, s'affiche à part) : le décodeur les tire du temps du tour qui
+    retombe à 0 pendant que le temps de course continue (une nouvelle course les efface). Le temps du tour lit 0
+    sur l'image du passage de la ligne, que le jeu compte dans le tour fini : dernier tour = dernière lecture +
+    1/60 s. 1er tour de la course rejouée : 90"114 à l'écran, 90,115 envoyé.
+  - **Horloge des 24 heures** 0x17FD28 (flottant, heures : 0 à 8,85 en 185 s), pas envoyée.
+  - **Adversaires** : leur tronçon (+0x18) a la même échelle ; ni tours ni places trouvés pour eux (le jeu les classe
+    d'après le joueur) : leur `progress` = celui du joueur + le plus court chemin vers leur tronçon, assez pour
+    `dist_*` et `gap_*`. Une entrée vide a `progress` à `null` (et passe en dernier dans le tri des plus proches).
+  - **Vérifié en mode agent** (17 octobre, la même course rejouée, la trame entière enregistrée à chaque image :
+    `ap/lm_telrec.py`, contrôlée par `ap/lm_telcheck.py` contre la RAM de `race2laps.npz` ; données dans
+    `pkg/autopilot_data/lm_tel/telcheck2/`) : tangage et roulis égaux à ceux de la RAM (aux images gardées près),
+    −1,9° à +0,9° et ±3,3° ; progression continue de 0,02 à 2,00 (−0,02 en revenant des stands sur la piste) ;
+    tour 2 à l'image 5399 (la progression passe 1 dès 5396, quand le tronçon franchit la ligne) ; places de 20e à 15e
+    sur 40 (16e à la fin) ; dernier et meilleur tour 90,115 ; les 6 adversaires toujours là, à moins d'un demi-tour du joueur ;
+    `dist_ahead`/`dist_behind` connus 93 % et 91 % du temps (médianes 370 m et 65 m). Les accélérations tirées des
+    positions sont celles du jeu : 32 m/s² au départ (0 à 28 m/s en 0,9 s, le compteur du jeu aussi), −65 à −90 m/s²
+    dans les chocs (la vitesse lue du jeu tombe autant) ; seul artefact, un choc sur une image gardée (pics de
+    ±1000 m/s² sur deux images, les images inutilisables du bloc tombant pendant les chocs).
+- **Reste** : attract contre menus (`state_record.py`), les arrêts au stand (« Return to pit! »), la boîte manuelle.
 
 ### 4.1 Les clones (16 octobre)
 

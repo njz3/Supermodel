@@ -419,10 +419,11 @@ namespace Telemetry
       if (count < 0 || size_t(count) >= cars.size())
         return cars;
       const Vehicle &p = frame.player;
+      // (a car not on the track, its place or progress unknown, last)
       auto distance = [&](const Vehicle *v) {
-        if (!std::isnan(frame.lapLength))
-          return std::fabs(v->progress - p.progress) * frame.lapLength;
-        return std::hypot(v->x - p.x, v->z - p.z);
+        float d = !std::isnan(frame.lapLength) ? std::fabs(v->progress - p.progress) * frame.lapLength
+                                               : std::hypot(v->x - p.x, v->z - p.z);
+        return std::isnan(d) ? INFINITY : d;
       };
       std::stable_sort(cars.begin(), cars.end(), [&](const Vehicle *a, const Vehicle *b) { return distance(a) < distance(b); });
       cars.resize(size_t(count));
