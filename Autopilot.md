@@ -305,6 +305,23 @@ basse pour commencer (le jeu ne sait pas où sont les mains : les chocs arrivent
   `records/srally2_snowy_record_ffb/` (états mis à jour avec les effets, FFBRework §2.9 ; rejeu exact). Les
   originaux restent ; les remplacer par ces dossiers est au propriétaire.
 
+### 5.7 ter 17 octobre
+
+- **Le Mans 24, la sortie des stands** : un profil de décalage par circuit dans `ap_driver.py` (`PIT_EXITS`) :
+  la voie des stands, couloir de 33 à 49 m à droite de la trajectoire, puis la sortie qui rejoint la piste en biais
+  130 à 180 m plus loin (relevé sur les courses du 16 octobre : en visant la trajectoire, la voiture raclait le mur
+  45 s). Sur la piste en **7 s sans un choc** au lieu de 45 à 49 s.
+- **Le Mans 24, le plan de vitesse** : celui de la courbure (comme Daytona 2 et Scud) au lieu de la vitesse de l'IA
+  (54 m/s) ; en 70 s : 3560 m (IA), 3966 (adhérence 20), 4160 (30), 4262 (40), **4274 (50, 4e)**, 4254 (60, plus de
+  chocs). Plus de place pour doubler (5 ou 8 m de part et d'autre) : 300 m de moins. Retenu : `a_lat` 50.
+  Course longue : **11 804 m (2 tours), 2e**, temps écoulé à 185 s (avant : 4010 m en 120 s, 6e) ; 244 chocs, à
+  étudier. Le jeu demandait un arrêt au stand (« Return to pit! ») : pas encore traité.
+- **Championnat de Sega Rally 2** (`ap_search9`, réglages par spéciale) : Desert en 66 s, temps écoulé à **3256 m sur
+  3448 de Mountain** (2915 m avant). Mountain seule (`ap_search_mtn`, mode Practice, sans adversaires) finit en 72,6 s,
+  2e ; dans le championnat elle est plus lente (adversaires). La recherche seule essayait le facteur de vitesse 1,25 :
+  relancée avec (`ap_search10`, `--mults 1.0,1.12,1.25`).
+- **Le merge upstream** (PPC, New3D) : les cinq courses enregistrées se rejouent à l'identique, image par image.
+
 ### 5.8 À faire
 
 - Gagner : l'élastique de Daytona 2, les 1 à 2 s qui manquent à Scud et au championnat de Sega Rally 2.
