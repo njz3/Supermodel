@@ -187,9 +187,39 @@ les 30 images, de petites à chaque image, les images de l'écran ; `pkg/autopil
     ±1000 m/s² sur deux images, les images inutilisables du bloc tombant pendant les chocs).
 - **Reste** : attract contre menus (`state_record.py`), les arrêts au stand (« Return to pit! »), la boîte manuelle.
 
-### 4.1 Les clones (16 octobre)
+### 4.1 Les clones (16 octobre ; tous revus le 17)
 
-`clone_check.py` (BFF) : la NVRAM du parent copiée au nom du clone, un état de course
+**17 octobre : tous les clones démarrés**, chacun avec son parent comme référence, par les mêmes étapes
+(`pkg/autopilot_data/clones_check3/`, outils dans son dossier `tools/`) : sa NVRAM (celle du parent copiée s'il n'en
+a pas), le départ de la course du parent par `to_race.py` avec les mêmes choix de menus
+(`courses_clones/<clone>/<course>/race.st`), la télémétrie jugée comme `clone_check.py` (un départ en ligne droite),
+puis l'autopilote sur la ligne du parent pendant 120 s avec le retour de force enregistré (`ap_run.py --ffb`, la ROM
+remplacée). Sans télémétrie, le retour de force est mesuré volant balayé, accélérateur au plancher. La télémétrie des
+clones a d'abord été essayée avec le décodeur du parent pour tous (une compilation d'essai), puis seuls ceux qui le
+gardent y ont été branchés. Driveboard émulée (Z80), une instance par jeu, priorité basse.
+
+| Clone (zip) | Version | Démarre | Retour de force | Télémétrie | Autopilote (120 s) |
+|:--|:--|:-:|:--|:--|:--|
+| `dayto2pe` | Daytona USA 2 Power Edition | oui | oui (forces comme le parent, plus des vibrations) | **adresses du parent** | 9,7 km, tour 7 (parent : 10,0 km, tour 7) |
+| `scudau` | Scud Race Australie | oui | oui | **adresses du parent** | 8,7 km, tour 4 (parent : 9,2 km) |
+| `scuddx` (`scuddx.zip`, `scudj.zip`) | Scud Race Deluxe rév. A | oui (des cadres du HUD mal affichés) | oui, sans télémétrie | **ailleurs** : voitures de 0x330 octets (le parent 0x300, décalages différents), temps restant 0x102010, temps de course 0x10200C, temps des tours 0x103284 (`clone_map.py`) ; pas de décodeur | impossible sans télémétrie |
+| `scudplus`, `scudplusa` | Scud Race Plus (EPR-19338) | oui | oui, sans télémétrie | **ailleurs** ; pas de décodeur | impossible sans télémétrie |
+| `srally2dx` (`srally2dx.zip`, `srally2x.zip`) | Sega Rally 2 Deluxe | oui | oui | **ailleurs** (zéros aux adresses du parent) ; pas de décodeur | impossible sans télémétrie |
+| `srally2p` | Sega Rally 2 prototype | **non** : « ...INFINITE_LOOP_WHEN_ILLEGAL at file effect.c » | — | — | — |
+| `srally2pa` | Sega Rally 2 prototype A | **non** : écran noir (14 000 images), « CMODEL3 : unknown R32 : 28 » ; le « ailleurs » du 16 octobre était faux | — | — | — |
+| `dirtdvlsu` | Dirt Devils USA | oui | oui | **adresses du parent**, sa vitesse dans **ses mph : 8/15 des km/h** (« 37 mph » là où les autres versions affichent « 70 km/h », pas 0,621) : décodeur du parent avec cette échelle | 5 tours finis en 117 s, 8e (parent : 118 s, 8e) |
+| `dirtdvlsau` (`dirtdvlsau.zip`, `dirtdvlsa.zip`), `dirtdvlsj`, `dirtdvlsg` | Dirt Devils Australie, Japon, Export G | oui | oui | **adresses du parent** | 5 tours finis en 117-118 s, 8e |
+| `ecau`, `ecaj` | ECA USA, Japon | oui | oui ; la version Export (le parent) envoie en plus des commandes `2x` et `6x` et ses forces sont plus faibles dans la même conduite (0,03 de moyenne contre 0,17) : une différence entre les jeux | **adresses du parent** | pas de ligne pour ECA (une ville), comme le parent |
+| `ecap` | ECA test de location US | oui (en mph) | oui | **ailleurs** (zéros) ; pas de décodeur | pas de ligne |
+| `harleya` (`harley.zip` ; `harleyb.zip` est le parent `harley`) | Harley-Davidson rév. A | oui (démo, pièces acceptées, comme le parent) | sans objet (pas de driveboard dans Supermodel) | pas de décodeur, comme le parent | sans objet |
+| `scuddxo`, `swtrilgya`, `swtrilgyp` | | pas de zip | | | |
+
+`scuda.zip` ne contient que les quatre ROMs programme de `scud` (incomplet) et `scudhamm.zip` (Scud Hammer) n'est
+pas un jeu Model 3. Les décodeurs des clones de Dirt Devils et d'ECA ont les mêmes manques que ceux de leurs parents
+(place, état). À faire : les adresses de `scuddx`, `scudplus`, `srally2dx` et `ecap` (leur retour de force marche
+déjà), puis leurs autopilotes.
+
+Le 16 octobre, `clone_check.py` (BFF) : la NVRAM du parent copiée au nom du clone, un état de course
 (`to_race.py`), puis `tel` jugé sur un départ en ligne droite (position contre vitesse, cap contre
 mouvement, angles, rapport, régime, temps restant, place, état).
 
@@ -200,7 +230,7 @@ mouvement, angles, rapport, régime, temps restant, place, état).
 | `scuddx` (`scudj.zip`) | Scud Race Deluxe, rév. A | **ailleurs** : voiture du joueur à 0x181460 (matrice 0x1814B0, vitesse à un autre décalage), les autres dans une table de pas 0x330 depuis 0x188110 ; temps restant 0x102008 |
 | `scudplus`, `scudplusa` | Scud Race Plus | **ailleurs** (en course, décodeur du parent muet) ; panneau CONDITION (dégâts) |
 | `srally2dx` (`srally2x.zip`) | Sega Rally 2 Deluxe | **ailleurs** (en course, valeurs fausses avec les adresses du parent) |
-| `srally2pa` | Sega Rally 2 prototype A | **ailleurs** |
+| `srally2pa` | Sega Rally 2 prototype A | ~~ailleurs~~ : ne démarre pas (17 octobre) |
 | `srally2p` | Sega Rally 2 prototype | s'arrête sur un message d'erreur au démarrage (« ...LOOP WHEN ILLEGAL ») |
 | `scuddxo` | Scud Race Deluxe | pas de zip |
 

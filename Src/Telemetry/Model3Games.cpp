@@ -318,11 +318,18 @@ namespace Telemetry
      * floats, about 0.0608 m a unit, its y downwards) and the ground's normal at +0x18. The player's car: the newest
      * record's middle, its forward the motion, its up the ground's normal. 0x25B2AA u16 km/h, 0x2230AB u8 the gear
      * in the manual gearbox (1..5; 0 in the automatic one), 0x25DA22 u16 rpm, 0x228EC2 u16 the time left (1/60 s),
-     * 0x224A74 u8 the laps done.
+     * 0x224A74 u8 the laps done. The USA version (dirtdvlsu) keeps the same addresses, its speed in its own mph:
+     * 8/15 of the km/h of the others (37 mph where they show 70 km/h).
      */
     class CDirtDevils : public IDecoder
     {
     public:
+      // kmhPerUnit: the km/h of one unit of the speed shown
+      explicit CDirtDevils(float kmhPerUnit = 1)
+        : m_kmhPerUnit(kmhPerUnit)
+      {
+      }
+
       bool Decode(CModel3 &model3, uint64_t frame, Frame &out) override
       {
         CRam ram(model3);
@@ -362,7 +369,7 @@ namespace Telemetry
             float right[3] = { up[1] * f[2] - up[2] * f[1], up[2] * f[0] - up[0] * f[2], up[0] * f[1] - up[1] * f[0] };
             SetOrientation(v, right, up, f);
             m_last[0] = v.x; m_last[1] = v.y; m_last[2] = v.z;
-            v.speed = ram.U16(0x25B2AA) / 3.6f;
+            v.speed = ram.U16(0x25B2AA) * m_kmhPerUnit / 3.6f;
             int gear = ram.U8(0x2230AB);
             v.gear = gear == 0 ? kUnknown : gear;
             v.gears = 5;
@@ -379,6 +386,7 @@ namespace Telemetry
       }
 
     private:
+      float m_kmhPerUnit;
       float m_last[3] = { 0, 0, 0 };
       float m_forward[3] = { 0, 0, 1 };
     };
@@ -641,9 +649,10 @@ namespace Telemetry
 
   std::unique_ptr<IDecoder> MakeDecoder(const Game &game)
   {
-    // The clones checked to keep their parent's addresses (clone_check.py, Telemetry.md). Scud Race Deluxe and Plus
-    // and the other Sega Rally 2 versions keep theirs elsewhere: no decoder yet
-    static const char *const kSameAsParent[] = { "dayto2pe", "scudau" };
+    // The clones checked to keep their parent's addresses (clone_check.py, Telemetry.md). Scud Race Deluxe and Plus,
+    // Sega Rally 2 Deluxe and the location test of ECA keep theirs elsewhere: no decoder yet
+    static const char *const kSameAsParent[] = { "dayto2pe", "scudau", "dirtdvlsau", "dirtdvlsj", "dirtdvlsg", "ecau",
+                                                 "ecaj" };
     for (const char *clone : kSameAsParent)
     {
       if (game.name == clone)
@@ -662,6 +671,8 @@ namespace Telemetry
       return std::make_unique<CSegaRally2>();
     if (game.name == "dirtdvls")
       return std::make_unique<CDirtDevils>();
+    if (game.name == "dirtdvlsu")
+      return std::make_unique<CDirtDevils>(15.0f / 8.0f);
     if (game.name == "eca")
       return std::make_unique<CEmergencyCallAmbulance>();
     if (game.name == "lemans24")
