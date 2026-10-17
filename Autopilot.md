@@ -278,6 +278,33 @@ Sur Racecab1 : `ap_replay.py RECORD_DIR ROMS RUNDIR --device --live` avec l'exé
 scripts BFF et numpy, le dossier Supermodel de la borne comme RUNDIR, BackForceFeeder lancé, une force
 basse pour commencer (le jeu ne sait pas où sont les mains : les chocs arrivent à pleine puissance).
 
+### 5.7 bis Fin du 16 octobre (pour reprendre)
+
+- **Scud Beginner, recherche avec une pénalité de choc de 60 m** (`ap_search4`) : temps écoulé au 4e tour,
+  **18e**, 11 685 m, 6 chocs. L'arrivée est vers 11 920 m (départ à ~720 m de la ligne, 4 tours de 2800 m) :
+  il manque ~235 m, 3 s (et non 100 m comme écrit plus haut pour la précédente).
+- **Sega Rally 2 : le louvoiement trouvé.** Dans la recherche du championnat, la voiture ne freinait jamais et
+  accélérait 96 % du temps, mais son nez partait de ±60° toutes les 5 s (la direction en retard) : 150 km/h de
+  moyenne au lieu de 195 prévus. Grille de réglages sur 60 s de Desert (scratchpad `ap/sr2_weave.py`) :
+  anticipation 0,6 s, k_yaw 0,6, k_head 1,0 : **3020 m au lieu de 2454** (+23 %). Mais sur Mountain, Snowy et
+  Riviera, l'anticipation perd 6 à 11 % : `ap_driver.py` a maintenant `COURSE_GAINS` (réglages par circuit, par
+  dessus ceux du jeu), avec Desert seul (**non committé dans BFF**).
+- **Championnat avec ce réglage** : la recherche a **fini Desert pour la première fois** (67 s, 13e). Mais l'octet de
+  la spéciale (0x22CFA7) relevé au départ d'une spéciale y vaut encore la précédente : passé à 1 peu après, il a
+  été pris pour une fin de spéciale à 1500 m de Mountain (`ap_run.py` le relève maintenant après 300 m). Relancées
+  (`ap_search6`, `ap_runs6`) : la recherche finit Desert, temps écoulé à **2915 m sur 3448 de Mountain** (~15 s) ;
+  la course de référence à 2746 m. Sur Mountain, les réglages de direction ne changent presque rien (+1,5 %) : la
+  vitesse prévue limite (adhérence du plan à l'essai).
+- **Le Mans 24** (16 octobre au soir) : décodeur de télémétrie (Telemetry.md §4.2), `lemans24_24h` dans
+  `ap_courses.py` (boîte automatique : `lever` « auto »), la trajectoire des 6 adversaires (5,9 km, 4 tours de 167 à
+  249 s). L'autopilote fait 4 km en 120 s, mais perd ~50 s à sortir des stands (la voie des stands est 33 à 49 m à
+  droite de la trajectoire, il vise la piste à travers le mur) ; le jeu demande un arrêt au stand (« Return to
+  pit! »).
+- **Correctif d'`ap_speed.py`** (le journal plus long d'une image que `car_near`) : BFF 717f6da, poussé.
+- **Courses enregistrées de Sega Rally 2 avec le ressort** : `records/srally2_mountain_record_ffb/` et
+  `records/srally2_snowy_record_ffb/` (états mis à jour avec les effets, FFBRework §2.9 ; rejeu exact). Les
+  originaux restent ; les remplacer par ces dossiers est au propriétaire.
+
 ### 5.8 À faire
 
 - Gagner : l'élastique de Daytona 2, les 1 à 2 s qui manquent à Scud et au championnat de Sega Rally 2.
