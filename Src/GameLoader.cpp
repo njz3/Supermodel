@@ -686,7 +686,7 @@ void GameLoader::IdentifyGamesInZipArchive(
   }
 }
 
-void GameLoader::ChooseGameInZipArchive(std::string *chosen_game, bool *missing_parent_roms, const ZipArchive &zip, const std::string &zipfilename) const
+void GameLoader::ChooseGameInZipArchive(std::string *chosen_game, bool *missing_parent_roms, const ZipArchive &zip, const std::string &zipfilename, const std::string &requested_game) const
 {
   chosen_game->clear();
   *missing_parent_roms = false;
@@ -726,6 +726,44 @@ void GameLoader::ChooseGameInZipArchive(std::string *chosen_game, bool *missing_
   for (auto &game_name: complete_merged_games)
   {
     incomplete_child_games.erase(game_name);
+  }
+
+  // A game asked for by name (-game) is taken whatever else the zip file holds,
+  // as long as it can be loaded from it, or from it and its parent's zip file:
+  // in a MAME merged ROM set, the parent's zip file holds every clone too
+  if (!requested_game.empty())
+  {
+    auto it = m_game_info_by_game.find(requested_game);
+    if (it == m_game_info_by_game.end())
+    {
+      ErrorLog("'%s' is not a game Supermodel knows (see -print-games).", requested_game.c_str());
+      return;
+    }
+    if (complete_merged_games.count(requested_game) || (!IsChildSet(it->second) && complete_games.count(requested_game)))
+      chosen_game->assign(requested_game);
+    else if (incomplete_child_games.count(requested_game))
+    {
+      chosen_game->assign(requested_game);
+      *missing_parent_roms = true;  // the rest comes from the parent's zip file
+    }
+    else
+    {
+      auto &missing = IsChildSet(it->second) ? files_missing_by_merged_game : files_missing_by_game;
+      auto files = missing.find(requested_game);
+      if (files != missing.end())
+      {
+        for (auto &file: files->second)
+        {
+          ErrorLog("'%s' (CRC32 0x%08x) not found in '%s' for game '%s'.", file->filename.c_str(), file->crc32, zipfilename.c_str(), requested_game.c_str());
+        }
+      }
+      std::set<std::string> candidates(complete_games);
+      candidates.insert(complete_merged_games.begin(), complete_merged_games.end());
+      candidates.insert(incomplete_child_games.begin(), incomplete_child_games.end());
+      ErrorLog("Game '%s' not found in '%s' (games found: %s).", requested_game.c_str(), zipfilename.c_str(),
+               candidates.empty() ? "none" : Util::Format(", ").Join(candidates).str().c_str());
+    }
+    return;
   }
 
   // Complete merged games take highest precedence
@@ -773,7 +811,7 @@ void GameLoader::ChooseGameInZipArchive(std::string *chosen_game, bool *missing_
   candidates.insert(complete_merged_games.begin(), complete_merged_games.end());
   candidates.insert(incomplete_child_games.begin(), incomplete_child_games.end());
   if (candidates.size() > 1)
-    ErrorLog("Multiple games found in '%s' (%s). Loading '%s'.", zipfilename.c_str(), Util::Format(", ").Join(candidates).str().c_str(), chosen_game->c_str());
+    ErrorLog("Multiple games found in '%s' (%s). Loading '%s' (-game=<name> picks another).", zipfilename.c_str(), Util::Format(", ").Join(candidates).str().c_str(), chosen_game->c_str());
 }
 
 bool GameLoader::ComputeRegionSize(uint32_t *region_size, const GameLoader::Region::ptr_t &region, const ZipArchive &zip) const
@@ -993,7 +1031,7 @@ std::string StripFilename(const std::string &filepath)
   return std::string(filepath, 0, last_slash + 1);
 }
 
-bool GameLoader::Load(Game *game, ROMSet *rom_set, const std::string &zipfilename) const
+bool GameLoader::Load(Game *game, ROMSet *rom_set, const std::string &zipfilename, const std::string &requested_game) const
 {
   *game = Game();
 
@@ -1005,7 +1043,7 @@ bool GameLoader::Load(Game *game, ROMSet *rom_set, const std::string &zipfilenam
   // Pick the game to load (there could be multiple ROM sets in a zip file)
   std::string chosen_game;
   bool missing_parent_roms = false;
-  ChooseGameInZipArchive(&chosen_game, &missing_parent_roms, zip, zipfilename);
+  ChooseGameInZipArchive(&chosen_game, &missing_parent_roms, zip, zipfilename, requested_game);
   if (chosen_game.empty())
     return true;
 
@@ -1028,6 +1066,27 @@ bool GameLoader::Load(Game *game, ROMSet *rom_set, const std::string &zipfilenam
   if (error)
     *game = Game();
   return error;
+}
+
+bool GameLoader::HoldsFilesOf(const std::string &zipfilename, const std::string &game_name) const
+{
+  auto it = m_regions_by_game.find(game_name);
+  if (it == m_regions_by_game.end())
+    return false;
+  ZipArchive zip;
+  if (LoadZipArchive(&zip, zipfilename))
+    return false;
+  for (auto &v: it->second)
+  {
+    if (!v.second->required)
+      continue;
+    for (auto &file: v.second->files)
+    {
+      if (!FileExistsInZipArchive(file, zip))
+        return false;
+    }
+  }
+  return true;
 }
 
 GameLoader::GameLoader(const std::string &xml_file)
