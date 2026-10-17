@@ -225,7 +225,7 @@ touché qu'aux endroits indispensables :
 
 | Fichier | Changement | Pourquoi |
 |:--|:--|:--|
-| `WheelBoard.cpp` | `FB` (gain) ne multiplie plus que le couple, plus la vibration (§2.1). Ressort `FC` 4 : gain × `18`, 47 % au gain 5, 75 % au gain 8, plein dès 11 (avant : gain × `10` + `0F`, 33 % et 56 %) | Dirt Devils trop faible sur la borne, alors que la vraie borne et le mode m2pac donnaient des vibrations et un ressort très forts. Avec STEERING FORCE à 50 % (`FB BF`), la vibration était divisée par deux. Le ressort de la carte servo est une boucle de position raide, fort aux gains envoyés (5 à 8 dans Dirt Devils, rangée DIP 4), alors qu'un ressort DirectInput croît avec l'angle sur toute la course du volant. Un premier essai (gain × `20`, plein dès 8) a oscillé sur Racecab1 (§3.4) : adouci le 15 octobre (correction C, §4 point 3) |
+| `WheelBoard.cpp` | `FB` (gain) ne multiplie plus que le couple, plus la vibration (§2.1) ; **remis sur la vibration le 17 octobre** (§2.13). Ressort `FC` 4 : gain × `18`, 47 % au gain 5, 75 % au gain 8, plein dès 11 (avant : gain × `10` + `0F`, 33 % et 56 %) | Dirt Devils trop faible sur la borne, alors que la vraie borne et le mode m2pac donnaient des vibrations et un ressort très forts. Avec STEERING FORCE à 50 % (`FB BF`), la vibration était divisée par deux. Le ressort de la carte servo est une boucle de position raide, fort aux gains envoyés (5 à 8 dans Dirt Devils, rangée DIP 4), alors qu'un ressort DirectInput croît avec l'angle sur toute la course du volant. Un premier essai (gain × `20`, plein dès 8) a oscillé sur Racecab1 (§3.4) : adouci le 15 octobre (correction C, §4 point 3) |
 | `WheelBoard.cpp` | **`FD` → frottement** (`FFFriction`) : quartet haut × `20` (1 = 12 %, 5 = 62 %) | Correction C (§3.4, §4 point 3). `FD` est sans doute l'amortissement de la carte servo : 11 à 51 avec les ressorts de Scud et de Sega Rally 2, `00` avec les poussées de Scud et toujours sur Daytona 2. BFF joue le frottement comme une force proportionnelle à la vitesse du volant (`TrqFromFriction`), donc comme un amortisseur. Réglable par `DirectInputFrictionMax` |
 | `DirectInputSystem.cpp/.h` | **Les effets ne sont plus redémarrés à chaque mise à jour** : `DIEP_START` (et `DIEP_DIRECTION`) seulement au premier envoi d'un effet et après un arrêt (« stop all », perte de l'acquisition) ; sinon `DIEP_TYPESPECIFICPARAMS` seul. `dInputEffectPlaying` suit l'état de chaque effet | Correction A (§3.4). Vérifié par vJoy le 15 octobre : campagne 4 (avant), 1514 « start » pour 1514 mises à jour ; maintenant Dirt Devils 131 pour 3782 (une création et un redémarrage après chacun des 34 « stop all »), Sega Rally 2 2 pour 2268. Valeurs justes, même image. Candidat à une PR upstream |
 | `JoystickBoard.cpp` | Vibration sans le gain, comme les volants | Cohérence |
@@ -384,6 +384,28 @@ de Star Wars (EPR-21119) est simulé lui aussi (le même jour), le journal relev
 des axes (`A6`, `A7`) ; dans Supermodel la même suite de 5 406 commandes, autant d'effets (2 993), 1 % de NMI décalées.
 La carte joystick lit les axes réels dès le NMI qui répond `CB` (le NMI coupé en deux : sorties, puis axes). Seul le
 panneau (billboard) reste émulé.
+
+### 2.13 Le gain remis sur la vibration (17 octobre)
+
+Le propriétaire : sur la borne, les vibrations de Dirt Devils en driveboard simulée sont trop fortes par rapport au
+vrai jeu ; Scud Race est très fidèle.
+
+**Mesuré** (mode agent, Dirt Devils depuis la mise sous tension, une minute de course, cartes émulée et simulée) :
+- **La carte simulée et l'émulée vibrent pareil** : 32,6 s contre 34,7 s de vibration sur 60, au même niveau moyen
+  (68 %). Le jeu envoie ~200 commandes `3x` par minute, surtout `38`, `3C`, `3D` (50, 75 et 81 % dans la table de
+  §2.1), et `30` pour couper ; la carte servo vibre ~58 % du temps, NMI par NMI comme à la dernière NMI de chaque
+  image. Le moteur libre (`9x`) coupe aussi la vibration, par un « stop all ».
+- **Scud ne vibre presque jamais** : `37` et `35` en sortie de piste, une dizaine de fois en 11 minutes (capture de
+  §3.2). Sa fidélité valide le couple et le ressort, pas la vibration.
+- Depuis §2.8, la vibration ignorait le gain `FB` (en course, `E5` = 80 % avec la NVRAM neuve, `73`). Cette décision
+  venait de l'essai Racecab1 du 15 octobre (§3.4), fait quand chaque mise à jour redémarrait l'effet (correction A,
+  corrigée depuis) et avec le PC chargé ; avec une vibration continue, elle était trop forte.
+
+**Changé** : `WheelBoard.cpp`, `UpdateForceFeedback` et `ResendForceFeedback` : la vibration est de nouveau
+multipliée par le gain, comme le couple (MOTOR POWER ou STEERING FORCE du jeu, par ses commandes `7x` et `2x`). Les
+deux modes passent par cet étage. Mesuré ensuite : niveaux 32, 40, 59 et 64 %, moyenne 0,60 au lieu de 0,68, à
+l'identique en émulée et en simulée. Avec STEERING FORCE à 50 % (`FB BF`), la vibration est divisée par deux. La
+carte joystick de Star Wars (`JoystickBoard.cpp`) reste sans gain sur la vibration.
 
 ## 3. Les essais
 

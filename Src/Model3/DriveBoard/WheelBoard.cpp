@@ -995,15 +995,16 @@ void CWheelBoard::ProcessMotorPowers(void)
 
 void CWheelBoard::UpdateForceFeedback(void)
 {
-  // The servo board's gain scales the torque only: on a cabinet, with Dirt Devils' STEERING FORCE at 50 % (FB BF),
-  // its vibration and its spring stay strong. Not the frame's strongest torque: Sega Rally 2's road is its torque on
-  // for 8 NMIs, off for 8, which the last torque of each frame keeps (on one frame, off the next) and the strongest
-  // filled in (on all the time)
+  // The servo board's gain (FB: the game's MOTOR POWER or STEERING FORCE, through its 7x and 2x commands) scales the
+  // torque and the vibration, not the servo board's own spring. Dirt Devils vibrates half of a race at 50 to 81 %:
+  // without the gain, its vibration was stronger than on a cabinet. Not the frame's strongest torque: Sega Rally 2's
+  // road is its torque on for 8 NMIs, off for 8, which the last torque of each frame keeps (on one frame, off the
+  // next) and the strongest filled in (on all the time)
   if (m_twoPowerOutputs)
     SendMotorPowers();
   else
     SendConstantForce(m_constForce * m_servoGain / 0x7F);
-  SendVibrate(m_vibrate);
+  SendVibrate(m_vibrate * m_servoGain / 0x7F);
 }
 
 void CWheelBoard::SendMotorPowers(void)
@@ -1048,7 +1049,7 @@ void CWheelBoard::ResendForceFeedback(void)
   SendFriction(friction);
   SendDamper(damper);
   SendConstantForce(m_constForce * m_servoGain / 0x7F);
-  SendVibrate(m_vibrate);
+  SendVibrate(m_vibrate * m_servoGain / 0x7F);
 }
 
 
