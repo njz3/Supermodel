@@ -45,7 +45,7 @@ class CInputSystem;
 
 #define MAX_MAPPING_LENGTH 255
 
-#define NUM_FF_EFFECTS 4  // One per EForceFeedback effect, FFStop excepted
+#define NUM_FF_EFFECTS 5  // One per EForceFeedback effect, FFStop excepted
 
 enum EForceFeedback
 {
@@ -53,7 +53,8 @@ enum EForceFeedback
 	FFConstantForce = 0,
 	FFSelfCenter = 1,
 	FFFriction = 2,
-	FFVibrate = 3
+	FFVibrate = 3,
+	FFDamper = 4         // A force against the wheel's speed
 };
 
 struct ForceFeedbackCmd

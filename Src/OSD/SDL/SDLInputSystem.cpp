@@ -181,6 +181,7 @@ CSDLInputSystem::CSDLInputSystem(const Util::Config::Node& config, bool useGameC
     sdlConstForceMax(0),
     sdlSelfCenterMax(0),
     sdlFrictionMax(0),
+    sdlDamperMax(0),
     sdlVibrateMax(0)
 {
   memset(&eff, 0, sizeof(SDL_HapticEffect));
@@ -378,6 +379,23 @@ void CSDLInputSystem::OpenJoysticks()
         if (hapticDatas.effectFrictionForceID < 0)
           ErrorLog("Unable to create friction force effect for joystick %s (joy id=%d). Friction force will not be applied.", joyDetails.name, joyNum + 1);
       }
+
+      // damper effect
+      if (possibleEffect & SDL_HAPTIC_DAMPER)
+      {
+        memset(&eff, 0, sizeof(SDL_HapticEffect));
+        eff.type = SDL_HAPTIC_DAMPER;
+        eff.periodic.direction.type = SDL_HAPTIC_CARTESIAN;
+        eff.condition.delay = 0;
+        eff.condition.length = SDL_HAPTIC_INFINITY;
+        eff.condition.left_sat[0] = 0xFFFF;
+        eff.condition.right_sat[0] = 0xFFFF;
+        eff.condition.left_coeff[0] = 0;
+        eff.condition.right_coeff[0] = 0;
+        hapticDatas.effectDamperForceID = SDL_HapticNewEffect(hapticDatas.SDLhaptic, &eff);
+        if (hapticDatas.effectDamperForceID < 0)
+          ErrorLog("Unable to create damper effect for joystick %s (joy id=%d). Damper will not be applied.", joyDetails.name, joyNum + 1);
+      }
     }
 
     if (joyDetails.hasFFeedback && hapticDatas.SDLhaptic != NULL && numHapticAxes == 0) // pad with rumble. Note : SDL_HapticRumbleSupported() is not enough to detect rumble pad only because joystick or wheel may have also rumble
@@ -421,6 +439,8 @@ void CSDLInputSystem::CloseJoysticks()
         SDL_HapticDestroyEffect(m_SDLHapticDatas[i].SDLhaptic, m_SDLHapticDatas[i].effectSpringForceID);
       if (m_SDLHapticDatas[i].effectFrictionForceID >= 0)
         SDL_HapticDestroyEffect(m_SDLHapticDatas[i].SDLhaptic, m_SDLHapticDatas[i].effectFrictionForceID);
+      if (m_SDLHapticDatas[i].effectDamperForceID >= 0)
+        SDL_HapticDestroyEffect(m_SDLHapticDatas[i].SDLhaptic, m_SDLHapticDatas[i].effectDamperForceID);
 
       SDL_HapticClose(m_SDLHapticDatas[i].SDLhaptic);
     }
@@ -644,6 +664,13 @@ bool CSDLInputSystem::ProcessForceFeedbackCmd(int joyNum, int axisNum, ForceFeed
       FrictionForceEffect(ffCmd.force * (float)(sdlFrictionMax / 100.0f), joyNum);
       break;
 
+    case FFDamper:
+      sdlDamperMax = m_config["SDLDamperMax"].ValueAs<unsigned>();
+      if (sdlDamperMax == 0)
+        return false;
+      DamperForceEffect(ffCmd.force * (float)(sdlDamperMax / 100.0f), joyNum);
+      break;
+
     case FFVibrate:
       sdlVibrateMax = m_config["SDLVibrateMax"].ValueAs<unsigned>();
       if (sdlVibrateMax == 0)
@@ -746,6 +773,7 @@ void CSDLInputSystem::StopAllEffect(int joyNum)
   StopVibrationforce(joyNum);
   StopSpringforce(joyNum);
   StopFrictionforce(joyNum);
+  StopDamperforce(joyNum);
 }
 
 void CSDLInputSystem::StopConstanteforce(int joyNum)
@@ -827,6 +855,26 @@ void CSDLInputSystem::StopFrictionforce(int joyNum)
   if (SDL_HapticEffectSupported(m_SDLHapticDatas[joyNum].SDLhaptic, &eff))
   {
     SDL_HapticUpdateEffect(m_SDLHapticDatas[joyNum].SDLhaptic, m_SDLHapticDatas[joyNum].effectFrictionForceID, &eff);
+  }
+
+}
+
+void CSDLInputSystem::StopDamperforce(int joyNum)
+{
+  // stop damper effect
+  memset(&eff, 0, sizeof(SDL_HapticEffect));
+  eff.type = SDL_HAPTIC_DAMPER;
+  eff.periodic.direction.type = SDL_HAPTIC_CARTESIAN;
+  eff.condition.delay = 0;
+  eff.condition.length = SDL_HAPTIC_INFINITY;
+  eff.condition.left_sat[0] = 0xFFFF;
+  eff.condition.right_sat[0] = 0xFFFF;
+  eff.condition.left_coeff[0] = 0;
+  eff.condition.right_coeff[0] = 0;
+
+  if (SDL_HapticEffectSupported(m_SDLHapticDatas[joyNum].SDLhaptic, &eff))
+  {
+    SDL_HapticUpdateEffect(m_SDLHapticDatas[joyNum].SDLhaptic, m_SDLHapticDatas[joyNum].effectDamperForceID, &eff);
   }
 
 }
@@ -921,6 +969,27 @@ void CSDLInputSystem::FrictionForceEffect(float force, int joyNum)
     SDL_HapticUpdateEffect(m_SDLHapticDatas[joyNum].SDLhaptic, m_SDLHapticDatas[joyNum].effectFrictionForceID, &eff);
 
     SDL_HapticRunEffect(m_SDLHapticDatas[joyNum].SDLhaptic, m_SDLHapticDatas[joyNum].effectFrictionForceID, 1);
+  }
+
+}
+
+void CSDLInputSystem::DamperForceEffect(float force, int joyNum)
+{
+  memset(&eff, 0, sizeof(SDL_HapticEffect));
+  eff.type = SDL_HAPTIC_DAMPER;
+  eff.constant.direction.type = SDL_HAPTIC_CARTESIAN;
+  eff.condition.delay = 0;
+  eff.condition.length = SDL_HAPTIC_INFINITY;
+  eff.condition.left_sat[0] = 0xffff;
+  eff.condition.right_sat[0] = 0xffff;
+  eff.condition.left_coeff[0] = (int)(force * INT16_MAX);
+  eff.condition.right_coeff[0] = (int)(force * INT16_MAX);
+
+  if (SDL_HapticEffectSupported(m_SDLHapticDatas[joyNum].SDLhaptic, &eff))
+  {
+    SDL_HapticUpdateEffect(m_SDLHapticDatas[joyNum].SDLhaptic, m_SDLHapticDatas[joyNum].effectDamperForceID, &eff);
+
+    SDL_HapticRunEffect(m_SDLHapticDatas[joyNum].SDLhaptic, m_SDLHapticDatas[joyNum].effectDamperForceID, 1);
   }
 
 }

@@ -317,6 +317,7 @@ namespace Agent
     case FFSelfCenter:    return "selfcenter";
     case FFFriction:      return "friction";
     case FFVibrate:       return "vibrate";
+    case FFDamper:        return "damper";
     default:              return "unknown";
     }
   }

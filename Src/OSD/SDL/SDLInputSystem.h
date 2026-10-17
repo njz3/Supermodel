@@ -81,6 +81,7 @@ private:
 	unsigned sdlConstForceMax;
 	unsigned sdlSelfCenterMax;
 	unsigned sdlFrictionMax;
+	unsigned sdlDamperMax;
 	unsigned sdlVibrateMax;
 	struct hapticInfo
 	{
@@ -89,6 +90,7 @@ private:
 		int effectVibrationID = -1;
 		int effectSpringForceID = -1;
 		int effectFrictionForceID = -1;
+		int effectDamperForceID = -1;
 	};
 	std::vector<hapticInfo> m_SDLHapticDatas;
 
@@ -138,6 +140,8 @@ protected:
 
 	void StopFrictionforce(int joyNum);
 
+	void StopDamperforce(int joyNum);
+
 	void VibrationEffect(float strength, int joyNum);
 
 	void ConstantForceEffect(float force, int dir, int length, int joyNum);
@@ -145,6 +149,8 @@ protected:
 	void SpringForceEffect(float force, int joyNum);
 
 	void FrictionForceEffect(float force, int joyNum);
+
+	void DamperForceEffect(float force, int joyNum);
 
 	bool HasBasicForce(SDL_Haptic* hap);
 

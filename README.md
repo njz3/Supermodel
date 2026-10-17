@@ -107,3 +107,17 @@ If you try and run a macOS binary that was downloaded from the internet and/or b
 * Close the terminal window that opens (after clicking open)
 
 Details: https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unidentified-developer-mh40616/mac
+
+## Note: Le Mans 24's drive board
+
+Le Mans 24 talks to one of two drive boards, and so sends one of two sets of commands, chosen by CABINET TYPE in its
+service menu (GAME ASSIGNMENTS):
+
+* **TWIN-NORMAL**: the Model 2 drive board and motor board of Indy 500, with its program EPR-18261 (two motor powers).
+
+* **TWIN-LEMANS** (often a Japanese cabinet): the Model 3 drive board and motor board of Scud Race (the cabinet with
+  four VIEW buttons), with Scud Race's own program, EPR-19338A (a servo board).
+
+The drive board program in `Config/Games.xml` must match the cabinet type: `lemans24`'s `driveboard_program` region
+lists both, one of them commented out. With the wrong one, the board reads the game's commands as its own, and the
+force feedback is wrong.

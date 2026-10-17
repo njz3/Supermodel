@@ -1573,6 +1573,8 @@ Util::Config::Node DefaultConfig()
   config.Set("LegacySoundDSP", false, "Sound"); // New config option for games that do not play correctly with MAME's SCSP sound core.
   // CDriveBoard
   config.Set("ForceFeedback", false, "ForceFeedback");
+  // The drive board's program run by its Z80 (emulated), or its logic (simulated: EPR-18261 so far)
+  config.Set("SimulateDriveBoard", false, "ForceFeedback");
 
   // Platform-specific/UI
   config.Set("New3DEngine", true, "Video");
@@ -1612,6 +1614,7 @@ Util::Config::Node DefaultConfig()
   config.Set("DirectInputConstForceRightMax", 100, "ForceFeedback", 0, 100);
   config.Set("DirectInputSelfCenterMax", 100, "ForceFeedback", 0, 100);
   config.Set("DirectInputFrictionMax", 100, "ForceFeedback", 0, 100);
+  config.Set("DirectInputDamperMax", 100, "ForceFeedback", 0, 100);
   config.Set("DirectInputVibrateMax", 100, "ForceFeedback", 0, 100);
   // XInput ForceFeedback
   config.Set("XInputConstForceThreshold", 30, "ForceFeedback", 0, 100);
@@ -1622,6 +1625,7 @@ Util::Config::Node DefaultConfig()
   config.Set("SDLConstForceMax", 100, "ForceFeedback", 0, 100);
   config.Set("SDLSelfCenterMax", 100, "ForceFeedback", 0, 100);
   config.Set("SDLFrictionMax", 100, "ForceFeedback", 0, 100);
+  config.Set("SDLDamperMax", 100, "ForceFeedback", 0, 100);
   config.Set("SDLVibrateMax", 100, "ForceFeedback", 0, 100);
   config.Set("SDLConstForceThreshold", 30, "ForceFeedback", 0, 100);
 #else
@@ -1631,6 +1635,7 @@ Util::Config::Node DefaultConfig()
   config.Set("SDLConstForceMax", 100, "ForceFeedback", 0, 100);
   config.Set("SDLSelfCenterMax", 100, "ForceFeedback", 0, 100);
   config.Set("SDLFrictionMax", 100, "ForceFeedback", 0, 100);
+  config.Set("SDLDamperMax", 100, "ForceFeedback", 0, 100);
   config.Set("SDLVibrateMax", 100, "ForceFeedback", 0, 100);
   config.Set("SDLConstForceThreshold", 30, "ForceFeedback", 0, 100);
 #endif
@@ -1968,6 +1973,8 @@ static void Help(void)
   puts("");
   puts("Input Options:");
   puts("  -force-feedback         Enable force feedback (DirectInput, XInput)");
+  puts("  -simulate-driveboard    Simulate the drive board (the steering wheel ones)");
+  puts("  -emulate-driveboard     Emulate the drive board's Z80 [Default]");
   puts("  -config-inputs          Configure keyboards, mice, and game controllers");
 #ifdef SUPERMODEL_WIN32
   printf("  -input-system=<s>       Input system [Default: %s]\n", defaultConfig["InputSystem"].ValueAs<std::string>().c_str());
@@ -2094,6 +2101,8 @@ static ParsedCommandLine ParseCommandLine(int argc, char **argv)
     { "-emulate-netboard",    { "SimulateNet",      false } },
     { "-no-force-feedback",   { "ForceFeedback",    false } },
     { "-force-feedback",      { "ForceFeedback",    true } },
+    { "-simulate-driveboard", { "SimulateDriveBoard", true } },
+    { "-emulate-driveboard",  { "SimulateDriveBoard", false } },
 #ifdef SUPERMODEL_WIN32
     { "-background-input",    { "BackgroundInput",  true } },
     { "-no-background-input", { "BackgroundInput",  false } },

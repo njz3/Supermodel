@@ -272,6 +272,12 @@ public:
   typedef void (*IOObserver)(uint64_t nmi, uint8_t port, uint8_t value);
   static void SetIOObserver(IOObserver observer);
 
+protected:
+  // A simulated program's outputs and commands, told to the I/O observer as the Z80's are
+  void ObserveIO(UINT8 port, UINT8 value);
+
+public:
+
 
 protected:
 

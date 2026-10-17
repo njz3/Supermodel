@@ -1080,9 +1080,9 @@
         <file offset="0x000000" name="mpr-19869.22" crc32="0xEA1EF1CC" />
         <file offset="0x400000" name="mpr-19870.24" crc32="0x49C70296" />
       </region>
-      <!-- The game supports two cabinets, set by CABINET TYPE in its test menu: -->
-      <!-- STANDARD uses the Model 2 Indy 500 drive board, EPR-18261 (two motor powers), -->
-      <!-- LE MANS uses Scud Race's drive board, EPR-19338A (a servo board). -->
+      <!-- The game supports two cabinets, set by CABINET TYPE in its test menu (GAME ASSIGNMENTS): -->
+      <!-- TWIN-NORMAL uses the Model 2 Indy 500 drive board, EPR-18261 (two motor powers), -->
+      <!-- TWIN-LEMANS uses Scud Race's drive board, EPR-19338A (a servo board). -->
       <!-- The drive board program must match the cabinet type: comment and uncomment to switch. -->
       <region name="driveboard_program" stride="1" chunk_size="1" required="false">
         <file offset="0" name="epr-18261.ic9" crc32="0x0C7FAC58" />

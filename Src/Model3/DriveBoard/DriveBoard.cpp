@@ -303,6 +303,12 @@ void CDriveBoard::SetIOObserver(IOObserver observer)
   s_ioObserver = observer;
 }
 
+void CDriveBoard::ObserveIO(UINT8 port, UINT8 value)
+{
+  if (s_ioObserver != nullptr)
+    s_ioObserver(m_nmiCount, port, value);
+}
+
 void CDriveBoard::IOWrite8(UINT32 portNum, UINT8 data)
 {
     if (s_ioObserver != nullptr && (portNum == 0x29 || portNum == 0x2A || portNum == 0x2D || portNum == 0x2E))

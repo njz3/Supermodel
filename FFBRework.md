@@ -19,6 +19,8 @@ conversation.
   le banc et ce fichier sont committés et poussés sur `origin/dev/driveboard-ffb-fixes`. Les
   branches `pr/*` n'ont pas encore les changements de §2.8. Version d'essai pour la borne, faite
   avant ces commits avec le même code : `pkg/supermodel-0.3a-20261014-git-7999a82-ffbac-windows.zip`.
+  §2.9 (16 octobre : effets dans les sauvegardes d'état, amortisseur, frein d'EPR-18261) : compilé dans
+  `MSVC/x64/ReleaseFFB/`, vérifié en mode agent, **pas encore committé**.
 - **Le mode agent n'ira pas upstream** (décision du propriétaire, le 14 octobre) : il reste sur
   `dev`, comme outil de ses développements sur le retour de force. Pas de branche `pr/*` pour lui.
   `BackgroundInput` a la sienne, `pr/dinput-background-input`, posée sur
@@ -69,10 +71,10 @@ Les programmes des driveboards ont été désassemblés et commentés dans le d�
 
 | EPROM | Jeux | Dossier BFF |
 |:--|:--|:--|
-| EPR-19338A | Scud Race, Dirt Devils, ECA, Le Mans 24 (cabinet LE MANS) | `docs/EPR-19338A-ScudRace-DriveBoard` |
+| EPR-19338A | Scud Race, Dirt Devils, ECA, Le Mans 24 (cabinet TWIN-LEMANS) | `docs/EPR-19338A-ScudRace-DriveBoard` |
 | EPR-20985 | Daytona USA 2 | `docs/EPR-20985-Daytona2-DriveBoard` |
 | EPR-20512 | Sega Rally 2 | `docs/EPR-20512-SegaRally2-DriveBoard` |
-| EPR-18261 | Le Mans 24 (cabinet STANDARD), Indy 500 et sa famille Model 2 | `docs/EPR-18261-Indy500-DriveBoard` |
+| EPR-18261 | Le Mans 24 (cabinet TWIN-NORMAL), Indy 500 et sa famille Model 2 | `docs/EPR-18261-Indy500-DriveBoard` |
 | EPR-21119 | Star Wars Trilogy (joystick à retour de force, deux cartes servo) | `docs/EPR-21119-StarWars-DriveBoard` |
 
 Le résumé des protocoles, les schémas mermaid du démarrage (`CF`/`CE`/`CD`/`CC`) et ce que les jeux
@@ -88,7 +90,7 @@ envoient sont dans `DRIVEBOARD.md` de BFF.
 | **`FB` = gain** (`80`..`FF`, valeurs < `80` ignorées), appliqué à la force constante et à la vibration, pas au ressort de la carte servo | Ignoré avant : `2x` (16 niveaux), `7x` (MOTOR POWER 50-100 %) et le demi-gain après un power slide restaient sans effet | Courbes `fb_curve_70`..`75` ; essai : `57` avec MOTOR POWER 80 % donne −4251 sur vJoy, soit 53,5 % × 79,5 % |
 | **`FF` + toute valeur = moteur libre** | `FF 80`, qui suit le recentrage du volant en attract (cabinet `B0`), était ignoré : la dernière poussée restait (28 % sur Scud, 49 % sur Daytona 2) jusqu'à 30 s | Code d'attract des deux EPROM |
 | **Force constante et vibration envoyées une fois par image** (`UpdateForceFeedback` en fin de `RunFrame`) | Les ~9 NMI d'une image tournent d'un bloc : le volant ne sentait que la dernière valeur, au prix de rafales de `SetParameters` | - |
-| **EPR-18261** (Le Mans 24, cabinet STANDARD) : reconnu par son CRC32 `0C7FAC58` ; deux puissances 0-63, bits inversés et complémentés, force = montée − descente ; volant lu sur l'ADC canal 1 (port `24`) ; `ForceFeedbackStrength` → bits 5-7 des DIP 1, soit les interrupteurs 1-1..1-3 (sur cette carte, l'interrupteur n est le bit 8 − n, mesuré) | Supermodel lisait ces ports comme registre/valeur : **aucun effet** ; et le volant était lu sur le port `25` | README EPR-18261 de BFF ; **pas encore essayé** |
+| **EPR-18261** (Le Mans 24, cabinet TWIN-NORMAL) : reconnu par son CRC32 `0C7FAC58` ; deux puissances 0-63, bits inversés et complémentés, force = montée − descente ; volant lu sur l'ADC canal 1 (port `24`) ; `ForceFeedbackStrength` → bits 5-7 des DIP 1, soit les interrupteurs 1-1..1-3 (sur cette carte, l'interrupteur n est le bit 8 − n, mesuré) | Supermodel lisait ces ports comme registre/valeur : **aucun effet** ; et le volant était lu sur le port `25` | README EPR-18261 de BFF ; **pas encore essayé** |
 | Gain gardé dans un bloc de save state séparé, `WheelBoardServo` | Les anciens états se chargent toujours | - |
 | `SimulateWrite` : `break` manquant après `case 8` | Code mort (mode simulé jamais actif) | - |
 
@@ -121,7 +123,7 @@ utilisable pendant un essai. Documentée dans `Docs/README.txt`.
 
 ### 2.4 `Config/Games.xml`
 
-Le Mans 24 : commentaire sur les deux cabinets. CABINET TYPE STANDARD va avec EPR-18261 ; LE MANS
+Le Mans 24 : commentaire sur les deux cabinets. CABINET TYPE TWIN-NORMAL va avec EPR-18261 ; TWIN-LEMANS
 va avec EPR-19338A, en commentaire. La ROM doit correspondre au réglage du jeu.
 
 ### 2.5 `Src/Model3/DriveBoard/JoystickBoard.cpp/.h` (Star Wars Trilogy, EPR-21119)
@@ -200,7 +202,8 @@ touché qu'aux endroits indispensables :
   - `servo on|off` / `servo` : le journal du Z80 à chaque NMI, ports `2A`/`2D`/`2E`, réponse
     `29` en changements seulement, `28` pour chaque nouvelle commande, avec un compteur de NMI
     (`CDriveBoard::SetIOObserver`, `m_nmiCount`). Les enregistrements portent le numéro de
-    l'image en cours.
+    l'image en cours. Depuis le 17 octobre, aussi ce que le Z80 **lit** : `A8` la commande à
+    chaque lecture du port 28, `A5` le volant tel que le programme l'assemble bit à bit (§2.12).
 - **Sens trigonométrique**, comme un vrai volant et comme BFF (décision du propriétaire, le 14
   octobre) :
   - un axe vaut +1 à son extrémité gauche (son minimum : volant tout à gauche, manche à gauche
@@ -232,6 +235,150 @@ touché qu'aux endroits indispensables :
 Le pilote automatique (courses, campagnes, apprentissage par renforcement) a déménagé dans BFF,
 `autopilot/supermodel/` (BFF `7cca76a`), avec l'analyse commune `autopilot/analyze_ffb.py`. La
 copie locale non suivie, `Scripts/ffbtest/autopilot/`, a été supprimée le 15 octobre.
+
+### 2.9 Le ressort après un chargement, l'amortisseur et le frein d'EPR-18261 (16 octobre)
+
+| Fichier | Changement | Pourquoi |
+|:--|:--|:--|
+| `WheelBoard.cpp/.h` | **Les effets en cours dans les sauvegardes d'état** (bloc `WheelBoardEffects` : ports `2A`/`2E` et leurs précédents, couple, vibration, ressort, frottement, amortisseur), **rejoués au chargement** : un arrêt, puis chaque effet non nul. Une sauvegarde plus ancienne, sans ce bloc, laisse jouer les effets d'avant le chargement | §4 point 4. Sega Rally 2 envoie son ressort une fois, au lancement d'une partie, jamais en course : chargé d'une sauvegarde, il n'avait plus de ressort (vérifié : 20 s de course, seul le frottement revient). Maintenant : arrêt, ressort 9,4 % (`FC 4` gain 1, sa rangée 0), frottement 12,6 % |
+| `Input.h`, `DirectInputSystem.cpp`, `SDLInputSystem.cpp/.h`, `Main.cpp`, `Agent.cpp`, `Docs/README.txt` | **Un 5e effet, `FFDamper`** (`NUM_FF_EFFECTS` = 5) : `GUID_Damper` en DirectInput, `SDL_HAPTIC_DAMPER` en SDL, rien en XInput ; réglages `DirectInputDamperMax` et `SDLDamperMax` (100 par défaut) ; « damper » dans le journal du mode agent | Une force contre la vitesse du volant. Le frottement d'un volant du commerce est une force constante contre le mouvement ; celui de BFF est déjà proportionnel à la vitesse (`TrqFromFriction`) |
+| `WheelBoard.cpp` | **EPR-18261 : la sortie de sm2-emu** (décrite par sa session, réécrite ; le Z80 gardé) : montée et descente **moyennées sur les NMI de l'image** (un échantillon à chaque écriture de « descente »), poussée = montée − descente, et la part commune **en frein dans la même force constante** : min(montée, descente) × clamp(Δposition / 4, −1, 1) contre le mouvement, la position en pas de 0 à 255 (plein à 4 pas par image = les 1024/65536 de l'axe de sm2-emu, Supermodel étalant l'axe entier sur 0-255). D'abord essayé : le frein en amortisseur DirectInput (`FFDamper`), retiré pour cette carte | §4 point 9 et demande du propriétaire (sa carte EPR-18261 de sm2-emu est parfaite sur la borne). La dernière NMI repliait le `2x` (une NMI sur deux) et la vibration en bruit d'image en image. Sur Le Mans 24 : couple à 0,97 de l'ancien, bruit d'image en image −17 %. `FD` des cartes servo reste un frottement (correction C) ; `FFDamper` reste disponible |
+
+**Vérifié le 16 octobre** (`MSVC/x64/ReleaseFFB/`, mode agent) :
+- Sega Rally 2, Mountain et Snowy : un état fait par les menus avec ce build rejoue arrêt, ressort et
+  frottement au chargement. Les états des courses enregistrées (faits avant) ont été mis à jour en les
+  chargeant après un état neuf (les effets continuent), puis en les sauvegardant : même partie 300 images
+  plus loin (télémétrie et image identiques), rejeu exact (Mountain 2e en 86,47 s, Snowy 2e en 77,08 s,
+  comme enregistrés). Dans `pkg/autopilot_data/records/srally2_*_record_ffb/`, les originaux intacts.
+- Le Mans 24 (EPR-18261), une course, la NVRAM du dossier de l'autopilote en TWIN-NORMAL d'après ses
+  commandes (`00`, `07`, `08` au démarrage, puis un effet, `Ax` et `Bx` à chaque image, comme Indy 500 ;
+  aucune commande de Scud, `Cx` ni `7x`) : il n'envoie **jamais `2x`**, pas plus qu'Indy 500 ou Touring Car
+  dans les captures. Ses commandes : ressorts `30`-`36`, poussées `53`/`63`, vibration `A2`/`A3` et
+  `B2`/`B3`. Les deux puissances viennent ensemble quand la vibration pousse contre le ressort :
+  amortisseurs de 5, 13 et 24 % au rythme de la vibration. Au démarrage, les deux ports à `00` donnent
+  le frein plein pendant 1,2 s, comme sur la carte (sorties actives à 0).
+
+### 2.10 Le Mans 24 : les deux driveboards sur la même course (16 octobre)
+
+Idée du propriétaire : Le Mans 24 parle à la carte d'Indy 500 (TWIN-NORMAL, EPR-18261, programme réel et décodage
+mesuré sur la vraie carte) ou à celle de Scud (TWIN-LEMANS, EPR-19338A) selon CABINET TYPE ; la même course rejouée
+sur les deux montre l'écart de la traduction des cartes servo.
+
+- **Montage** (données de l'autopilote, ignorées par git) : `roms_lm/lemans24.zip` (la copie avec `epr-19338a.bin`
+  de `scud.zip`), `rundirs/m3rl_lemans` (son `Games.xml` basculé sur EPR-19338A, sa NVRAM en TWIN-LEMANS, réglée par
+  le menu de test en mode agent ; MOTOR DRIVE 100 % dans les deux), `courses_lemans/lemans24_24h/race.st`. Les deux
+  départs tombent à la même image (4497).
+- **La même course, exactement** : 120 s de l'autopilote rejouées dans les deux (scratchpad `ap/lm_replay_ffb.py`) :
+  écart de position du joueur 0,000 m, de vitesse 0,00 km/h sur 6902 images. Le type de borne ne change que les
+  commandes de la carte. TWIN-NORMAL : ressorts `30`-`36`, vibration `Ax`/`Bx`, rares poussées `53`/`63`.
+  TWIN-LEMANS : ressorts `1x`, gain `2F`, ~1000 poussées `5x`/`6x`.
+- **Les couples** (scratchpad `ap/lm_compare.py`, couple au volant à la position imposée : EPR-18261 = sa force
+  constante, qui contient ses ressorts ; carte servo = constante + ressort DirectInput) : corrélation **0,43** (0,25
+  sur la piste), même sens 75 % du temps, RMS 0,24 contre 0,36. EPR-18261 est surtout un **rappel au centre de raideur
+  1,30 par unité de volant** (le ressort servo : 0,27) avec plus de vibration (12 % de l'énergie au-dessus de 4 Hz
+  contre 6 %) ; la carte servo **tient des poussées de ±0,47 pendant des secondes** (70-75 s, 85-90 s), même quand le
+  volant passe d'un côté à l'autre. Le meilleur rapprochement : constante servo × 0,05 + ressort servo × 3,4
+  (corrélation 0,68 ; 0,74 avec un rappel proportionnel au volant).
+- **Le Z80 de Supermodel contre l'`IndyBoard` de sm2-emu** (sa logique reproduite pour l'analyse, scratchpad
+  `ap/indy_vs_z80.py`, mêmes commandes et même position du volant, 40 s de Le Mans 24) : montée − descente à 0,89
+  (moyenne de l'image) et 0,91 (dernière NMI) de corrélation, |montée − descente| moyen 11,5 contre 11,6 : **la
+  même carte** ; la différence ressentie venait de la sortie (voir §2.9).
+- **Les poussées tenues de la carte servo sont celles de son programme** : EPR-19338A écrit `FE = 61` à chaque NMI
+  pendant des secondes après les commandes `41 55 05` du jeu (journal NMI, scratchpad `ap/lm_servo_journal.py`).
+- **Attention (propriétaire, 16 octobre)** : le programme Z80 est le même, mais **la carte servo n'est pas la carte
+  moteur**. EPR-18261 commande la carte moteur 838-11966, un étage de puissance mesuré ; les programmes des Model 3
+  commandent une carte servo, un asservissement dont la doc de BFF ne connaît que les écritures (`FE` couple, `FC` 4
+  ressort, `FD` amortissement, `FB` gain : [guess]). L'écart ci-dessus compare EPR-18261 à **notre modèle** de la carte
+  servo, pas au jeu.
+- **Notre modèle de la carte servo réglé sur EPR-18261** (Le Mans 24, deux courses : ajustement A, contrôle B ;
+  registres bruts NMI par NMI, scratchpad `ap/lm_servo_features.py`, `ap/servo_fit.py`), en supposant que Sega voulait
+  la même sensation sur les deux bornes :
+  - aujourd'hui (`FE` couple × `FB`, ressort DirectInput gain × `18`) : corrélation 0,30 (A) / 0,24 (B) ;
+  - un ressort DirectInput au plus raide : 0,54 / 0,42 ;
+  - un ressort calculé raide et plafonné, `FE` gardé : la forme suit (0,71 / 0,65) mais l'amplitude dépasse (0,35 et
+    0,44 de force efficace contre 0,24 et 0,21) : les poussées `FE` tenues sont trop fortes ;
+  - **`FE` en décalage de la consigne d'une boucle de position** (couple = −clip(k × gain/15 × (volant − o × FE),
+    ±L), k 8 à 15, o 0,05 à 0,10, L 0,35 ; `FE` en couple × 0,3 quand le ressort est coupé) : **0,73 / 0,70 avec la
+    bonne amplitude** (0,26 / 0,21). C'est le meilleur modèle : l'effet de `FE` y croît avec le gain du ressort, et
+    le tout plafonne vers 0,35.
+  - **Contradiction** : avec ce modèle, la route de Sega Rally 2 (tout en `FE`, ressort rangée 0) deviendrait très
+    faible, alors que le propriétaire la trouve juste en couple direct. À trancher sur une vraie carte servo (le
+    propriétaire en a une, à câbler) : `FE 61` tenu, ressort `FC` 4 actif puis coupé, le volant va-t-il à un point et
+    s'y tient (consigne), ou pousse-t-il sans fin (couple) ?
+- **À trancher** : la part du jeu (deux vocabulaires différents selon la borne) et celle de notre traduction (le
+  ressort `FC` 4 trop mou d'un facteur 3 à 5 ? `FE` tenu à pleine valeur alors que le programme le module ?). Suite :
+  le journal NMI de la carte servo pendant les poussées, et sur la borne, si ces poussées tenues font osciller le
+  volant (la plainte du 15 octobre).
+
+### 2.11 La driveboard simulée (option `SimulateDriveBoard`, 17 octobre)
+
+Demande du propriétaire : comme la netboard (`SimulateNet` : émulée, lente ; simulée, rapide), une driveboard
+**simulée** (sa logique, comme sm2-emu) à côté de l'émulée (son programme sur le Z80). D'abord la carte Model 2B
+EPR-18261 (Le Mans 24 en TWIN-NORMAL, la seule carte Model 2 d'un jeu Model 3), ensuite les cartes Model 3.
+
+| Fichier | Changement |
+|:--|:--|
+| `Main.cpp`, `Docs/README.txt` | `SimulateDriveBoard` (section ForceFeedback, 0 par défaut), `-simulate-driveboard` / `-emulate-driveboard` |
+| `WheelBoard.cpp/.h` | Le mode simulé (le drapeau `m_simulated` de `CDriveBoard`, jamais activé jusque-là) pour EPR-18261 (reconnue par son CRC) ; les autres programmes restent émulés, avec un message. La logique du programme une fois par image sur ses ~8,7 NMI, d'après la doc de BFF et `IndyBoard` de sm2-emu (écrit par le propriétaire), réécrite : commandes (`0x` réinitialisation et centrage au repos, `1x` arrêt, `2x` frein = la moyenne, `3x` ressorts, `4x` anti-ressort, `5x`/`6x` poussées, `7x` base, `9x`/`Cx` centre, `Ax`/`Bx` vibration), force (2n + base) × 2 + DIP, ressorts par la table de sinus du programme **recalculée** (partie entière de 128 sin(πi/128), identique à la table, rien de la ROM dans les sources), amortissement toutes les 18 NMI (coupé par le DIP 2-1), vibration ; **réponses** à l'hôte : la commande elle-même (relevé sur le programme), `80`/`83` le volant, `81` `FF`, `82` les DIP 1, `84` le centre, les autres comme avant. Même étage de sortie que l'émulée (§2.9). Commandes de l'hôte et image protégées par un verrou (deux fils). Sauvegardes d'état : le bloc `WheelBoardIndySim` ; un état de carte émulée chargé en mode simulé repart de la mise sous tension (les jeux renvoient leur effet à chaque image) ; l'inverse arrête la carte (pas d'état du Z80) |
+| BFF `to_race.py` | `--args` : des options de Supermodel (un départ avec `-simulate-driveboard`) |
+
+**Vérifié** (Le Mans 24, course A rejouée depuis le même état, carte émulée contre simulée) : même course (écart de
+position 0,000 m), couple à **0,86 de corrélation (0,89 sur la piste)**, force efficace 0,256 contre 0,243, 40 %
+d'images identiques ; les plafonds des ressorts identiques (rapport médian 1,000). Les écarts : la prise des
+commandes (deux NMI identiques dans le programme), le volant lu une fois par image, la phase de la vibration et de
+l'amortissement. Un départ fait par les menus avec la carte simulée arrive à la même image (4497) mais n'est pas le
+même état (les réponses de la carte comptent dans les menus). `2x` reste à éprouver (la session sm2-emu peut
+extraire les commandes d'une course d'Indy 500).
+
+### 2.12 Les cartes Model 3 simulées (17 octobre)
+
+Les trois programmes des volants Model 3, d'après leurs spécifications tirées des désassemblages de BFF :
+`Src/Model3/DriveBoard/ServoProgramSim.cpp/.h`, reconnus par leur CRC dans `CWheelBoard::Reset`.
+
+| Programme | Jeux | Classe |
+|:--|:--|:--|
+| EPR-20985 | Daytona USA 2 | `CDaytona2Program` |
+| EPR-19338A | Scud Race, Dirt Devils, ECA, Le Mans 24 en TWIN-LEMANS | `CScudRaceProgram` |
+| EPR-20512 | Sega Rally 2 | `CSegaRally2Program` : le programme d'EPR-19338A réduit aux couples (`00-3F` / `40-7F`, tenus jusqu'au suivant), ses tables ailleurs (`ScudRaceLayout`) |
+| EPR-19338 | Scud Race Plus | `CScudRaceProgram` avec `kEpr19338` : la version antérieure d'EPR-19338A (étudiée le 17 octobre, doc dans BFF `docs/EPR-19338-ScudRacePlus-DriveBoard`) : tables A9 octets plus bas, cabinet par les DIP seuls (pas de B0/B1, CC 0,1 s), `Ax` une glisse, recentrage de C1 quel que soit le cabinet, poussées `FE 69`/`97`, un bogue de `wheel_motion` |
+
+Le squelette commun (`CServoProgram<State>`, les mêmes adresses de RAM dans les trois) : la commande prise à la 4e
+NMI qui la lit, la réponse, la file de paires (registre, valeur), le mouvement du volant, les secousses C2/C6, la
+glisse, l'aléa. `CWheelBoard` cadence les NMI comme le CTC (16 000 cycles), chaque NMI son corps puis les passes du
+programme principal ; les paires vont au même étage de sortie que celles du Z80 (`ProcessEncoderCmd`). La première NMI
+au cycle où l'émulée l'a (mesuré : son temporisateur part avec l'image qui suit la programmation du CTC, la NMI 16 003
+cycles plus loin ; D2 2 102 083, 19338A 1 823 939, SR2 1 684 867). Sauvegardes d'état : un bloc par programme ; un état
+de carte émulée chargé en mode simulé reprend la RAM du Z80 (`ImportRam`). Interface : `Nmi(volant, cockpit, ...)`.
+
+**Vérification.** Un banc hors de Supermodel (`servo_replay`, la simulation compilée seule) rejoue le programme
+simulé sur les entrées que le Z80 émulé a lues à chaque NMI (journal du mode agent, `A8` et `A5`) et compare les
+paires écrites NMI par NMI. Parties complètes depuis la mise sous tension (démarrage, menus, course) :
+
+| Jeu | Programme | NMI | Commandes | Paires différentes |
+|:--|:--|--:|--:|--:|
+| Daytona USA 2 | EPR-20985 | 76 511 | 425 | 0 |
+| Scud Race | EPR-19338A | 76 526 | 128 | 0 |
+| Dirt Devils | EPR-19338A | 85 217 | 1 180 | 0 |
+| ECA (effets de route 1-7, glisse 4x) | EPR-19338A | 85 217 | 5 676 | 0 |
+| Le Mans 24 TWIN-LEMANS | EPR-19338A | 85 217 | 4 375 | 0 |
+| Sega Rally 2 | EPR-20512 | 85 224 | 2 231 | 0 |
+| Scud Race Plus | EPR-19338 | 76 518 | 137 | 0 |
+
+Réponses au jeu identiques aussi. Dans Supermodel (`-simulate-driveboard` contre l'émulée, les mêmes entrées par
+image) : **la même course** pour D2, Scud et SR2 (écart de position 0,000 m, toutes les commandes appariées) ; 0,2 à
+1,5 % des NMI décalées d'une NMI, parce que le temporisateur de l'émulée perd son dépassement (16 004 cycles en moyenne
+au lieu de 16 000 : la phase des NMI par rapport aux images dérive et une commande, posée en début d'image, tombe une
+NMI plus tôt ou plus tard) ; la simulée suit le matériel. Un état de carte émulée (Scud, SR2, en course) chargé en
+mode simulé : les mêmes commandes aux mêmes NMI, autant d'effets envoyés (467/467, 526/526), la prochaine NMI reprise du
+temporisateur de l'émulée (sans quoi la simulée attendait de nouveau le délai de la mise sous tension, 13 images).
+
+Trouvés et corrigés en chemin : C6 réinitialisé toutes les 6 NMI (D2) ; la constante de l'aléa, `3711h` (écrite en
+décimal : les attentes de l'effet 2 et les pas des effets 1/3/4 faux, vu sur ECA) ; un `CA` pendant les fenêtres du
+démarrage écrasé par la phase suivante (D2). Les 6 NMI qui restaient en D2 avant de journaliser l'octet assemblé :
+l'ADC lu bit à bit à cheval sur deux images (artefact de l'émulation). EPR-19338 (Scud Race Plus), une version
+antérieure d'EPR-19338A (16 669 octets diffèrent : code et tables décalés), est simulée depuis son étude (même course
+dans Supermodel, 137/137 commandes ; le bogue de `wheel_motion` vérifié par la réponse `6F`). Reste émulé le
+JoystickBoard de Star Wars (EPR-21119).
 
 ## 3. Les essais
 
@@ -396,19 +543,19 @@ Indy 500 y est tombé à 26,3 Hz. Supermodel a donc pu tourner sous 57,5 images 
 
    L'analyse commune (BFF `autopilot/analyze_ffb.py`) rejoue les trois traductions (avant, A/C,
    A/B/C), retient celle de la course, et compte les « start » par rapport aux mises à jour.
-4. **Sega Rally 2 : le ressort est perdu au chargement d'une sauvegarde d'état** (vu avec le
-   pilote automatique). Supermodel ne renvoie pas ses effets après un chargement, et le jeu ne
-   réécrit pas le ressort de lui-même.
+4. ~~Sega Rally 2 : le ressort est perdu au chargement d'une sauvegarde d'état~~ : **fait le
+   16 octobre** (§2.9), les effets sont dans les sauvegardes d'état et rejoués au chargement.
 5. **Comparatif avant/après** : la même série avec upstream plus le seul correctif DirectInput.
 6. **Daytona 2** : son ressort est calculé par le Z80 et envoyé en force constante à 57,5 Hz ;
    vérifier qu'il ne vibre pas au centre (cabinet `B0` par défaut : jusqu'à 100 %).
-7. **Le Mans 24** : en STANDARD avec EPR-18261 (le nouveau décodage), puis en LE MANS avec
+7. **Le Mans 24** : en TWIN-NORMAL avec EPR-18261 (le nouveau décodage), puis en TWIN-LEMANS avec
    EPR-19338A.
 8. ~~Acquisition exclusive en arrière-plan~~ : faite, c'est l'option `BackgroundInput` (§2.3).
 9. **Les amortissements** : `FD` des cartes servo, probablement un amortissement, et le frein
    `2x` d'EPR-18261 (les deux puissances à la fois), **mesuré comme un amortisseur** sur la
-   carte réelle. Aujourd'hui Supermodel n'en tire aucune force : les traduire en `GUID_Damper`,
-   à étalonner. L'oscillation du ressort sur Racecab1 le rend prioritaire (point 3 C).
+   carte réelle. **Le 16 octobre** (§2.9) : l'effet `FFDamper` existe, et EPR-18261 s'en sert.
+   Reste `FD`, envoyé en frottement (correction C) : le passer à l'amortisseur si le ressort
+   oscille encore sur la borne. Étalonner les deux sur la borne.
 10. **Cadence** : faire tourner la driveboard en temps réel à 500 Hz, avec la position du volant lue
     à cette cadence. Les effets de route (8-33 Hz) et les impulsions de 2 ms de l'effet `02` se
     perdent à 57,5 Hz. **Étude du 15 octobre** (une image en 8 tranches d'environ 2,2 ms) :
@@ -460,7 +607,7 @@ Indy 500 y est tombé à 26,3 Hz. Supermodel a donc pu tourner sous 57,5 images 
   devait suivre ne joue jamais (le pointeur est lu un octet trop loin, même bug dans Daytona 2).
 - Daytona 2 : tout le ressort vient du Z80 ; les DIP 1-3..5 ne sont pas lues, donc
   `ForceFeedbackStrength` est sans effet.
-- Le Mans 24 : CABINET TYPE STANDARD → EPR-18261 ; LE MANS → EPR-19338A.
+- Le Mans 24 : CABINET TYPE (GAME ASSIGNMENTS) TWIN-NORMAL → EPR-18261, la carte et la carte moteur Model 2 d'Indy 500 ; TWIN-LEMANS (souvent une borne japonaise) → EPR-19338A, celles de Scud Race (la borne aux quatre boutons VIEW). Noté à la fin de `README.md`.
 - Star Wars Trilogy (EPR-21119) : deux cartes servo, registres dans les deux quartets de `2E`,
   valeurs sur `2A` et `2D` écrites **avant** `2E` ; axes sur les ADC canaux 3 et 4 (ports `26`,
   `27`) ; ressort calculé par le Z80, au repos `7F` (servo 1) et `81` (servo 2) ; démarrage

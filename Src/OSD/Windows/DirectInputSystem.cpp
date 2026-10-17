@@ -1506,6 +1506,20 @@ HRESULT CDirectInputSystem::CreateJoystickEffect(LPDIRECTINPUTDEVICE8 joystick, 
 			eff.lpvTypeSpecificParams = &dic;
 			break;
 
+		case FFDamper:
+			guid = GUID_Damper;
+
+			dic.lOffset = 0;
+			dic.lPositiveCoefficient = 0;
+			dic.lNegativeCoefficient = 0;
+			dic.dwPositiveSaturation = DI_FFNOMINALMAX;
+			dic.dwNegativeSaturation = DI_FFNOMINALMAX;
+			dic.lDeadBand = 0;
+
+			eff.cbTypeSpecificParams = sizeof(DICONDITION);
+			eff.lpvTypeSpecificParams = &dic;
+			break;
+
 		case FFVibrate:
 			guid = GUID_Sine;
 
@@ -1831,7 +1845,8 @@ bool CDirectInputSystem::ProcessForceFeedbackCmd(int joyNum, int axisNum, ForceF
       }
 			case FFSelfCenter:
 			case FFFriction:
-				// Self center and friction effects are not mapped
+			case FFDamper:
+				// Self center, friction and damper effects are not mapped
 				return false;
 
 			case FFVibrate:
@@ -1962,6 +1977,23 @@ bool CDirectInputSystem::ProcessForceFeedbackCmd(int joyNum, int axisNum, ForceF
 				eff.lpvTypeSpecificParams = &dic;
 				break;
       }
+			case FFDamper:
+			{
+				unsigned dInputDamperMax = m_config["DirectInputDamperMax"].ValueAs<unsigned>();
+				if (dInputDamperMax == 0)
+					return false;
+				lFFMag = (LONG)(ffCmd.force * (float)(dInputDamperMax * DI_EFFECTS_SCALE));
+				dic.lOffset = 0;
+				dic.lPositiveCoefficient = std::max<LONG>(0, std::min<LONG>(lFFMag, DI_EFFECTS_MAX));
+				dic.lNegativeCoefficient = std::max<LONG>(0, std::min<LONG>(lFFMag, DI_EFFECTS_MAX));
+				dic.dwPositiveSaturation = DI_FFNOMINALMAX;
+				dic.dwNegativeSaturation = DI_FFNOMINALMAX;
+				dic.lDeadBand = 0;
+
+				eff.cbTypeSpecificParams = sizeof(DICONDITION);
+				eff.lpvTypeSpecificParams = &dic;
+				break;
+			}
 			case FFVibrate:
 			{
 			  unsigned dInputVibrateMax = m_config["DirectInputVibrateMax"].ValueAs<unsigned>();
