@@ -1973,7 +1973,7 @@ static void Help(void)
   puts("");
   puts("Input Options:");
   puts("  -force-feedback         Enable force feedback (DirectInput, XInput)");
-  puts("  -simulate-driveboard    Simulate the drive board (the steering wheel ones)");
+  puts("  -simulate-driveboard    Simulate the drive board (wheel and joystick boards)");
   puts("  -emulate-driveboard     Emulate the drive board's Z80 [Default]");
   puts("  -config-inputs          Configure keyboards, mice, and game controllers");
 #ifdef SUPERMODEL_WIN32

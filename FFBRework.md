@@ -340,6 +340,7 @@ Les trois programmes des volants Model 3, d'après leurs spécifications tirées
 | EPR-20985 | Daytona USA 2 | `CDaytona2Program` |
 | EPR-19338A | Scud Race, Dirt Devils, ECA, Le Mans 24 en TWIN-LEMANS | `CScudRaceProgram` |
 | EPR-20512 | Sega Rally 2 | `CSegaRally2Program` : le programme d'EPR-19338A réduit aux couples (`00-3F` / `40-7F`, tenus jusqu'au suivant), ses tables ailleurs (`ScudRaceLayout`) |
+| EPR-21119 | Star Wars Trilogy (joystick) | `CStarWarsProgram` (interface `IJoystickProgram`, branchée dans `JoystickBoard.cpp`) : deux cartes servo, un ressort calculé par axe autour d'un centre mobile, vibrations, couples ; spec écrite le 17 octobre depuis le désassemblage de BFF |
 | EPR-19338 | Scud Race Plus | `CScudRaceProgram` avec `kEpr19338` : la version antérieure d'EPR-19338A (étudiée le 17 octobre, doc dans BFF `docs/EPR-19338-ScudRacePlus-DriveBoard`) : tables A9 octets plus bas, cabinet par les DIP seuls (pas de B0/B1, CC 0,1 s), `Ax` une glisse, recentrage de C1 quel que soit le cabinet, poussées `FE 69`/`97`, un bogue de `wheel_motion` |
 
 Le squelette commun (`CServoProgram<State>`, les mêmes adresses de RAM dans les trois) : la commande prise à la 4e
@@ -363,6 +364,7 @@ paires écrites NMI par NMI. Parties complètes depuis la mise sous tension (dé
 | Le Mans 24 TWIN-LEMANS | EPR-19338A | 85 217 | 4 375 | 0 |
 | Sega Rally 2 | EPR-20512 | 85 224 | 2 231 | 0 |
 | Scud Race Plus | EPR-19338 | 76 518 | 137 | 0 |
+| Star Wars Trilogy | EPR-21119 | 76 535 | 5 406 | 0 (2A, 2D et 2E) |
 
 Réponses au jeu identiques aussi. Dans Supermodel (`-simulate-driveboard` contre l'émulée, les mêmes entrées par
 image) : **la même course** pour D2, Scud et SR2 (écart de position 0,000 m, toutes les commandes appariées) ; 0,2 à
@@ -377,8 +379,11 @@ décimal : les attentes de l'effet 2 et les pas des effets 1/3/4 faux, vu sur EC
 démarrage écrasé par la phase suivante (D2). Les 6 NMI qui restaient en D2 avant de journaliser l'octet assemblé :
 l'ADC lu bit à bit à cheval sur deux images (artefact de l'émulation). EPR-19338 (Scud Race Plus), une version
 antérieure d'EPR-19338A (16 669 octets diffèrent : code et tables décalés), est simulée depuis son étude (même course
-dans Supermodel, 137/137 commandes ; le bogue de `wheel_motion` vérifié par la réponse `6F`). Reste émulé le
-JoystickBoard de Star Wars (EPR-21119).
+dans Supermodel, 137/137 commandes ; le bogue de `wheel_motion` vérifié par la réponse `6F`). Le JoystickBoard
+de Star Wars (EPR-21119) est simulé lui aussi (le même jour), le journal relevant aussi ses lectures
+des axes (`A6`, `A7`) ; dans Supermodel la même suite de 5 406 commandes, autant d'effets (2 993), 1 % de NMI décalées.
+La carte joystick lit les axes réels dès le NMI qui répond `CB` (le NMI coupé en deux : sorties, puis axes). Seul le
+panneau (billboard) reste émulé.
 
 ## 3. Les essais
 

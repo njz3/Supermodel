@@ -2561,6 +2561,880 @@ namespace
       }
     }
   };
+
+  /*
+   * EPR-21119, Star Wars Trilogy's joystick board (CRC32 65082B14): two servo boards, an axis each, the Z80
+   * computing a spring by axis around a moving centre (read in tables of torque by position), sent as FE / EF at
+   * every NMI. Start-up: CF 8 s (both servo boards set up), CE 1.5 s (centre 1), CD 1 s (centre 2), CC (both axes
+   * calibrated, unseen when at their centres), CB 1 s, then the modes C0 (idle), C1 = C8 (the game), C9 (back to CE,
+   * the calibration skipped). BFF's docs/EPR-21119-StarWars-DriveBoard.
+   */
+  class CStarWarsProgram : public IJoystickProgram
+  {
+  public:
+    void Reset(const UINT8 *rom, UINT8 dip1, UINT8 dip2) override
+    {
+      m_rom = rom;
+      m_dip1 = dip1;
+      m_dip2 = dip2;
+      m_cmdIn = 0;
+      memset(&s, 0, sizeof(s));
+      s.mPer[0] = s.mPer[1] = 0x19;
+      s.out1Src = s.out2Src = 1;
+      s.centre1 = s.centre2 = 0x80;
+      s.status = 0xFF;
+      s.outTq1 = s.outTq2 = s.outMode = 0xFF;
+      s.reply = 0xFF;
+      s.spr1Ptrs = 0x166D;
+      s.spr2Ptrs = 0x267D;
+      // The start-up, before the first NMI: both servo boards' set-up queued
+      s.replySel |= 0x80;
+      s.initReply = 0xCF;
+      SetQueue1({ { 0xFE, 0x80 }, { 0xFD, 0x00 }, { 0xFC, 0x0A }, { 0xFC, 0x0B }, { 0xF9, 0xB0 } });
+      SetQueue2({ { 0xEF, 0x80 }, { 0xDF, 0x00 }, { 0xCF, 0x0A }, { 0xCF, 0x0B }, { 0x9F, 0xB0 } });
+      s.phase = ServoSetup;
+    }
+
+    void SetCommand(UINT8 data) override
+    {
+      m_cmdIn = data;
+    }
+
+    UINT8 Reply(void) const override
+    {
+      return s.reply;
+    }
+
+    double FirstNmiCycles(void) const override
+    {
+      // As the emulated Z80 has it: its ROM checksum and RAM test end in the 12th frame, the NMI timer starting with
+      // the next (computed from the Z80 core's cycle table; the formula gives the three wheel programs' measured ones)
+      return 1684867;
+    }
+
+    void NmiOutputs(UINT8 &tq1, UINT8 &tq2, UINT8 &mode) override
+    {
+      ReadCommand();
+      WriteReply();
+      OutServo1();
+      OutServo2();
+      // (the A-RST pulses: none, the servo boards ready)
+      tq1 = s.outTq1;
+      tq2 = s.outTq2;
+      mode = s.outMode;
+    }
+
+    void NmiInputs(UINT8 axis1, UINT8 axis2) override
+    {
+      s.axis1 = axis1;
+      Motion(0, axis1);
+      s.axis2 = axis2;
+      Motion(1, axis2);
+      Timers();
+      // The main code until the next NMI: a state machine this NMI let go on goes on before a command it took is
+      // decoded (as most often on the board)
+      if (s.phase == Main)
+        RunMode();
+      for (int pass = 0; pass < 20; pass++)
+        MainPass();
+    }
+
+    void SaveState(CBlockFile *saveState) override
+    {
+      saveState->NewBlock("JoystickProgram21119", __FILE__);
+      saveState->Write(s);
+      saveState->Write(m_cmdIn);
+    }
+
+    void LoadState(CBlockFile *saveState) override
+    {
+      if (saveState->FindBlock("JoystickProgram21119") == Result::OKAY)
+      {
+        saveState->Read(s);
+        saveState->Read(m_cmdIn);
+      }
+    }
+
+    void ImportRam(const UINT8 *ram) override
+    {
+      auto b = [ram](uint16_t a) { return ram[a - 0xE000]; };
+      auto w = [ram](uint16_t a) { return uint16_t(ram[a - 0xE000] | (ram[a - 0xE000 + 1] << 8)); };
+      s.cmdSample = b(0xE2C0);
+      s.cmdState = b(0xE2C2);
+      s.cmdCount = b(0xE2C4);
+      s.cmdNew = b(0xE2C6);
+      s.command = b(0xE2C8);
+      m_cmdIn = s.cmdSample;
+      s.replySel = b(0xE2CA);
+      s.initReply = b(0xE2CC);
+      s.status = b(0xE330);
+      s.outTq1 = b(0xE110);
+      s.outMode = b(0xE118);
+      s.outTq2 = b(0xE120);
+      s.out1Src = b(0xE290);
+      s.out2Src = b(0xE294);
+      s.q1.len = std::min<int>(b(0xE502), 16);
+      s.q2.len = std::min<int>(b(0xE508), 16);
+      for (int i = 0; i < 9; i++)
+      {
+        s.q1.pairs[i][0] = b(uint16_t(0xE800 + 2 * i));
+        s.q1.pairs[i][1] = b(uint16_t(0xE801 + 2 * i));
+        s.q2.pairs[i][0] = b(uint16_t(0xE900 + 2 * i));
+        s.q2.pairs[i][1] = b(uint16_t(0xE901 + 2 * i));
+      }
+      s.axis1 = b(0xE410);
+      s.axis2 = b(0xE418);
+      for (int k = 0; k < 2; k++)
+      {
+        uint16_t m = uint16_t(k == 0 ? 0xE411 : 0xE419);
+        s.mPrev[k] = b(m);
+        s.mSt[k] = b(uint16_t(m + 1));
+        s.mCnt[k] = b(uint16_t(m + 2));
+        s.mPer[k] = b(uint16_t(m + 3));
+      }
+      s.centre1 = b(0xE2B0);
+      s.centre1Off = b(0xE2B2);
+      s.cal1Tries = b(0xE2B4);
+      s.cal1St = b(0xE2B6);
+      s.centre2 = b(0xE2B8);
+      s.centre2Off = b(0xE2BA);
+      s.cal2Tries = b(0xE2BC);
+      s.cal2St = b(0xE2BE);
+      s.t1Nmi = b(0xE280);
+      s.t1Tenths = b(0xE281);
+      s.s1Setup = b(0xE283);
+      s.t2Nmi = b(0xE284);
+      s.t2Tenths = b(0xE285);
+      s.s2Setup = b(0xE287);
+      s.mode = b(0xE2D0);
+      s.c0St = b(0xE2D2);
+      s.gameSt = b(0xE2D4);
+      s.c9St = b(0xE2D8);
+      s.gameReq = b(0xE2DA);
+      s.spring1Tab = w(0xE2DC);
+      s.spring2Tab = w(0xE2DE);
+      s.target1 = b(0xE2E0);
+      s.target2 = b(0xE2E2);
+      s.tgt1Ptr = w(0xE2E4);
+      s.tgt2Ptr = w(0xE2E6);
+      s.ramp1Par[0] = b(0xE2E8);
+      s.ramp1Par[1] = b(0xE2E9);
+      s.ramp2Par[0] = b(0xE2EA);
+      s.ramp2Par[1] = b(0xE2EB);
+      s.ramp1Nmi = b(0xE2EC);
+      s.ramp1Tmr = b(0xE2EE);
+      s.ramp2Nmi = b(0xE2F0);
+      s.ramp2Tmr = b(0xE2F2);
+      s.ramp1On = b(0xE2F4);
+      s.ramp2On = b(0xE2F6);
+      s.spr1Ptrs = w(0xE2FA);
+      s.spr2Ptrs = w(0xE2FC);
+      s.mctr1 = b(0xE332);
+      s.mctrTmr[0] = b(0xE334);
+      s.mctr1Off = b(0xE336);
+      s.mctr2 = b(0xE338);
+      s.mctrTmr[1] = b(0xE33A);
+      s.mctr2Off = b(0xE33C);
+      s.vib1Save = b(0xE33E);
+      s.vib1Ptr = w(0xE340);
+      s.vib1St = b(0xE342);
+      s.vib2Save = b(0xE344);
+      s.vib2Ptr = w(0xE346);
+      s.vib2St = b(0xE348);
+      s.follow1[0] = b(0xE34A);
+      s.follow1[1] = b(0xE34B);
+      s.follow2[0] = b(0xE34C);
+      s.follow2[1] = b(0xE34D);
+      s.tq1St = b(0xE34E);
+      s.tq1Ptr = w(0xE350);
+      s.tq2St = b(0xE352);
+      s.tq2Ptr = w(0xE354);
+      // Where the main code was (not in RAM): in the start-up while mode 0 has not been set up
+      s.phase = Main;
+      if (s.mode == 0 && s.c0St == 0 && (s.replySel & 0x80))
+      {
+        switch (s.initReply)
+        {
+        case 0xCF: s.phase = ServoSetup; break;
+        case 0xCE:
+          s.phase = (s.cmdNew == 0xFF || (s.command >= 0x70 && s.command < 0x90) || s.t1Tenths >= 0x0A) ? CeBlock : CeWindow;
+          break;
+        case 0xCD: s.phase = CdWindow; break;
+        case 0xCC: s.phase = Calibrate; break;
+        case 0xCB: s.phase = (s.q1.len != 0 || s.q2.len != 0) ? Flush : CbWindow; break;
+        default: break;
+        }
+      }
+    }
+
+  private:
+    enum Phase : UINT8 { ServoSetup, CeWindow, CeBlock, CdWindow, Calibrate, CbWindow, Flush, Main };
+
+    struct State
+    {
+      UINT8 phase;
+      UINT8 cmdSample, cmdState, cmdCount, cmdNew, command;
+      UINT8 replySel, initReply, status, reply;
+      UINT8 outTq1, outTq2, outMode, out1Src, out2Src;
+      Queue q1, q2;
+      UINT8 axis1, axis2, mPrev[2], mSt[2], mCnt[2], mPer[2];
+      UINT8 mctrTmr[2], ramp1Nmi, ramp1Tmr, ramp2Nmi, ramp2Tmr, t1Nmi, t1Tenths, t2Nmi, t2Tenths;
+      UINT8 s1Setup, s2Setup;
+      UINT8 centre1, centre1Off, cal1Tries, cal1St, centre2, centre2Off, cal2Tries, cal2St;
+      UINT8 mode, c0St, gameSt, c9St;
+      UINT8 gameReq, target1, target2;
+      uint16_t spring1Tab, spring2Tab, tgt1Ptr, tgt2Ptr, spr1Ptrs, spr2Ptrs;
+      UINT8 ramp1Par[2], ramp2Par[2], ramp1On, ramp2On;
+      UINT8 mctr1, mctr1Off, mctr2, mctr2Off;
+      UINT8 vib1Save, vib1St, vib2Save, vib2St;
+      uint16_t vib1Ptr, vib2Ptr;
+      UINT8 follow1[2], follow2[2];
+      UINT8 tq1St, tq2St;
+      uint16_t tq1Ptr, tq2Ptr;
+    } s;
+
+    const UINT8 *m_rom = nullptr;
+    UINT8 m_dip1 = 0xCF, m_dip2 = 0xFF, m_cmdIn = 0;
+
+    UINT8 R(uint16_t a) const { return m_rom[a]; }
+    uint16_t R16(uint16_t a) const { return uint16_t(m_rom[a] | (m_rom[uint16_t(a + 1)] << 8)); }
+
+    static void Fill(Queue &q, std::initializer_list<std::pair<UINT8, UINT8>> list)
+    {
+      q.len = 0;
+      for (auto &p : list)
+      {
+        q.pairs[q.len][0] = p.first;
+        q.pairs[q.len][1] = p.second;
+        q.len++;
+      }
+    }
+
+    void SetQueue1(std::initializer_list<std::pair<UINT8, UINT8>> list) { Fill(s.q1, list); }
+    void SetQueue2(std::initializer_list<std::pair<UINT8, UINT8>> list) { Fill(s.q2, list); }
+
+    static bool Pop(Queue &q, UINT8 &m, UINT8 &t)
+    {
+      if (q.len == 0)
+        return false;
+      m = q.pairs[0][0];
+      t = q.pairs[0][1];
+      q.len--;
+      memmove(q.pairs[0], q.pairs[1], sizeof(q.pairs[0]) * q.len);
+      return true;
+    }
+
+    // The axis less an offset, held at the ends: the test is on the axis, not on the result (the program's)
+    static UINT8 ClampSub(UINT8 a, UINT8 off)
+    {
+      UINT8 r = UINT8(a - off);
+      if (a >= 0xF0)
+        return (r & 0x80) ? r : 0xFF;
+      if (a < 0x10)
+        return (r & 0x80) ? 0x00 : r;
+      return r;
+    }
+
+    // -- The NMI ----------------------------------------------------------------------------------------------------
+
+    void ReadCommand(void)
+    {
+      UINT8 b = m_cmdIn;
+      if (b != s.cmdSample)
+      {
+        s.cmdSample = b;
+        s.cmdState = 0;
+        return;
+      }
+      if (s.cmdState & 2)
+        return;
+      if (!(s.cmdState & 1))
+      {
+        s.cmdCount = 3;
+        s.cmdState |= 1;
+      }
+      if (--s.cmdCount != 0)
+        return;
+      s.cmdState |= 2;
+      if (s.command == b)
+        return;
+      s.command = b;
+      s.cmdNew = 0xFF;
+    }
+
+    void WriteReply(void)
+    {
+      UINT8 sel = s.replySel;
+      UINT8 r;
+      if (sel & 0x80) r = s.initReply;
+      else if (sel & 0x01) r = s.status;
+      else if (sel & 0x02) r = s.centre1;
+      else if (sel & 0x04) r = s.centre2;
+      else if (sel & 0x08) r = s.target1;
+      else if (sel & 0x10) r = s.target2;
+      else if (sel & 0x20) r = s.axis1;
+      else if (sel & 0x40) r = s.axis2;
+      else r = s.status;
+      s.reply = r;
+    }
+
+    void OutServo1(void)
+    {
+      if (s.out1Src & 1)
+      {
+        UINT8 m, t;
+        if (!Pop(s.q1, m, t))
+          return;
+        s.outMode = UINT8((s.outMode | 0x0F) & m);
+        s.outTq1 = t;
+      }
+      else if (s.out1Src & 2)
+      {
+        s.outMode = UINT8((s.outMode | 0x0F) & 0xFE);
+        UINT8 p2 = ClampSub(ClampSub(s.axis1, s.centre1Off), s.mctr1Off);
+        s.outTq1 = R(uint16_t(s.spring1Tab + 0x100 + p2 - s.target1));
+      }
+    }
+
+    void OutServo2(void)
+    {
+      if (s.out2Src & 1)
+      {
+        UINT8 m, t;
+        if (!Pop(s.q2, m, t))
+          return;
+        s.outMode = UINT8((s.outMode | 0xF0) & m);
+        s.outTq2 = t;
+      }
+      else if (s.out2Src & 2)
+      {
+        // Servo board 2 wired the other way round: the table's value negated
+        s.outMode = UINT8((s.outMode | 0xF0) & 0xEF);
+        UINT8 p2 = ClampSub(ClampSub(s.axis2, s.centre2Off), s.mctr2Off);
+        s.outTq2 = UINT8(-R(uint16_t(s.spring2Tab + 0x100 + p2 - s.target2)));
+      }
+    }
+
+    // Every 25 NMIs: the axis's motion in the status (axis 1 bits 3:2, axis 2 bits 1:0), seen twice in a row
+    void Motion(int k, UINT8 cur)
+    {
+      if (--s.mPer[k] != 0)
+        return;
+      s.mPer[k] = 0x19;
+      UINT8 pend, seen;
+      int dir;
+      if (s.mPrev[k] < cur) { pend = 0x10; seen = 0x20; dir = 1; }
+      else if (s.mPrev[k] > cur) { pend = 0x01; seen = 0x02; dir = -1; }
+      else { pend = 0x40; seen = 0x80; dir = 0; }
+      if (!(s.mSt[k] & seen))
+      {
+        if (!(s.mSt[k] & pend))
+        {
+          s.mSt[k] = pend;
+          s.mCnt[k] = 2;
+        }
+        if (--s.mCnt[k] == 0)
+        {
+          s.mSt[k] = seen;
+          UINT8 lo = k == 0 ? 0x04 : 0x01, hi = k == 0 ? 0x08 : 0x02;
+          if (dir > 0) s.status = UINT8((s.status | lo) & ~hi);
+          else if (dir < 0) s.status = UINT8((s.status | hi) & ~lo);
+          else s.status |= UINT8(lo | hi);
+        }
+      }
+      s.mPrev[k] = cur;
+    }
+
+    static void Tick(UINT8 &nmi, UINT8 &units, UINT8 n)
+    {
+      if (++nmi == n)
+      {
+        nmi = 0;
+        units++;
+      }
+    }
+
+    void Timers(void)
+    {
+      s.mctrTmr[0]++;
+      s.mctrTmr[1]++;
+      Tick(s.ramp1Nmi, s.ramp1Tmr, 5);
+      Tick(s.ramp2Nmi, s.ramp2Tmr, 5);
+      Tick(s.t2Nmi, s.t2Tenths, 50);
+      Tick(s.t1Nmi, s.t1Tenths, 50);
+    }
+
+    // -- The main code -----------------------------------------------------------------------------------------------
+
+    void EnterCe(void)
+    {
+      s.status |= 0xF0;
+      s.initReply = 0xCE;
+      s.t1Nmi = s.t1Tenths = 0;
+      s.phase = CeWindow;
+    }
+
+    void C8Skip(void)
+    {
+      s.mode = 2;
+      s.gameSt = 0;
+      s.replySel &= 0x7F;
+      s.phase = Main;
+    }
+
+    // A command for a start-up window: C8 (true: skipped to the game), or the byte (*taken, else none)
+    bool TakeWindowCommand(UINT8 *taken)
+    {
+      *taken = 0;
+      if (s.cmdNew != 0xFF)
+        return false;
+      s.cmdNew = 0;
+      if (s.command == 0xC8)
+      {
+        C8Skip();
+        return true;
+      }
+      *taken = s.command;
+      return false;
+    }
+
+    void MainPass(void)
+    {
+      UINT8 c;
+      switch (s.phase)
+      {
+      case ServoSetup:
+        // Always the full 8 s, the servo boards ready
+        if (s.t1Tenths >= 0x50 && s.t2Tenths >= 0x50)
+        {
+          s.cal1St = s.cal2St = 0;
+          EnterCe();
+        }
+        return;
+      case CeWindow:
+        if (s.t1Tenths >= 0x0A)
+        {
+          s.centre1Off = UINT8(s.centre1 - 0x80);
+          s.phase = CeBlock;
+          return;
+        }
+        if (TakeWindowCommand(&c))
+          return;
+        if (c >= 0x70 && c < 0x90)
+        {
+          s.centre1 = c;
+          s.centre1Off = UINT8(s.centre1 - 0x80);
+          s.phase = CeBlock;
+        }
+        return;
+      case CeBlock:
+        // CE always 1.5 s, no command consumed
+        if (s.t1Tenths >= 0x0F)
+        {
+          s.initReply = 0xCD;
+          s.t2Nmi = s.t2Tenths = 0;
+          s.phase = CdWindow;
+        }
+        return;
+      case CdWindow:
+        if (s.t2Tenths < 0x0A)
+        {
+          if (TakeWindowCommand(&c))
+            return;
+          if (!(c >= 0x70 && c < 0x90))
+            return;
+          s.centre2 = c;
+        }
+        s.centre2Off = UINT8(s.centre2 - 0x80);
+        s.initReply = 0xCC;
+        s.cal1Tries = s.cal2Tries = 3;
+        s.phase = Calibrate;
+        return;
+      case Calibrate:
+        if (CalibrateAxis(0) || CalibrateAxis(1))
+          return;    // skipped to the game
+        if (s.cal1St == 5 && s.cal2St == 5)
+        {
+          s.initReply = 0xCB;
+          s.t1Nmi = s.t1Tenths = 0;
+          s.phase = CbWindow;
+        }
+        return;
+      case CbWindow:
+        // The full 1 s unless C8, any other byte dropped (no cabinet byte on this board)
+        if (s.t1Tenths >= 0x0A)
+        {
+          SetQueue1({ { 0xFE, 0x80 }, { 0xFD, 0x00 }, { 0xFF, 0xFF } });
+          SetQueue2({ { 0xEF, 0x80 }, { 0xDF, 0x00 }, { 0xFF, 0xFF } });
+          s.phase = Flush;
+          return;
+        }
+        TakeWindowCommand(&c);
+        return;
+      case Flush:
+        if (s.q1.len == 0 && s.q2.len == 0)
+        {
+          s.replySel &= 0x7F;
+          s.phase = Main;
+        }
+        return;
+      default:
+        DispatchCommand();
+        RunMode();
+        return;
+      }
+    }
+
+    // One axis's calibration (true: C8 skipped to the game): pushed to its centre when it is not there, then the
+    // servo board's settings (axes exactly at their centres: done at once, no settings)
+    bool CalibrateAxis(int k)
+    {
+      UINT8 &st = k == 0 ? s.cal1St : s.cal2St;
+      UINT8 &tries = k == 0 ? s.cal1Tries : s.cal2Tries;
+      UINT8 &tNmi = k == 0 ? s.t1Nmi : s.t2Nmi;
+      UINT8 &tTenths = k == 0 ? s.t1Tenths : s.t2Tenths;
+      UINT8 axis = k == 0 ? s.axis1 : s.axis2;
+      UINT8 centre = k == 0 ? s.centre1 : s.centre2;
+      Queue &q = k == 0 ? s.q1 : s.q2;
+      if (st == 0)
+      {
+        tNmi = tTenths = 0;
+        if (axis < centre)
+        {
+          Fill(q, { { UINT8(k == 0 ? 0xFE : 0xEF), UINT8(k == 0 ? 0x6A : 0x9A) } });
+          st = 1;
+        }
+        else if (axis >= UINT8(centre + 1))
+        {
+          Fill(q, { { UINT8(k == 0 ? 0xFE : 0xEF), UINT8(k == 0 ? 0x96 : 0x66) } });
+          st = 2;
+        }
+        else
+        {
+          st = 5;
+          return false;
+        }
+      }
+      if (st == 1 || st == 2)
+      {
+        if (tTenths >= 0x32)
+        {
+          // Error 22 / 23 after 3 times on the board (not simulated: tried again)
+          if (--tries == 0)
+            tries = 3;
+          st = 0;
+          return false;
+        }
+        if (s.cmdNew == 0xFF)
+        {
+          s.cmdNew = 0;
+          if (s.command == 0xC8)
+          {
+            C8Skip();
+            return true;
+          }
+        }
+        if ((st == 1 && axis < centre) || (st == 2 && axis >= UINT8(centre + 1)))
+          return false;
+        st = 3;
+        return false;
+      }
+      if (st == 3)
+      {
+        if (k == 0)
+          SetQueue1({ { 0xF8, 0xF9 }, { 0xFE, 0x80 }, { 0xFD, 0x88 }, { 0xF8, 0xFA }, { 0xFA, 0xF8 }, { 0xFA, 0xFE },
+                      { 0xFA, 0xFF }, { 0xFB, 0x05 }, { 0xF8, 0x0E } });
+        else
+          SetQueue2({ { 0x8F, 0xF9 }, { 0xEF, 0x80 }, { 0xDF, 0x88 }, { 0x8F, 0xFA }, { 0xAF, 0xF8 }, { 0xAF, 0xFE },
+                      { 0xAF, 0xFF }, { 0xBF, 0x05 }, { 0x8F, 0x0E } });
+        st = 4;
+        return false;
+      }
+      if (st == 4 && q.len == 0)
+        st = 5;
+      return false;
+    }
+
+    void DispatchCommand(void)
+    {
+      if (s.cmdNew != 0xFF)
+        return;
+      s.cmdNew = 0;
+      s.replySel &= 0x7F;
+      UINT8 c = s.command;
+      UINT8 n = c & 0x0F;
+      switch (c >> 4)
+      {
+      case 0x0:
+        if (c < 0x08)
+        {
+          s.spring1Tab = R16(uint16_t(0x166D + 2 * (c & 7)));
+          s.gameReq = 1;
+        }
+        else
+        {
+          s.follow1[0] = R(uint16_t(0x368D + 2 * (c & 7)));
+          s.follow1[1] = R(uint16_t(0x368E + 2 * (c & 7)));
+        }
+        return;
+      case 0x1:
+        if (c < 0x18)
+        {
+          s.spring2Tab = R16(uint16_t(0x267D + 2 * (c & 7)));
+          s.gameReq = 2;
+        }
+        else
+        {
+          s.follow2[0] = R(uint16_t(0x369D + 2 * (c & 7)));
+          s.follow2[1] = R(uint16_t(0x369E + 2 * (c & 7)));
+        }
+        return;
+      case 0x2:
+        if (n == 0)
+          s.ramp1On = 0;
+        else
+        {
+          s.ramp1Par[0] = R(uint16_t(0x36AD + 2 * n));
+          s.ramp1Par[1] = R(uint16_t(0x36AE + 2 * n));
+          s.ramp1On = 0x80;
+        }
+        s.ramp1Nmi = s.ramp1Tmr = 0;
+        s.gameReq = 0;
+        return;
+      case 0x3:
+        if (n == 0)
+          s.ramp2On = 0;
+        else
+        {
+          s.ramp2Par[0] = R(uint16_t(0x36CB + 2 * n));
+          s.ramp2Par[1] = R(uint16_t(0x36CC + 2 * n));
+          s.ramp2On = 0x80;
+        }
+        s.ramp2Nmi = s.ramp2Tmr = 0;
+        s.gameReq = 0;
+        return;
+      case 0x4: s.tgt1Ptr = uint16_t(0x36E9 + n); s.gameReq = 5; return;
+      case 0x5: s.tgt2Ptr = uint16_t(0x36F9 + n); s.gameReq = 6; return;
+      case 0x6: s.vib1Ptr = uint16_t(0x3709 + 4 * n); s.gameReq = 7; s.vib1St = 0; return;
+      case 0x7: s.vib2Ptr = uint16_t(0x3749 + 4 * n); s.gameReq = 8; s.vib2St = 0; return;
+      case 0x8: s.tq1Ptr = uint16_t(0x3789 + n); s.gameReq = 9; s.tq1St = 0; return;
+      case 0x9: s.tq2Ptr = uint16_t(0x3799 + n); s.gameReq = 0x0A; s.tq2St = 0; return;
+      case 0xC:
+        switch (n)
+        {
+        case 0x0: s.mode = 0; s.c0St = 0; return;
+        case 0x1: s.mode = 1; s.gameSt = 0; return;
+        case 0x8: s.mode = 2; s.gameSt = 0; return;
+        case 0x9: s.mode = 3; s.c9St = 0; return;
+        default: return;
+        }
+      case 0xD:
+        s.replySel = UINT8(1 << (c & 7));
+        return;
+      case 0xF:
+        s.initReply = c;
+        s.replySel |= 0x80;
+        return;
+      default:
+        return;
+      }
+    }
+
+    void Q5(void)
+    {
+      SetQueue1({ { 0xFE, 0x80 }, { 0xFD, 0x00 }, { 0xFC, 0x0A }, { 0xFC, 0x0B }, { 0xFF, 0xFF } });
+      SetQueue2({ { 0xEF, 0x80 }, { 0xDF, 0x00 }, { 0xCF, 0x0A }, { 0xCF, 0x0B }, { 0xFF, 0xFF } });
+      s.out1Src = s.out2Src = 1;
+    }
+
+    void RunMode(void)
+    {
+      switch (s.mode)
+      {
+      case 0:
+        if (s.c0St == 0)
+        {
+          Q5();
+          s.c0St = 1;
+        }
+        return;
+      case 1:
+      case 2:
+        ModeGame();
+        return;
+      case 3:
+        if (s.c9St == 0)
+        {
+          Q5();
+          s.c9St = 1;
+        }
+        if (s.q1.len != 0 || s.q2.len != 0)
+          return;
+        // Back to CE (the calibration then skipped: its states not reset on this path)
+        s.mode = 0;
+        s.c0St = 0;
+        s.replySel |= 0x80;
+        EnterCe();
+        return;
+      default:
+        return;
+      }
+    }
+
+    void ModeGame(void)
+    {
+      if (s.gameSt == 0)
+      {
+        Q5();
+        s.gameSt = 1;
+      }
+      if (s.gameSt == 1)
+      {
+        if (s.q1.len != 0 || s.q2.len != 0)
+          return;
+        // The springs: table 0, follow 0, the targets and moving centres at 80 (game_req is kept: a request made
+        // before plays now)
+        s.target1 = s.mctr1 = 0x80;
+        s.target2 = s.mctr2 = 0x80;
+        s.spring1Tab = R16(s.spr1Ptrs);
+        s.follow1[0] = R(0x368D);
+        s.follow1[1] = R(0x368E);
+        s.spring2Tab = R16(s.spr2Ptrs);
+        s.follow2[0] = R(0x369D);
+        s.follow2[1] = R(0x369E);
+        s.out1Src = s.out2Src = 2;
+        s.ramp1On = s.ramp2On = 0;
+        s.gameSt = 2;
+        return;
+      }
+      if (s.gameSt == 2)
+      {
+        AxisCentre(0);
+        AxisCentre(1);
+        GameDispatch();
+      }
+    }
+
+    // The moving centre: it follows the stick going away beyond the lag, and comes back to the target one count every
+    // period NMIs
+    void AxisCentre(int k)
+    {
+      UINT8 &mctr = k == 0 ? s.mctr1 : s.mctr2;
+      UINT8 &mctrOff = k == 0 ? s.mctr1Off : s.mctr2Off;
+      UINT8 &tmr = s.mctrTmr[k];
+      const UINT8 *follow = k == 0 ? s.follow1 : s.follow2;
+      UINT8 lag = follow[0], period = follow[1];
+      UINT8 axis = k == 0 ? s.axis1 : s.axis2;
+      UINT8 centreOff = k == 0 ? s.centre1Off : s.centre2Off;
+      UINT8 target = k == 0 ? s.target1 : s.target2;
+      UINT8 hi = k == 0 ? 0x08 : 0x02, lo = k == 0 ? 0x04 : 0x01;
+      if (!(s.status & hi))
+      {
+        // Rising
+        UINT8 p = ClampSub(axis, centreOff);
+        if (p >= mctr && UINT8(p - mctr) > lag)
+          mctr = UINT8(p - lag);
+      }
+      else if (!(s.status & lo))
+      {
+        // Falling
+        UINT8 p = ClampSub(axis, centreOff);
+        if (p < mctr && UINT8(mctr - p) > lag)
+          mctr = UINT8(p + lag);
+      }
+      if (mctr != target && tmr >= period)
+      {
+        tmr = 0;
+        mctr = (target > mctr) ? UINT8(mctr + 1) : UINT8(mctr - 1);
+      }
+      mctrOff = UINT8(mctr - 0x80);
+    }
+
+    void GameDispatch(void)
+    {
+      switch (s.gameReq)
+      {
+      case 0:
+        Ramp(s.ramp1On, s.ramp1Tmr, s.ramp1Nmi, s.ramp1Par, s.target1);
+        Ramp(s.ramp2On, s.ramp2Tmr, s.ramp2Nmi, s.ramp2Par, s.target2);
+        return;
+      case 1: s.out1Src = 2; s.gameReq = 0; return;
+      case 2: s.out2Src = 2; s.gameReq = 0; return;
+      case 5: s.target1 = s.mctr1 = R(s.tgt1Ptr); s.gameReq = 0; return;
+      case 6: s.target2 = s.mctr2 = R(s.tgt2Ptr); s.gameReq = 0; return;
+      case 7:
+        if (!(s.vib1St & 1))
+        {
+          SetQueue1({ { 0xFC, R(s.vib1Ptr) }, { 0xFC, R(uint16_t(s.vib1Ptr + 1)) }, { 0xFC, R(uint16_t(s.vib1Ptr + 2)) },
+                      { 0xFC, R(uint16_t(s.vib1Ptr + 3)) } });
+          s.vib1Save = s.out1Src;
+          s.out1Src = 1;
+          s.vib1St = 1;
+        }
+        if (s.q1.len != 0)
+          return;
+        s.out1Src = s.vib1Save;
+        s.gameReq = 0;
+        return;
+      case 8:
+        if (!(s.vib2St & 1))
+        {
+          SetQueue2({ { 0xCF, R(s.vib2Ptr) }, { 0xCF, R(uint16_t(s.vib2Ptr + 1)) }, { 0xCF, R(uint16_t(s.vib2Ptr + 2)) },
+                      { 0xCF, R(uint16_t(s.vib2Ptr + 3)) } });
+          s.vib2Save = s.out2Src;
+          s.out2Src = 1;
+          s.vib2St = 1;
+        }
+        if (s.q2.len != 0)
+          return;
+        s.out2Src = s.vib2Save;
+        s.gameReq = 0;
+        return;
+      case 9:
+        if (!(s.tq1St & 1))
+        {
+          SetQueue1({ { 0xFE, R(s.tq1Ptr) } });
+          s.out1Src = 1;
+          s.tq1St = 1;
+        }
+        if (s.q1.len != 0)
+          return;
+        s.gameReq = 0;    // the FE pair held
+        return;
+      case 0x0A:
+        if (!(s.tq2St & 1))
+        {
+          SetQueue2({ { 0xEF, R(s.tq2Ptr) } });
+          s.out2Src = 1;
+          s.tq2St = 1;
+        }
+        if (s.q2.len != 0)
+          return;
+        s.gameReq = 0;
+        return;
+      default:
+        return;
+      }
+    }
+
+    // A target ramp: a step every period x 10 ms, held at 00 / FF
+    static void Ramp(UINT8 on, UINT8 &tmr, UINT8 &nmi, const UINT8 *par, UINT8 &target)
+    {
+      if (!(on & 0x80) || tmr < par[0])
+        return;
+      nmi = tmr = 0;
+      UINT8 step = par[1];
+      UINT8 r = UINT8(target + step);
+      if (step & 0x80)
+      {
+        if (r == 0xFF)
+          r = 0x00;
+      }
+      else if (r == 0x00)
+        r = 0xFF;
+      target = r;
+    }
+  };
 }
 
 std::unique_ptr<IServoProgram> MakeServoProgram(uint32_t crc32)
@@ -2575,6 +3449,17 @@ std::unique_ptr<IServoProgram> MakeServoProgram(uint32_t crc32)
     return std::make_unique<CSegaRally2Program>();
   case 0xDBF88DE6:
     return std::make_unique<CScudRaceProgram>(kEpr19338);
+  default:
+    return nullptr;
+  }
+}
+
+std::unique_ptr<IJoystickProgram> MakeJoystickProgram(uint32_t crc32)
+{
+  switch (crc32)
+  {
+  case 0x65082B14:
+    return std::make_unique<CStarWarsProgram>();
   default:
     return nullptr;
   }

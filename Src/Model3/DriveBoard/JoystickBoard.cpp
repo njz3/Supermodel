@@ -31,7 +31,8 @@
  * joystick. Its program computes the spring itself, from the axes it reads on
  * ADC channels 3 and 4, and sends it to each servo board as a torque.
  *
- * NOTE: Simulation does not yet work. Drive board ROMs are required.
+ * SimulateDriveBoard: the program's logic (ServoProgramSim) instead of its Z80,
+ * NMI by NMI. The drive board's ROM is required either way.
  */
 
 #include "JoystickBoard.h"
@@ -41,6 +42,7 @@
 #include <cstdio>
 #include <cmath>
 #include <algorithm>
+#include <zlib.h>
 
 Game::DriveBoardType CJoyBoard::GetType(void) const
 {
@@ -63,7 +65,25 @@ void CJoyBoard::SaveState(CBlockFile *SaveState)
   SaveState->Write(m_simulated);
   if (m_simulated)
   {
-    // TODO - save board simulation state
+    // The DIP switches, the servo boards' effects, the program's state and the time
+    SaveState->Write(m_dip1);
+    SaveState->Write(m_dip2);
+    SaveState->NewBlock("JoystickBoardServos", __FILE__);
+    for (const Servo &servo : m_servo)
+    {
+      SaveState->Write(servo.value);
+      SaveState->Write(servo.vibrateVal[0]);
+      SaveState->Write(servo.vibrateVal[1]);
+      SaveState->Write(servo.gain);
+      SaveState->Write(servo.constForce);
+      SaveState->Write(servo.vibrate);
+    }
+    std::lock_guard<std::mutex> lock(m_simMutex);
+    m_joySim->SaveState(SaveState);
+    SaveState->NewBlock("JoystickBoardSimTime", __FILE__);
+    SaveState->Write(m_joyNmiAcc);
+    SaveState->Write(m_joyNextNmi);
+    SaveState->Write(m_initialized);
   }
   else
   {
@@ -92,10 +112,9 @@ void CJoyBoard::SaveState(CBlockFile *SaveState)
 
 void CJoyBoard::LoadState(CBlockFile *SaveState)
 {
-  CDriveBoard::LoadState(SaveState);
-
   if (SaveState->FindBlock("JoystickBoard") != Result::OKAY)
   {
+    CDriveBoard::LoadState(SaveState);
     ErrorLog("Unable to load joystick drive board state. Save state file is corrupt.");
     Disable();
     return;
@@ -103,39 +122,69 @@ void CJoyBoard::LoadState(CBlockFile *SaveState)
 
   bool wasSimulated;
   SaveState->Read(&wasSimulated, sizeof(wasSimulated));
-  if (wasSimulated)
+  if (wasSimulated && !m_simulated)
   {
-    // Simulation has never existed
-    ErrorLog("Save state contains unexpected data. Halting drive board emulation.");
+    // No Z80 state to resume from
+    CDriveBoard::LoadState(SaveState);
+    ErrorLog("Save state from a simulated drive board, loaded with it emulated (SimulateDriveBoard): the drive board "
+             "is halted.");
     Disable();
     return;
   }
-  else
-  {
-    // Load DIP switches and digit displays
-    SaveState->Read(m_dip1);
-    SaveState->Read(m_dip2);
 
+  // DIP switches (emulated: and the ADC's state)
+  SaveState->Read(m_dip1);
+  SaveState->Read(m_dip2);
+  if (!wasSimulated)
+  {
     SaveState->Read(m_adcPortRead);
     SaveState->Read(m_adcPortBit);
     SaveState->Read(m_servo[0].vibrateVal[0]);
     SaveState->Read(m_servo[0].vibrateVal[1]);
-
-    if (SaveState->FindBlock("JoystickBoardServos") == Result::OKAY)
+  }
+  if (SaveState->FindBlock("JoystickBoardServos") == Result::OKAY)
+  {
+    for (Servo &servo : m_servo)
     {
-      for (Servo &servo : m_servo)
+      SaveState->Read(servo.value);
+      SaveState->Read(servo.vibrateVal[0]);
+      SaveState->Read(servo.vibrateVal[1]);
+      SaveState->Read(servo.gain);
+      SaveState->Read(servo.constForce);
+      SaveState->Read(servo.vibrate);
+    }
+  }
+  else
+    ResetServos();
+
+  if (m_simulated)
+  {
+    // The program simulated: its own state, or from an emulated board's save state its Z80's RAM (the base board's
+    // state read as emulated, then the simulation going on from it)
+    std::lock_guard<std::mutex> lock(m_simMutex);
+    if (wasSimulated)
+    {
+      m_joySim->LoadState(SaveState);
+      if (SaveState->FindBlock("JoystickBoardSimTime") == Result::OKAY)
       {
-        SaveState->Read(servo.value);
-        SaveState->Read(servo.vibrateVal[0]);
-        SaveState->Read(servo.vibrateVal[1]);
-        SaveState->Read(servo.gain);
-        SaveState->Read(servo.constForce);
-        SaveState->Read(servo.vibrate);
+        SaveState->Read(m_joyNmiAcc);
+        SaveState->Read(m_joyNextNmi);
+        SaveState->Read(m_initialized);
       }
     }
     else
-      ResetServos();
+    {
+      m_simulated = false;
+      CDriveBoard::LoadState(SaveState);
+      m_simulated = true;
+      m_joySim->ImportRam(m_ram);
+      // The next NMI where the emulated board's timer had it (not the power-up's wait)
+      m_joyNmiAcc = 0;
+      m_joyNextNmi = m_allowNMIInterupts ? std::max(m_nmiTimerVal, 0) : m_joySim->FirstNmiCycles();
+    }
   }
+  else
+    CDriveBoard::LoadState(SaveState);
 }
 
 void CJoyBoard::Disable(void)
@@ -165,7 +214,24 @@ void CJoyBoard::Reset(void)
   m_lastVibrate[0] = 0;
   m_lastVibrate[1] = 0;
 
-  m_simulated = false;  //TODO: make this run-time configurable when simulation mode is supported
+  // SimulateDriveBoard: the program's logic instead of its Z80, for the programs simulated (ServoProgramSim)
+  m_joySim.reset();
+  m_joyNmiAcc = 0;
+  m_joyNextNmi = 0;
+  m_simLastReply = 0;
+  if (m_config["SimulateDriveBoard"].ValueAsDefault<bool>(false))
+  {
+    uint32_t crc = crc32(0, m_rom, 0x10000);
+    m_joySim = MakeJoystickProgram(crc);
+    if (m_joySim)
+    {
+      m_joySim->Reset(m_rom, m_dip1, m_dip2);
+      m_joyNextNmi = m_joySim->FirstNmiCycles();
+    }
+    else
+      InfoLog("Drive board: its program (CRC32 %08X) is not simulated yet, it is emulated.", crc);
+  }
+  m_simulated = m_joySim != nullptr;
 
   if (!m_config["ForceFeedback"].ValueAsDefault<bool>(false))
     Disable();
@@ -210,154 +276,20 @@ void CJoyBoard::Write(UINT8 data)
     return;
   }
 
-  //if (data >= 0x01 && data <= 0x0F ||
-  //  data >= 0x20 && data <= 0x2F ||
-  //  data >= 0x30 && data <= 0x3F ||
-  //  data >= 0x40 && data <= 0x4F ||
-  //  data >= 0x70 && data <= 0x7F)
-  //  DebugLog("DriveBoard.Write(%02X)\n", data);
-  if (m_simulated)
-    SimulateWrite(data);
-  else
-  {
-    CDriveBoard::Write(data);
-    // C9 starts the board again from its reply CE: the stick is shown centred to its calibration until it replies
-    // CB again. C8 jumps from the start-up straight to the game
-    if (data == 0xC9)
-      m_initialized = false;
-    else if (data == 0xC8)
-      m_initialized = true;
-  }
+  // Emulated or simulated, the command shown to the program a frame at a time. C9 starts the board again from its
+  // reply CE: the stick is shown centred to its calibration until it replies CB again. C8 jumps from the start-up
+  // straight to the game
+  CDriveBoard::Write(data);
+  if (data == 0xC9)
+    m_initialized = false;
+  else if (data == 0xC8)
+    m_initialized = true;
 }
 
 UINT8 CJoyBoard::SimulateRead(void)
 {
-  if (m_initialized)
-  {
-    switch (m_readMode)
-    {
-      case 0x0: return m_statusFlags;                      // Status flags
-      case 0x1: return m_dip1;                             // DIP switch 1 value
-      case 0x2: return m_dip2;                             // DIP switch 2 value
-      case 0x3: return m_wheelCenter;                      // Wheel center
-      case 0x4: return 0x80;                               // Cockpit banking center
-      case 0x5: return (UINT8)m_inputs->analogJoyX->value; // Wheel position
-      case 0x6: return 0x80;                               // Cockpit banking position
-      case 0x7: return m_echoVal;                          // Init status/echo test
-      default:  return 0xFF;
-    }
-  }
-  else
-  {
-    switch (m_initState / 5)
-    {
-      case 0:  return 0xCF;  // Initiate start
-      case 1:  return 0xCE;
-      case 2:  return 0xCD;
-      case 3:  return 0xCC;  // Centering wheel
-      default:
-        m_initialized = true;
-        return 0x80;
-    }
-  }
-}
-
-void CJoyBoard::SimulateWrite(UINT8 cmd)
-{
-  // Following are commands for Scud Race.  Daytona 2 has a compatible command set while Sega Rally 2 is completely different
-  // TODO - finish for Scud Race and Daytona 2
-  // TODO - implement for Sega Rally 2
-  UINT8 type = cmd>>4;
-  UINT8 val = cmd&0xF;
-
-
-    switch (type)
-    {
-    case 0: // 0x00-0F Play sequence
-      /* TODO */
-      break;
-    case 1: // 0x10-1F Set centering strength
-      if (val == 0)
-        // Disable auto-centering
-        // TODO - is 0x10 for disable?
-        SendSelfCenter(0);
-      else
-        // Enable auto-centering (0x1 = weakest, 0xF = strongest)
-        SendSelfCenter(val * 0x11);
-      break;
-    case 2: // 0x20-2F Friction strength
-      if (val == 0)
-        // Disable friction
-        // TODO - is 0x20 for disable?
-        SendFriction(0);
-      else
-        // Enable friction (0x1 = weakest, 0xF = strongest)
-        SendFriction(val * 0x11);
-      break;
-    case 3: // 0x30-3F Uncentering (vibrate)
-      if (val == 0)
-        // Disable uncentering
-        SendVibrate(0, 0);
-      else
-        // Enable uncentering (0x1 = weakest, 0xF = strongest)
-        SendVibrate(0, val * 0x11);
-      break;
-    case 4: // 0x40-4F Play power-slide sequence
-      /* TODO */
-      break;
-    case 5: // 0x50-5F Rotate wheel right
-      SendConstantForce(0, (val + 1) * 0x5);
-      break;
-    case 6: // 0x60-6F Rotate wheel left
-      SendConstantForce(0, -(val + 1) * 0x5);
-      break;
-    case 7: // 0x70-7F Set steering parameters
-      /* TODO */
-      break;
-    case 8: // 0x80-8F Test Mode
-      switch (val & 0x7)
-      {
-        case 0:  SendStopAll();                                      break;  // 0x80 Stop motor
-        case 1:  SendConstantForce(0, 20);                           break;  // 0x81 Roll wheel right
-        case 2:  SendConstantForce(0, -20);                          break;  // 0x82 Roll wheel left
-        case 3:  /* Ignore - no clutch */                            break;  // 0x83 Clutch on
-        case 4:  /* Ignore - no clutch */                            break;  // 0x84 Clutch off
-        case 5:  m_wheelCenter = (UINT8)m_inputs->analogJoyX->value; break;  // 0x85 Set wheel center position
-        case 6:  /* Ignore */                                        break;  // 0x86 Set cockpit banking position
-        case 7:  /* Ignore */                                        break;  // 0x87 Lamp on/off
-      }
-      break;
-    case 0x9: // 0x90-9F ??? Don't appear to have any effect with Scud Race ROM
-      /* TODO */
-      break;
-    case 0xA: // 0xA0-AF ??? Don't appear to have any effect with Scud Race ROM
-      /* TODO */
-      break;
-    case 0xB: // 0xB0-BF Invalid command (reserved for use by PPC to send cabinet type 0xB0 or 0xB1 during initialization)
-      /* Ignore */
-      break;
-    case 0xC: // 0xC0-CF Set board mode (0xCB = reset board)
-      SendStopAll();
-      if (val >= 0xB)
-      {
-        // Reset board
-        m_initialized = false;
-        m_initState = 0;
-      }
-      else
-        m_boardMode = val;
-      break;
-    case 0xD: // 0xD0-DF Set read mode
-      m_readMode = val & 0x7;
-      break;
-    case 0xE: // 0xE0-EF Invalid command
-      /* Ignore */
-      break;
-    case 0xF: // 0xF0-FF Echo test
-      m_echoVal = val;
-      break;
-    }
-
+  std::lock_guard<std::mutex> lock(m_simMutex);
+  return m_joySim->Reply();
 }
 
 void CJoyBoard::RunFrame(void)
@@ -380,9 +312,53 @@ void CJoyBoard::RunFrame(void)
 
 void CJoyBoard::SimulateFrame(void)
 {
-  if (!m_initialized)
-    m_initState++;
-  // TODO - update m_statusFlags and play preset scripts according to board mode
+  // The frame's NMIs as the Z80's CTC raises them, each writing the two servo boards' values and registers as the
+  // emulated program does
+  bool newCommand = false;
+  {
+    std::lock_guard<std::mutex> lock(m_commandMutex);
+    if (!m_commands.empty())
+    {
+      m_dataSent = m_commands.front();
+      m_commands.pop_front();
+      newCommand = true;
+    }
+  }
+  {
+    std::lock_guard<std::mutex> lock(m_simMutex);
+    if (newCommand)
+    {
+      m_joySim->SetCommand(m_dataSent);
+      ObserveIO(0x28, m_dataSent);
+    }
+    m_joyNmiAcc += GetFramecycles();
+    while (m_joyNextNmi <= m_joyNmiAcc)
+    {
+      m_joyNextNmi += 16000;
+      ++m_nmiCount;
+      UINT8 tq1, tq2, mode;
+      m_joySim->NmiOutputs(tq1, tq2, mode);
+      UINT8 reply = m_joySim->Reply();
+      m_dataReceived = reply;
+      if (reply != m_simLastReply)
+      {
+        ObserveIO(0x29, reply);
+        m_simLastReply = reply;
+      }
+      if (reply == 0xCB)
+        m_initialized = true;
+      ObserveIO(0x2A, tq1);
+      ObserveIO(0x2D, tq2);
+      ObserveIO(0x2E, mode);
+      m_servo[0].value = tq1;
+      m_servo[1].value = tq2;
+      ProcessServoRegister(0, 0xF0 | (mode & 0x0F));
+      ProcessServoRegister(1, 0xF0 | (mode >> 4));
+      // The axes sampled after the outputs (the real stick from the NMI that first replies CB)
+      m_joySim->NmiInputs(ReadADCChannel3(), ReadADCChannel4());
+    }
+  }
+  UpdateForceFeedback();
 }
 
 UINT8 CJoyBoard::IORead8(UINT32 portNum)
@@ -419,6 +395,15 @@ UINT8 CJoyBoard::IORead8(UINT32 portNum)
         DebugLog("Unhandled Z80 input on ADC port %u (at PC = %04X)\n", portNum, m_z80.GetPC());
         return 0xFF;
       }
+      if (portNum >= 0x26)
+      {
+        // The byte the program puts together from the 8 bits (agent mode's journal: a port read as 80|port)
+        static UINT8 assembled[2];
+        UINT8 &acc = assembled[portNum - 0x26];
+        acc = UINT8((acc << 1) | ((adcVal >> m_adcPortBit) & 1));
+        if (m_adcPortBit == 0)
+          ObserveIO(UINT8(0x80 | portNum), acc);
+      }
       return (adcVal >> m_adcPortBit) & 0x01;
       }
       else
@@ -427,6 +412,7 @@ UINT8 CJoyBoard::IORead8(UINT32 portNum)
         return 0xFF;
       }
   case 0x28: // PPC command
+    ObserveIO(0xA8, m_dataSent);
     return m_dataSent;
   case 0x2c: // Encoder error reporting (kept at 0x00 for no error)
     // Bits 0-1 servo board 1, bits 2-3 servo board 2:

@@ -73,4 +73,31 @@ public:
 // The simulation of the program with this CRC32, or none (that program is emulated)
 std::unique_ptr<IServoProgram> MakeServoProgram(uint32_t crc32);
 
+/*
+ * A joystick board's program (Star Wars Trilogy's EPR-21119): two servo boards, their values on ports 2A and 2D,
+ * their registers' nibbles on port 2E. An NMI in two halves: the outputs (with the reply), then the axes sampled,
+ * which Supermodel shows centred until the board has replied CB (in that very NMI).
+ */
+class IJoystickProgram
+{
+public:
+  virtual ~IJoystickProgram() = default;
+  virtual void Reset(const UINT8 *rom, UINT8 dip1, UINT8 dip2) = 0;
+  virtual void SetCommand(UINT8 data) = 0;
+  virtual UINT8 Reply(void) const = 0;
+  virtual double FirstNmiCycles(void) const = 0;
+
+  // The NMI's first half: the command, the reply (Reply() after it), the values of ports 2A, 2D and 2E
+  virtual void NmiOutputs(UINT8 &tq1, UINT8 &tq2, UINT8 &mode) = 0;
+
+  // Its second half: the axes (ADC channels 3 and 4), the timers, then the main code until the next NMI
+  virtual void NmiInputs(UINT8 axis1, UINT8 axis2) = 0;
+
+  virtual void SaveState(CBlockFile *saveState) = 0;
+  virtual void LoadState(CBlockFile *saveState) = 0;
+  virtual void ImportRam(const UINT8 *ram) = 0;
+};
+
+std::unique_ptr<IJoystickProgram> MakeJoystickProgram(uint32_t crc32);
+
 #endif  // INCLUDED_SERVOPROGRAMSIM_H

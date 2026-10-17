@@ -1411,7 +1411,8 @@ not.  All options are case sensitive.
     Description:    Simulates the drive board, or emulates it (the default).
                     Emulated, the drive board's program runs on its Z80, as on
                     the cabinet.  Simulated, Supermodel follows the program's
-                    logic instead, for the steering wheel drive boards:
+                    logic instead, for the steering wheel and joystick drive
+                    boards:
 
                         EPR-19338A  Scud Race, Dirt Devils, Emergency Call
                                     Ambulance, Le Mans 24 (CABINET TYPE
@@ -1421,9 +1422,9 @@ not.  All options are case sensitive.
                         EPR-20512   Sega Rally 2
                         EPR-18261   Le Mans 24 (CABINET TYPE TWIN-NORMAL),
                                     the Model 2 drive board of Indy 500
+                        EPR-21119   Star Wars Trilogy (joystick)
 
-                    The other drive boards (Star Wars Trilogy's joystick board,
-                    the billboard) are still emulated.  The drive board's ROM is needed either way.  A
+                    The billboard is still emulated.  The drive board's ROM is needed either way.  A
                     save state keeps the mode it was made in; a save state of
                     an emulated drive board loads in the simulated mode too.
 
@@ -1633,9 +1634,9 @@ All settings are case sensitive.
 
     Argument:       Integer.
 
-    Description:    If set to 1, simulates the drive board (the steering wheel
-                    drive boards listed under '-simulate-driveboard', the other
-                    drive boards being emulated); if set to 0, emulates its Z80
+    Description:    If set to 1, simulates the drive board (the drive boards
+                    listed under '-simulate-driveboard', the billboard being
+                    emulated); if set to 0, emulates its Z80
                     (the default behavior).  Equivalent to the
                     '-simulate-driveboard' and '-emulate-driveboard' command
                     line options.
