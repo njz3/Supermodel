@@ -426,6 +426,100 @@ namespace Telemetry
         return true;
       }
     };
+
+    /*
+     * Le Mans 24 (lemans24). Its unit: 9.26 a metre of its speedometer (the speed from the positions is then the one
+     * the game shows). The player's car: 0x1FDBC0/C4/C8 x, y, z (floats, set once the race runs, cleared one frame in
+     * 256; else x and z at 0x17E610/18, or the middle of its four points on the ground, x, y and z floats every 12
+     * bytes from 0x190124), 0x195474 and 0x195478
+     * sin and cos of its heading (no pitch nor roll found yet), 0x195564 its speed (km/h, float). The dashboard:
+     * 0x1AD5DC u16 rpm, 0x1AD5E1 u8 the gear less one (the automatic gearbox's 6). 0x17FD70 the time left (s, float).
+     * The other cars: entries of 0x1EC bytes from 0x17CED4 (x at +0, z at +8, the track segment u32 at +0x18; 6 on
+     * the track, already spread around it as the player leaves the pits), their heading's sin and cos at +0x20/+0x24
+     * of entries of 0x21C bytes from 0x1858D8 (with the next points of their path). Its world is not mirrored.
+     */
+    class CLeMans24 : public IDecoder
+    {
+    public:
+      bool Decode(CModel3 &model3, uint64_t frame, Frame &out) override
+      {
+        CRam ram(model3);
+        const float unit = 1.0f / 9.26f;
+        out.game = "lemans24";
+        out.frame = frame;
+        // Racing: the time left counting down
+        out.time_left = ram.F32(0x17FD70);
+        if (std::isfinite(out.time_left) && out.time_left != m_lastTimeLeft)
+        {
+          if (out.time_left < m_lastTimeLeft && m_lastTimeLeft - out.time_left < 0.5f)
+            m_lastCount = frame;
+          m_lastTimeLeft = out.time_left;
+        }
+        bool racing = frame - m_lastCount < 8;
+        out.racing = racing;
+        out.state = racing ? State::Race : State::Unknown;
+        Vehicle v;
+        // The position cleared one frame in 256 once the car has left the pits (x first): then its copy at 0x17E610
+        // (whose height is not the car's, 2 m above it), and before the race runs the four points on the ground
+        float x = ram.F32(0x1FDBC0), y = ram.F32(0x1FDBC4), z = ram.F32(0x1FDBC8);
+        if (x == 0 || z == 0)
+        {
+          x = ram.F32(0x17E610);
+          z = ram.F32(0x17E618);
+          y = ram.F32(0x190134);
+        }
+        if (x == 0 || z == 0)
+        {
+          x = z = 0;
+          for (int j = 0; j < 4; j++)
+          {
+            x += ram.F32(0x190124 + 12 * j) / 4;
+            z += ram.F32(0x190124 + 12 * j + 8) / 4;
+          }
+        }
+        v.x = x * unit;
+        v.y = y * unit;
+        v.z = z * unit;
+        if (!std::isfinite(v.x) || !std::isfinite(v.z) || (v.x == 0 && v.z == 0))
+          return false;
+        float s = ram.F32(0x195474), c = ram.F32(0x195478);
+        float up[3] = { 0, 1, 0 }, forward[3] = { s, 0, c }, right[3] = { c, 0, -s };
+        SetOrientation(v, right, up, forward);
+        v.speed = ram.F32(0x195564) / 3.6f;
+        v.gear = ram.U8(0x1AD5E1) + 1;
+        v.gears = 6;
+        v.rpm = ram.U16(0x1AD5DC);
+        v.rpm_max = 10000;
+        out.player = v;
+        out.others.clear();
+        for (int k = 0; k < 6; k++)
+        {
+          uint32_t e = 0x17CED4 + k * 0x1EC;
+          Vehicle o;
+          float ox = ram.F32(e), oz = ram.F32(e + 8);
+          if (!std::isfinite(ox) || !std::isfinite(oz) || (ox == 0 && oz == 0))
+          {
+            o.x = o.y = o.z = NAN;
+            out.others.push_back(o);
+            continue;
+          }
+          // (their entries hold no height)
+          o.x = ox * unit;
+          o.y = 0;
+          o.z = oz * unit;
+          uint32_t p = 0x1858D8 + k * 0x21C;
+          float os = ram.F32(p + 0x20), oc = ram.F32(p + 0x24);
+          float of[3] = { os, 0, oc }, orr[3] = { oc, 0, -os };
+          SetOrientation(o, orr, up, of);
+          out.others.push_back(o);
+        }
+        return true;
+      }
+
+    private:
+      float m_lastTimeLeft = 0;
+      uint64_t m_lastCount = ~0ull >> 1;
+    };
   }
 
   std::unique_ptr<IDecoder> MakeDecoder(const Game &game)
@@ -453,6 +547,8 @@ namespace Telemetry
       return std::make_unique<CDirtDevils>();
     if (game.name == "eca")
       return std::make_unique<CEmergencyCallAmbulance>();
+    if (game.name == "lemans24")
+      return std::make_unique<CLeMans24>();
     return nullptr;
   }
 }
