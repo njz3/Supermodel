@@ -450,6 +450,34 @@ La capture des deux parties corrigées est dans BFF :
 La zone morte des joysticks de Supermodel (3 % par défaut, `InputJoy1XDeadZone`) rapproche du
 centre la valeur que le jeu lit ; `agent_drive.py --deadzone` en tient compte.
 
+### 3.2 quater Daytona 2 en mode agent (14 octobre)
+
+NVRAM réglée par le propriétaire (sans réseau, free play) et sauvegarde en course, dans un rundir
+temporaire de la session, non conservé : à refaire au besoin (menu de test, puis F5 au départ d'une
+course). Sans réglage, Daytona 2 réclame la network board et redémarre, comme Scud. Mesures faites
+avec le build du 14 octobre (`7999a82`), avant les corrections A et C (§3.4).
+
+| Essai (60 s, temps réel, `--servo`) | Résultat |
+|:--|:--|
+| entrées tenues par l'agent, `--vjoy` | 553 forces constantes envoyées, 553 reçues par vJoy, toutes justes, dans la même image ; 52 vibrations ; aucun ressort de Supermodel (le ressort est celui du Z80) |
+| `--inputs vjoy` | braquage lu par le jeu dans la même image, 3450 sur 3451 ; 509/509 forces justes à vJoy ; 8,69 NMI par image |
+
+**Pas de vibration au centre**, même avant l'envoi une fois par image : sur 24 000 NMI au registre
+`FE`, aucune inversion de signe du couple d'une NMI à la suivante, au centre comme ailleurs. Hors du
+centre, le couple pousse vers le centre dans 88 % des NMI (81 % près du centre), le reste suit les
+effets de route et les chocs. Limite : l'essai est en boucle ouverte (le braquage est imposé, pas un
+volant qui répond au couple) ; une oscillation d'un vrai volant, due au ressort raide du cabinet `B0`
+et à la mise à jour à 57,5 Hz, ne peut pas s'y voir (§4, point 10).
+
+**Niveaux de force** : avec la NVRAM du propriétaire, le jeu envoie `CB 80 B1` au démarrage, donc le
+**cabinet B1** (comme Scud). Ses tables plafonnent le ressort à ±44 sur 63, plus l'effet de route,
+et les couples forts `58`-`5F`/`68`-`6F` à 55. Relevé : 84 % au plus côté Z80 (`FE` 80 ± 53), 82 %
+reçus par vJoy, 0,74 s au-dessus de 80 % sur 60 s, jamais 100 % ; la vibration monte à 94 %. Avec
+le cabinet `B0` (ressort ±50 à ±78, couples forts jusqu'à 128), Supermodel saturerait à 100 % dès
+`FE` ≤ `40` ou ≥ `C0`. Après chaque power slide, le jeu envoie `20` : `FB` = `87`, soit 5,5 % de
+gain pendant 0,5 à 1 s, jusqu'au `2F` (vJoy ne reçoit alors que 2 à 3 %). Le sens réel de `FB`
+sur la carte servo reste une supposition de BFF, à comparer avec la borne.
+
 ### 3.3 Ce que Scud Race envoie
 
 - **Démarrage** : `CB 80 B1`, donc le cabinet `B1`, avec une courbe couple/position plate côté Z80.
@@ -551,8 +579,9 @@ Indy 500 y est tombé à 26,3 Hz. Supermodel a donc pu tourner sous 57,5 images 
 4. ~~Sega Rally 2 : le ressort est perdu au chargement d'une sauvegarde d'état~~ : **fait le
    16 octobre** (§2.9), les effets sont dans les sauvegardes d'état et rejoués au chargement.
 5. **Comparatif avant/après** : la même série avec upstream plus le seul correctif DirectInput.
-6. **Daytona 2** : son ressort est calculé par le Z80 et envoyé en force constante à 57,5 Hz ;
-   vérifier qu'il ne vibre pas au centre (cabinet `B0` par défaut : jusqu'à 100 %).
+6. ~~**Daytona 2** : vérifier que son ressort ne vibre pas au centre~~ — **fait le 14 octobre en
+   boucle ouverte** (§3.2 quater) : aucune alternance du couple, même NMI par NMI. Reste la boucle
+   fermée, avec un vrai volant (point 10).
 7. **Le Mans 24** : en TWIN-NORMAL avec EPR-18261 (le nouveau décodage), puis en TWIN-LEMANS avec
    EPR-19338A.
 8. ~~Acquisition exclusive en arrière-plan~~ : faite, c'est l'option `BackgroundInput` (§2.3).
@@ -599,13 +628,30 @@ Indy 500 y est tombé à 26,3 Hz. Supermodel a donc pu tourner sous 57,5 images 
     de test (journaliser ses octets en regard de ce que dit l'écran). Aujourd'hui servo 1 = X est
     une supposition. Le ressort reste stable quel que soit le choix, puisque le Z80 le calcule sur
     l'axe qu'il lit.
-12. **Committer**, puis décider d'une PR vers `trzy/Supermodel`, sur demande du propriétaire.
+12. **Tracés de Daytona 2** (demandé le 14 octobre) : la télémétrie (`tel`, `Telemetry.md`)
+    et la course enregistrée avec le retour de force (`pkg/autopilot_data/records/daytona2_beginner_record`,
+    `servo.tsv` et `events.tsv`, `Autopilot.md` §5.7) donnent tout ce qu'il faut :
+    - tracer le couple en fonction de la position sur un tour, le circuit vu de dessus, et animer
+      l'angle du volant avec le couple commandé à la servoboard (registre `FE`, à chaque NMI) ;
+    - y repérer ce que le propriétaire sent sur la vraie borne : vibration sur l'herbe, gros coup
+      lors d'un choc (mur, concurrent), ressort permanent assez fort, aller-retour gauche/droite
+      au power slide.
+13. **Committer**, puis décider d'une PR vers `trzy/Supermodel`, sur demande du propriétaire.
     `NUM_FF_EFFECTS` est un correctif à part entière, à proposer seul s'il le faut.
 
 ## 5. Ce qu'il faut savoir des programmes
 
 - Une commande est prise quand elle est lue identique sur **4 NMI** (8 ms), et **seulement si elle
   diffère de la précédente** (EPR-19338A, EPR-20985, EPR-20512).
+- **Cadence de la NMI, lue dans les EPROM** (14 octobre) : EPR-19338A, EPR-20985, EPR-20512,
+  EPR-21119 et EPR-18261 programment le CTC à l'identique : canal 0 en timer, prescaler 16,
+  constante 250 (`07`, `FA` sur le port `10`) ; canal 1 en compteur du canal 0, constante 4 (`57`,
+  `04` sur le port `11`), sa sortie sur la NMI. Soit 8 MHz / 16 000 = **500 Hz**, ce que calcule
+  `Z80CTC` dans Supermodel : les 8,7 NMI par image en découlent, ce n'est pas un réglage arbitraire.
+  Seule l'horloge de 8 MHz reste une hypothèse ; elle n'est mesurée que sur la carte 838-11966
+  d'EPR-18261, pas sur la carte servo 838-12912-01. Les cartes Model 2 (EPR-15111, EPR-16488A,
+  EPR-17891) n'ont pas de CTC : leur interruption (IM 1, pas une NMI) vient du câblage, cadence
+  inconnue (environ 1 kHz supposé, 4 MHz / 4096 ou 8 MHz / 8192, ni lu ni mesuré).
 - **Sens** : `FE` < `80` tourne le volant à droite, > `80` à gauche (vérifié dans le calibrage).
 - Scud : le ressort est celui de la carte servo (`FC` 4) ; `10` est le ressort le plus faible, pas
   zéro ; `50`/`60` poussent (21) ; `9x` ne fait que couper le moteur 60-90 ms, car le kick qui
