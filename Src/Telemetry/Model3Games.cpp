@@ -83,15 +83,21 @@ namespace Telemetry
      * 57 frames a second. The game's world has its x the other way: mirrored here, so that the car's right is
      * up x forward.
      */
+    // What the state word's bits mean (below)
+    enum class StateBits { Scud, ScudDeluxe, Daytona2 };
+
     struct ScudLayout
     {
       const char *game;
       uint32_t base, stride;      // the car table
       uint32_t x, matrix, velocity, kmh, gear, rpm, laps, position, segment;
       bool wideLaps;              // laps and position: u16 (else u8)
-      int segments;               // segments a lap (the beginner course's)
+      int segments;               // segments a lap, when the game gives none (below)
       uint32_t timeLeft, raceTime, lapTable, stateWord;
       float rpmMax, rpmIdle;
+      StateBits stateBits;
+      uint32_t lapSegments;       // u32, the course's segments a lap, the segments then counted from the start line
+                                  // on through the race (Scud Race); 0: none, `segments` a lap
     };
 
     class CScudEngine : public IDecoder
@@ -159,7 +165,15 @@ namespace Telemetry
           int lapsDone = Laps(ram, c);
           v.lap = lapsDone + 1;
           v.position = (l.wideLaps ? ram.U16(c + l.position) : ram.U8(c + l.position)) + 1;
-          v.progress = lapsDone + std::clamp(int(ram.S16(c + l.segment)), 0, l.segments - 1) / float(l.segments);
+          int segment = ram.S16(c + l.segment), segments = l.segments;
+          if (l.lapSegments)
+          {
+            // Counted from the start line: the laps done's own
+            uint32_t n = ram.U32(l.lapSegments);
+            segments = n > 0 && n < 10000 ? int(n) : l.segments;
+            segment -= lapsDone * segments;
+          }
+          v.progress = lapsDone + std::clamp(segment, 0, segments - 1) / float(segments);
           if (k == 0)
             out.player = v;
           else
@@ -177,19 +191,28 @@ namespace Telemetry
       State DecodeState(const CRam &ram) const
       {
         uint16_t w = ram.U16(m_l.stateWord);
-        if (std::string(m_l.game).compare(0, 4, "scud") == 0)
+        switch (m_l.stateBits)
         {
-          // Scud Race: 0 attract, 0x4000 the menus, 0x2000 the choices made, 0x1000 the race's start (the rolling
-          // start, driven by the game), 0x0400 racing, 0x0010 time up and game over
+        case StateBits::Scud:
+          // Scud Race (and Plus): 0 attract, 0x4000 the menus, 0x2000 the choices made, 0x1000 the race's start (the
+          // rolling start, driven by the game), 0x0400 racing, 0x0010 time up and game over
           if (w & 0x1400) return State::Race;
           if (w & 0x6000) return State::Select;
           if (w & 0x0010) return State::Over;
           return w == 0 ? State::Attract : State::Unknown;
+        case StateBits::ScudDeluxe:
+          // Scud Race Deluxe: 0 attract and the menus alike, 0x8000 the choices made, 0x4000 the rolling start,
+          // 0x1000 racing, 0x0080 time up, 0x0040 the result
+          if (w & 0x5000) return State::Race;
+          if (w & 0x8000) return State::Select;
+          if (w & 0x00C0) return State::Over;
+          return State::Unknown;
+        default:
+          // Daytona USA 2: 0x4000 racing, 0x0100 time up; 0 in the attract mode and the menus alike
+          if (w & 0x4000) return State::Race;
+          if (w & 0x0100) return State::Over;
+          return State::Unknown;
         }
-        // Daytona USA 2: 0x4000 racing, 0x0100 time up; 0 in the attract mode and the menus alike
-        if (w & 0x4000) return State::Race;
-        if (w & 0x0100) return State::Over;
-        return State::Unknown;
       }
 
       ScudLayout m_l;
@@ -199,12 +222,28 @@ namespace Telemetry
     // before each holds something else at times)
     const ScudLayout kDaytona2 = { "daytona2", 0x501000, 0x1000,
       0x09C, 0x0D0, 0x0F8, 0x09A, 0x1D4, 0x1DE, 0x119, 0x149, 0x194, false, 192,
-      0x105010, 0x10500C, 0x1062F8, 0x105002, 8000, 965 };
+      0x105010, 0x10500C, 0x1062F8, 0x105002, 8000, 965, StateBits::Daytona2, 0 };
 
-    // Scud Race: 40 cars of 0x300 bytes from 0x181100; the segments a lap of its beginner course, about 1011
+    // Scud Race: 40 cars of 0x300 bytes from 0x181100. Its segment is counted from the start line on through the race
+    // (17 October: the laps go up at 365 and 730 on the beginner course, 548 and 1096 on the medium one), the
+    // course's segments a lap at 0x104F34 (u32: beginner 365, beginner 2 329, medium 548, expert 431)
     const ScudLayout kScud = { "scud", 0x181100, 0x300,
-      0x01C, 0x050, 0x078, 0x01A, 0x13C, 0x146, 0x098, 0x0D4, 0x096, false, 1011,
-      0x104010, 0x10400C, 0x105284, 0x104002, 7000, NAN };
+      0x01C, 0x050, 0x078, 0x01A, 0x13C, 0x146, 0x098, 0x0D4, 0x096, false, 365,
+      0x104010, 0x10400C, 0x105284, 0x104002, 7000, NAN, StateBits::Scud, 0x104F34 };
+
+    // Scud Race Plus (17 October, its player driven on its line from the RAM, scudmap tools): Scud Race's table
+    // 0x100 further, the rest the same
+    const ScudLayout kScudPlus = { "scud", 0x181200, 0x300,
+      0x01C, 0x050, 0x078, 0x01A, 0x13C, 0x146, 0x098, 0x0D4, 0x096, false, 365,
+      0x104010, 0x10400C, 0x105284, 0x104002, 7000, NAN, StateBits::Scud, 0x104F34 };
+
+    // Scud Race Deluxe (17 October, the same way): 40 cars of 0x330 bytes from 0x180E00, the player first (the
+    // entry told by its path, which follows the controls; 0x181460 is the second AI car), some fields moved (the
+    // velocity 0x50 further, the segment 4 nearer, the gear and rpm 4 further, the position and laps at +0xA8 and
+    // +0xAA), the race's globals 0x2000 lower, the state word's bits its own
+    const ScudLayout kScudDeluxe = { "scud", 0x180E00, 0x330,
+      0x01C, 0x050, 0x0C8, 0x01A, 0x140, 0x14A, 0x0AA, 0x0A8, 0x092, false, 365,
+      0x102010, 0x10200C, 0x103284, 0x102002, 7000, NAN, StateBits::ScudDeluxe, 0x102F34 };
 
     /*
      * Sega Rally 2 (srally2). The player's car: 0x22449C/A0/A4 x, y, z, 0x2244A8 and 0x2244B0 the horizontal
@@ -649,8 +688,8 @@ namespace Telemetry
 
   std::unique_ptr<IDecoder> MakeDecoder(const Game &game)
   {
-    // The clones checked to keep their parent's addresses (clone_check.py, Telemetry.md). Scud Race Deluxe and Plus,
-    // Sega Rally 2 Deluxe and the location test of ECA keep theirs elsewhere: no decoder yet
+    // The clones checked to keep their parent's addresses (clone_check.py, Telemetry.md); Scud Race Deluxe and Plus
+    // have their own layouts. Sega Rally 2 Deluxe and the location test of ECA keep theirs elsewhere: no decoder yet
     static const char *const kSameAsParent[] = { "dayto2pe", "scudau", "dirtdvlsau", "dirtdvlsj", "dirtdvlsg", "ecau",
                                                  "ecaj" };
     for (const char *clone : kSameAsParent)
@@ -667,6 +706,10 @@ namespace Telemetry
       return std::make_unique<CScudEngine>(kDaytona2);
     if (game.name == "scud")
       return std::make_unique<CScudEngine>(kScud);
+    if (game.name == "scuddx")
+      return std::make_unique<CScudEngine>(kScudDeluxe);
+    if (game.name == "scudplus" || game.name == "scudplusa")
+      return std::make_unique<CScudEngine>(kScudPlus);
     if (game.name == "srally2")
       return std::make_unique<CSegaRally2>();
     if (game.name == "dirtdvls")
