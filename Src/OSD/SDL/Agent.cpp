@@ -79,6 +79,11 @@
  *   poke ADDRESS VALUE [SIZE]  Writes VALUE (hex, SIZE 1, 2 or 4 bytes, 4 by
  *                       default) at ADDRESS through the main CPU's bus: "ok".
  *   frame               "frame N", the number of frames run.
+ *   driveread           "driveread XX emulated|outputs YY": the drive board's
+ *                       reply the game read last (register 0x0C, hex), from
+ *                       the emulated board or from the outputs' client (a
+ *                       real board's, BackForceFeeder's m3ffb_rx), and YY the
+ *                       emulated board's own at that read.
  *   tel                 The racing game's telemetry this frame, one JSON line
  *                       (the keys of TelemetryServer.h, as sm2-emu's tel), or
  *                       "tel none" for a game without a decoder.
@@ -226,6 +231,7 @@ namespace Agent
     bool Initialize() override;
     void Attached() override;
     std::vector<uint8_t> TakeDriveBytes();
+    bool GetDriveBoardReply(UINT8 &value) override;
 
   protected:
     void SendOutput(EOutputs output, UINT8 prevValue, UINT8 value) override;
@@ -271,6 +277,11 @@ namespace Agent
     std::vector<uint8_t> bytes;
     bytes.swap(m_driveBytes);
     return bytes;
+  }
+
+  bool COutputsRecorder::GetDriveBoardReply(UINT8 &value)
+  {
+    return m_next != nullptr && m_next->GetDriveBoardReply(value);
   }
 
   void COutputsRecorder::SendOutput(EOutputs output, UINT8 prevValue, UINT8 value)
@@ -792,6 +803,18 @@ namespace Agent
       }
       else if (command == "frame")
         Reply("frame %llu", (unsigned long long)s_frame.load());
+      else if (command == "driveread")
+      {
+        if (model3 == nullptr)
+        {
+          Reply("err no Model 3");
+          continue;
+        }
+        bool fromOutputs = false;
+        UINT8 emulated = 0;
+        UINT8 value = model3->GetLastDriveBoardRead(fromOutputs, emulated);
+        Reply("driveread %02X %s %02X", value, fromOutputs ? "outputs" : "emulated", emulated);
+      }
       else if (command == "tel")
       {
         static Telemetry::Selection selection;

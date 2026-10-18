@@ -51,10 +51,11 @@ enum EOutputs
 	OutputBill2,
 	OutputBill3,
 	OutputBill4,
-	OutputBill5
+	OutputBill5,
+	OutputM3ffb     // the drive board command byte again, sent in hexadecimal (BackForceFeeder's name)
 };
 
-#define NUM_OUTPUTS 14
+#define NUM_OUTPUTS 15
 
 class COutputs
 {
@@ -131,6 +132,14 @@ public:
 	 * meaning it is used by the game.
 	 */
 	bool HasValue(EOutputs output);
+
+	/*
+	 * GetDriveBoardReply(value):
+	 *
+	 * The drive board's reply sent back by an outputs client (a real board's, through BackForceFeeder), to be read
+	 * by the game in place of the emulated board's; false when there is none. Called from the emulation thread.
+	 */
+	virtual bool GetDriveBoardReply(UINT8 &value);
 
 protected:
 	/*

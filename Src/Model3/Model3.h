@@ -97,6 +97,14 @@ public:
   Result Init(void);
   // For Scripting tweaks
   Util::Config::Node& GetConfig() { return this->m_config; }
+  // The drive board's reply the game read last (register 0x0C), whether it came from the outputs' client (a real
+  // board's, m3ffb_rx) rather than the emulated board, and the emulated board's own at that read
+  UINT8 GetLastDriveBoardRead(bool &fromOutputs, UINT8 &emulated) const
+  {
+    fromOutputs = m_driveReadFromOutputs;
+    emulated = m_driveEmulated;
+    return m_driveRead;
+  }
 
   // IPCIDevice interface
   UINT32 ReadPCIConfigSpace(unsigned device, unsigned reg, unsigned bits, unsigned offset) const;
@@ -237,6 +245,9 @@ private:
   // Game inputs and outputs
   CInputs   *Inputs;
   COutputs  *Outputs;
+  UINT8     m_driveRead = 0xFF;
+  UINT8     m_driveEmulated = 0xFF;
+  bool      m_driveReadFromOutputs = false;
 
   // Input registers (game controls)
   UINT8   inputBank;

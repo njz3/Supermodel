@@ -28,22 +28,19 @@ CNetOutputs::CNetOutputs()
 
 CNetOutputs::~CNetOutputs()
 {
-    // Unregister all clients and destroy the TCP server socket.
-    UnregisterAllClients();
-    DestroyTcpServerSocket();
-
-    // Stop the server thread.
+    // Stop the server thread first: it uses the clients and the server socket.
     m_running.store(false);
     if (m_tcpServerThread.joinable()) {
         m_tcpServerThread.join();
     }
 
+    // Unregister all clients and destroy the TCP server socket.
+    UnregisterAllClients();
+    DestroyTcpServerSocket();
+
     // Free up resources.
     if (m_tcpSocketSet) {
         SDLNet_FreeSocketSet(m_tcpSocketSet);
-    }
-    if (m_serverSocket) {
-        SDLNet_TCP_Close(m_serverSocket);
     }
 
     SDLNet_Quit();
@@ -76,16 +73,110 @@ void CNetOutputs::Attached()
 
 void CNetOutputs::SendOutput(EOutputs output, UINT8 prevValue, UINT8 value)
 {
-    // Loop through all registered clients and send them new output values.
+    // Loop through all registered clients and send them new output values (those that fail unregistered after).
+    std::lock_guard<std::mutex> lock(m_clientsMutex);
+    std::string line = FormatOutput(output, value);
+    std::vector<TCPsocket> failed;
     for (auto& client : m_clients) {
-        std::string name = GetOutputName(output);
-        std::string strvalue = std::to_string(value);
-        std::string line = name + m_separatorIdAndValue + strvalue + m_frameEnding;
         if (!SendTcpData(client, line)) {
-            ErrorLog("Failed to send output data to client. Unregistering client.");
-            UnregisterClient(client.ClientSocket);
+            failed.push_back(client.ClientSocket);
         }
     }
+    for (TCPsocket socket : failed) {
+        ErrorLog("Failed to send output data to client. Unregistering client.");
+        UnregisterClient(socket, false);
+    }
+}
+
+std::string CNetOutputs::FormatOutput(EOutputs output, UINT8 value) const
+{
+    std::string strvalue;
+    if (output == OutputM3ffb) {
+        char hex[4];
+        snprintf(hex, sizeof(hex), "%02X", value);
+        strvalue = hex;
+    } else {
+        strvalue = std::to_string(value);
+    }
+    return std::string(GetOutputName(output)) + m_separatorIdAndValue + strvalue + m_frameEnding;
+}
+
+bool CNetOutputs::GetDriveBoardReply(UINT8 &value)
+{
+    if (!m_replyActive.load()) {
+        return false;
+    }
+    value = m_reply.load();
+    return true;
+}
+
+void CNetOutputs::ReceiveFromClients()
+{
+    // What the clients sent, without waiting (the emulation never waits for it)
+    if (m_clients.empty() || SDLNet_CheckSockets(m_tcpSocketSet, 0) <= 0) {
+        return;
+    }
+    std::vector<TCPsocket> gone;
+    for (auto& client : m_clients) {
+        if (!SDLNet_SocketReady(client.ClientSocket)) {
+            continue;
+        }
+        char buf[512];
+        int n = SDLNet_TCP_Recv(client.ClientSocket, buf, sizeof(buf));
+        if (n <= 0) {
+            gone.push_back(client.ClientSocket);
+            continue;
+        }
+        client.Received.append(buf, n);
+        size_t start = 0;
+        for (size_t i = 0; i < client.Received.size(); i++) {
+            if (client.Received[i] == '\r' || client.Received[i] == '\n') {
+                if (i > start) {
+                    ParseLine(client, client.Received.substr(start, i - start));
+                }
+                start = i + 1;
+            }
+        }
+        client.Received.erase(0, start);
+        if (client.Received.size() > 1024) {
+            client.Received.clear();   // no line ending in sight: not a client of ours
+        }
+    }
+    for (TCPsocket socket : gone) {
+        InfoLog("Client disconnected.");
+        UnregisterClient(socket, false);
+    }
+}
+
+void CNetOutputs::ParseLine(RegisteredClientTcp& client, const std::string& line)
+{
+    // "m3ffb_rx = XX": the byte the real drive board replied (BackForceFeeder), in hexadecimal; spaces and case free
+    size_t eq = line.find('=');
+    if (eq == std::string::npos) {
+        return;
+    }
+    auto trim = [](std::string s) {
+        size_t a = s.find_first_not_of(" \t"), b = s.find_last_not_of(" \t");
+        return a == std::string::npos ? std::string() : s.substr(a, b - a + 1);
+    };
+    std::string name = trim(line.substr(0, eq)), value = trim(line.substr(eq + 1));
+    for (auto& c : name) {
+        c = (char)tolower((unsigned char)c);
+    }
+    if (name != "m3ffb_rx" || value.empty() || value.size() > 2 || !m_driveBoardReply) {
+        return;
+    }
+    char* end = nullptr;
+    long v = strtol(value.c_str(), &end, 16);
+    if (*end != '\0' || v < 0 || v > 255) {
+        return;
+    }
+    m_reply.store((UINT8)v);
+    if (!m_replyActive.load() || m_replySource != client.ClientSocket) {
+        InfoLog("Drive board: the game now reads the replies of the outputs' client (m3ffb_rx).");
+    }
+    m_replySource = client.ClientSocket;
+    m_replyActive.store(true);
 }
 
 bool CNetOutputs::CreateServerThread()
@@ -93,20 +184,24 @@ bool CNetOutputs::CreateServerThread()
     m_running.store(true);
     m_tcpServerThread = std::thread([this] {
         while (m_running.load()) {
-            TCPsocket clientSocket = SDLNet_TCP_Accept(m_serverSocket);
-            if (clientSocket) {
-                // Handle new client connection (e.g., add to list of clients, send initial state, etc.).
-                IPaddress* clientIP = SDLNet_TCP_GetPeerAddress(clientSocket);
-                if (clientIP) {
-                    const char* host = SDLNet_ResolveIP(clientIP);
-                    InfoLog("Client connected from %s:%d", host, clientIP->port);
-                } else {
-                    ErrorLog("Failed to get client IP address: %s", SDLNet_GetError());
+            {
+                std::lock_guard<std::mutex> lock(m_clientsMutex);
+                TCPsocket clientSocket = SDLNet_TCP_Accept(m_serverSocket);
+                if (clientSocket) {
+                    // Handle new client connection (e.g., add to list of clients, send initial state, etc.).
+                    IPaddress* clientIP = SDLNet_TCP_GetPeerAddress(clientSocket);
+                    if (clientIP) {
+                        const char* host = SDLNet_ResolveIP(clientIP);
+                        InfoLog("Client connected from %s:%d", host, clientIP->port);
+                    } else {
+                        ErrorLog("Failed to get client IP address: %s", SDLNet_GetError());
+                    }
+                    RegisterClient(clientSocket);
                 }
-                RegisterClient(clientSocket);
+                ReceiveFromClients();
             }
-            // Sleep to prevent busy waiting.
-            std::this_thread::sleep_for(std::chrono::milliseconds(16));
+            // Sleep to prevent busy waiting (short: a drive board's reply is wanted within a few milliseconds).
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
         }
     });
     if (!m_tcpServerThread.joinable()) {
@@ -196,7 +291,10 @@ bool CNetOutputs::RegisterClient(TCPsocket socket)
     for (auto& client : m_clients) {
         if (client.ClientSocket == socket) {
             // If so, just send it current state of all outputs.
-            SendAllDataToClient(client);
+            if (!SendAllDataToClient(client)) {
+                ErrorLog("Failed to send all output data to client. Unregistering client.");
+                UnregisterClient(socket, false);
+            }
             return false;
         }
     }
@@ -212,50 +310,60 @@ bool CNetOutputs::RegisterClient(TCPsocket socket)
     // Send the data to the new client.
     if (!SendGameIdString(client)) {
         ErrorLog("Failed to send game id string to client. Unregistering client.");
-        UnregisterClient(socket);
+        UnregisterClient(socket, false);
         return false;
     }
-    SendAllDataToClient(client);
+    if (!SendAllDataToClient(client)) {
+        ErrorLog("Failed to send all output data to client. Unregistering client.");
+        UnregisterClient(socket, false);
+        return false;
+    }
 
     return true;
 }
 
-void CNetOutputs::SendAllDataToClient(RegisteredClientTcp& client)
+bool CNetOutputs::SendAllDataToClient(RegisteredClientTcp& client)
 {
     // Loop through all known outputs and send their current state to given client.
     for (unsigned i = 0; i < NUM_OUTPUTS; i++) {
         EOutputs output = (EOutputs)i;
         if (HasValue(output)) {
-            std::string name = GetOutputName(output);
-            std::string strvalue = std::to_string(GetValue(output));
-            std::string line = name + m_separatorIdAndValue + strvalue + m_frameEnding;
-            if (!SendTcpData(client, line)) {
-                ErrorLog("Failed to send all output data to client. Unregistering client.");
-                UnregisterClient(client.ClientSocket);
-                break;
+            if (!SendTcpData(client, FormatOutput(output, GetValue(output)))) {
+                return false;
             }
         }
     }
+    return true;
 }
 
 bool CNetOutputs::UnregisterAllClients()
 {
-    for (auto& client : m_clients) {
-        UnregisterClient(client.ClientSocket);
+    std::lock_guard<std::mutex> lock(m_clientsMutex);
+    while (!m_clients.empty()) {
+        UnregisterClient(m_clients.front().ClientSocket);
     }
-    m_clients.clear();
     return true;
 }
 
-bool CNetOutputs::UnregisterClient(TCPsocket socket)
+bool CNetOutputs::UnregisterClient(TCPsocket socket, bool sendStop)
 {
+    // The drive board's reply came from this client: back to the emulated board's
+    if (socket == m_replySource) {
+        if (m_replyActive.exchange(false)) {
+            InfoLog("Drive board: the outputs' client is gone, the game reads the emulated board's replies again.");
+        }
+        m_replySource = nullptr;
+    }
+
     // Find any matching clients and remove them.
     bool found = false;
     std::vector<RegisteredClientTcp>::iterator it = m_clients.begin();
     while (it != m_clients.end()) {
         if (it->ClientSocket == socket) {
-            // Client found, send stop message and remove it.
-            SendStopString(*it, true);
+            // Client found, send stop message (unless it has gone) and remove it.
+            if (sendStop) {
+                SendStopString(*it, true);
+            }
             it = m_clients.erase(it);
             found = true;
             // Remove from socket set and close the socket.

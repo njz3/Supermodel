@@ -1766,6 +1766,23 @@ All settings are case sensitive.
 
     ----------------
 
+    Name:           DriveBoardNetReply
+
+    Argument:       Boolean value (true or false).
+
+    Description:    When using 'net' option for 'Outputs', the drive board's
+                    command bytes also go out as 'm3ffb = XX' (hexadecimal, next
+                    to RawDrive), and a client driving a real drive board with
+                    them (BackForceFeeder in its raw mode) may send back the
+                    byte the board replied, 'm3ffb_rx = XX' (hexadecimal). With
+                    this setting true, the default, the game reads that reply
+                    in place of the emulated board's from the first one
+                    received until that client disconnects; the emulated board
+                    goes on running, its force feedback included. False ignores
+                    the replies. Can only be set in 'Global' section.
+
+    ----------------
+
     Name:           TelemetryPort
 
     Argument:       Integer value, 0 to 65535.

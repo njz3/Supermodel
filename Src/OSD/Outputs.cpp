@@ -42,7 +42,8 @@ const char *COutputs::s_outputNames[] =
 		"BillDigit2",
 		"BillDigit3",
 		"BillDigit4",
-		"BillDigit5"
+		"BillDigit5",
+		"m3ffb"
 	};
 
 const char *COutputs::GetOutputName(EOutputs output)
@@ -103,6 +104,12 @@ void COutputs::SetValue(EOutputs output, UINT8 value)
 	m_values[idx] = value;
 	if (firstSet || value != prevValue)
 		SendOutput(output, prevValue, value);
+}
+
+bool COutputs::GetDriveBoardReply(UINT8 &value)
+{
+	(void)value;
+	return false;
 }
 
 bool COutputs::HasValue(EOutputs output) 

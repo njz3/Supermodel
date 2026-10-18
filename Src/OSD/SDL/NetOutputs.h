@@ -23,6 +23,10 @@
   * NetOutputs.h
   *
   * Implementation of COutputs that sends MAMEHooker compatible messages via TCP and UDP.
+  *
+  * It also reads its clients: BackForceFeeder, driving a real drive board from the m3ffb output (the game's command
+  * bytes, in hexadecimal), sends back "m3ffb_rx = XX", the byte the board replied. From the first one on, the game
+  * reads that reply in place of the emulated board's, until that client disconnects.
   */
 
 #pragma once
@@ -36,6 +40,8 @@
 #include <cstring>
 #include <atomic>
 #include <iostream>
+#include <mutex>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -54,6 +60,7 @@ const unsigned int NET_OUTPUTS_MAX_CLIENTS = 10;
 struct RegisteredClientTcp
 {
 	TCPsocket ClientSocket;
+	std::string Received;   // bytes received, not yet a whole line
 };
 
 
@@ -86,6 +93,15 @@ public:
 	void SetFrameEnding(const std::string& ending) { m_frameEnding = ending; }
 	void SetTcpPort(unsigned int port) { m_tcpPort = port; }
 	void SetUdpBroadcastPort(unsigned int port) { m_udpBroadcastPort = port; }
+	// Whether the drive board's reply from a client (m3ffb_rx) is given to the game (DriveBoardNetReply)
+	void SetDriveBoardReply(bool enabled) { m_driveBoardReply = enabled; }
+
+	/*
+	 * GetDriveBoardReply(value):
+	 *
+	 * The last m3ffb_rx received, while the client that sent it stays connected.
+	 */
+	bool GetDriveBoardReply(UINT8 &value) override;
 protected:
 	/*
 	 * SendOutput():
@@ -105,7 +121,12 @@ private:
 	std::string m_separatorIdAndValue = NET_OUTPUTS_DEFAULT_SEPARATOR_ID_AND_VALUE;
 	unsigned int m_maxClients = NET_OUTPUTS_MAX_CLIENTS;
 	std::atomic<bool> m_running = false;
+	std::mutex m_clientsMutex;      // m_clients and the socket set, shared by the emulation and server threads
 	std::vector<RegisteredClientTcp> m_clients;
+	bool m_driveBoardReply = true;
+	std::atomic<bool> m_replyActive = false;
+	std::atomic<UINT8> m_reply = 0;
+	TCPsocket m_replySource = nullptr;  // the client the reply comes from (server thread, m_clientsMutex held)
 	TCPsocket m_serverSocket{};
 	SDLNet_SocketSet m_tcpSocketSet{};
 	std::thread m_tcpServerThread;
@@ -132,6 +153,27 @@ private:
 	void DestroyTcpServerSocket();
 
 	/*
+	 * FormatOutput(output, value):
+	 *
+	 * The line sent for an output: its value in decimal, m3ffb's in hexadecimal.
+	 */
+	std::string FormatOutput(EOutputs output, UINT8 value) const;
+
+	/*
+	 * ReceiveFromClients():
+	 *
+	 * Reads what the clients sent, without waiting, a line at a time; unregisters those that disconnected.
+	 */
+	void ReceiveFromClients();
+
+	/*
+	 * ParseLine(client, line):
+	 *
+	 * Takes a line received from a client: "m3ffb_rx = XX", the drive board's reply in hexadecimal.
+	 */
+	void ParseLine(RegisteredClientTcp& client, const std::string& line);
+
+	/*
 	 * SendUdpBroadcastWithId():
 	 *
 	 * Broadcasts a message over UDP to show that the emulator is running and to provide
@@ -150,16 +192,17 @@ private:
 	 * SendAllToClient(client):
 	 *
 	 * Sends the current state of all the outputs to the given registered client.
-	 * Called whenever a client is registered with the emulator.
+	 * Called whenever a client is registered with the emulator. False if sending failed.
 	 */
-	void SendAllDataToClient(RegisteredClientTcp& client);
+	bool SendAllDataToClient(RegisteredClientTcp& client);
 
 	/*
-	 * UnregisterClient(hwnd, id):
+	 * UnregisterClient(socket, sendStop):
 	 *
-	 * Unregisters a client from the emulator.
+	 * Unregisters a client from the emulator (the stop message sent first unless it has disconnected).
+	 * Called with m_clientsMutex held.
 	 */
-	bool UnregisterClient(TCPsocket socket);
+	bool UnregisterClient(TCPsocket socket, bool sendStop = true);
 
 	/*
 	 * UnregisterAllClients():

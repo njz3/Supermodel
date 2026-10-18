@@ -407,6 +407,57 @@ deux modes passent par cet étage. Mesuré ensuite : niveaux 32, 40, 59 et 64 %,
 l'identique en émulée et en simulée. Avec STEERING FORCE à 50 % (`FB BF`), la vibration est divisée par deux. La
 carte joystick de Star Wars (`JoystickBoard.cpp`) reste sans gain sur la vibration.
 
+### 2.14 La réponse d'une vraie drive board par BackForceFeeder (`m3ffb` / `m3ffb_rx`, 18 octobre)
+
+Feu vert du propriétaire, relayé par la session BFF, pour le plan du 17 octobre. En mode « Raw » de BFF (la case du
+profil, son champ `UseM2PACMode` ; sortie MAME_NET), BFF donne à une vraie carte les octets du jeu et renvoie sur la
+même connexion l'octet qu'elle répond ; le jeu le lit alors comme sur la borne d'origine. Mêmes règles que Flycast et
+sm2-emu (`m2ffb` / `m2ffb_rx` chez lui).
+
+**Fait** :
+- **Sortie `m3ffb`** (`Outputs.h/.cpp`, `OutputM3ffb`) : l'octet de commande, posé au registre `0x10` de
+  `CModel3::WriteInputs` avec `RawDrive`, envoyé par `CNetOutputs` en hexadécimal (`m3ffb = 16`) ; les autres
+  sorties restent en décimal. Aux changements, comme toutes les sorties, et sa valeur courante à chaque nouveau
+  client.
+- **Lecture des clients** (`NetOutputs.cpp`) : le fil serveur lit les sockets sans attendre (`SDLNet_CheckSockets` à
+  0), toutes les 2 ms au lieu de 16, découpe les lignes sur `\r` ou `\n` (un tampon par client), prend
+  `m3ffb_rx = XX` (espaces et casse libres, 1 ou 2 chiffres hexadécimaux ; le reste ignoré). La dernière valeur et
+  le drapeau « rx actif » sont atomiques : le fil d'émulation ne les attend jamais, et l'envoi des sorties ne dépend
+  pas de la lecture. Un mutex sur `m_clients` (partagé sans verrou jusque-là). À la déconnexion du client qui
+  répondait, retour à la carte émulée. Corrigés au passage : `SendOutput` et `UnregisterAllClients` effaçaient des
+  clients de la liste qu'ils parcouraient ; le destructeur fermait les sockets avant d'arrêter le fil serveur.
+- **Registre `0x0C`** (`CModel3::ReadInputs`) : pour un jeu à drive board (pas le panneau), la réponse du client
+  remplace celle de la carte émulée ou simulée tant que « rx actif » ; la carte émulée continue de tourner, ses
+  effets de retour de force compris. Rien dans les sauvegardes d'état.
+- **Option `DriveBoardNetReply`** (`Misc`, `true` par défaut, README) : `false` ignore les réponses.
+- **Mode agent** : `driveread` rend la dernière réponse lue par le jeu, sa source (`emulated` ou `outputs`) et la
+  réponse de la carte émulée à cette lecture ; le relais des sorties de l'agent fait suivre la réponse.
+
+**Essais avec un faux BFF** (`rx/fake_bff.py`, `rx/delay_echo.py` du scratchpad, copiés dans
+`pkg/autopilot_data/rx_tools/` ; un dossier de lancement à part, `rundirs/m3rx`, sorties réseau sur 8123/8124, pas
+8000/8001, pour qu'aucun vrai BFF ne s'y connecte) :
+- **Scud Race et Le Mans 24** (TWIN-NORMAL) : 13 contrôles sur 13. `mame_start` à la connexion ; chaque `m3ffb` en
+  deux chiffres hexadécimaux, égal au `RawDrive` du même instant (35 lignes sur Le Mans, volant tourné) ; avant toute
+  réponse, la carte émulée ; `m3ffb_rx = 5A` (CRLF), `M3FFB_RX=3c` (LF), une ligne coupée en deux envois : le jeu lit
+  `5A`, `3C`, `77` ; lignes invalides (`1FF`, `zz`, du texte) ignorées ; la dernière valeur gardée ; client déconnecté :
+  la carte émulée de nouveau ; reconnecté : le `m3ffb` courant envoyé tout de suite, la carte émulée tant qu'il ne
+  répond pas. Journal : « Drive board: the game now reads the replies of the outputs' client », puis « ...the
+  emulated board's replies again ».
+- **`DriveBoardNetReply = 0`** (`rundirs/m3rx_off`) : les mêmes envois, le jeu lit toujours la carte émulée.
+- **Retard d'une vraie carte** (la question de sm2-emu : la réponse arrive 1 à 3 images après l'écriture), Le Mans
+  24 en TWIN-NORMAL, le faux BFF renvoyant les réponses de la carte émulée en retard : **au démarrage** (5000
+  images) le jeu n'écrit qu'un octet et la réponse ne change qu'une fois (`FF` puis `00`) ; **en course** (1500
+  images, volant balancé) la réponse suit la commande (`30` à `35`, 386 changements), et avec des réponses arrivées
+  1 ou 3 images en retard le jeu écrit exactement les mêmes 387 commandes qu'avec la carte émulée. Le Mans ne réagit
+  donc pas au retard en course ; le menu de test (où le jeu interroge la carte) reste à voir à la borne. En mode
+  agent, les images défilent bien plus vite que le temps réel : le faux BFF y attend 20 ms après chaque envoi.
+
+**Pour l'essai réel** (session BFF) : une version de BFF avec le sens retour (Racecab1 et Racecab2 ont encore la
+0.9.0.198) ; le profil Le Mans 24 en MAME_NET, case Raw cochée, mode `COMP_2B_18261` ; Supermodel avec
+`Outputs = net` et le port 8000 habituel. BFF ne bloque aucun jeu (décision du propriétaire) : ne cocher Raw que pour
+Le Mans en TWIN-NORMAL avec une EPR-18261 (les octets de Scud, Daytona 2 ou Sega Rally 2 ne sont pas ceux d'une
+EPR-18261). Aucun essai moteur sans le propriétaire à la borne.
+
 ## 3. Les essais
 
 ### 3.1 Le banc
