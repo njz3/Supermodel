@@ -83,6 +83,7 @@ struct DIJoyInfo
 	GUID guid;
 	int dInputNum;
 	LPDIRECTINPUTEFFECT dInputEffects[NUM_JOY_AXES][NUM_FF_EFFECTS];
+	bool dInputEffectPlaying[NUM_JOY_AXES][NUM_FF_EFFECTS];  // Started, and not stopped since: an update leaves it playing
 
 	// XInput details
 	bool isXInput;  // True if joystick is XInput controller

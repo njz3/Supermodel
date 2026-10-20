@@ -1278,6 +1278,12 @@ void CDirectInputSystem::OpenJoysticks()
 	}
 }
 
+// A joystick's effects stop when it is unacquired, or on a stop-all: the next update of each starts it again
+static void SetEffectsStopped(DIJoyInfo &info)
+{
+	memset(info.dInputEffectPlaying, 0, sizeof(info.dInputEffectPlaying));
+}
+
 void CDirectInputSystem::ActivateJoysticks()
 {
 	// Set DirectInput cooperative level of joysticks
@@ -1288,6 +1294,7 @@ void CDirectInputSystem::ActivateJoysticks()
 		{	
 			LPDIRECTINPUTDEVICE8 joystick = m_di8Joysticks[it->dInputNum];
 			joystick->Unacquire();
+			SetEffectsStopped(*it);
 			if (m_grabMouse)
 				joystick->SetCooperativeLevel(m_hwnd, DISCL_EXCLUSIVE | DISCL_FOREGROUND);
 			else
@@ -1362,6 +1369,7 @@ void CDirectInputSystem::PollJoysticks()
 			LPDIRECTINPUTDEVICE8 joystick = m_di8Joysticks[it->dInputNum];
 			if (FAILED(hr = joystick->Poll()))
 			{
+				SetEffectsStopped(*it);
 				hr = joystick->Acquire();
 				while (hr == DIERR_INPUTLOST)
 					hr = joystick->Acquire();
@@ -1512,7 +1520,7 @@ HRESULT CDirectInputSystem::CreateJoystickEffect(LPDIRECTINPUTDEVICE8 joystick, 
 		return hr;
 	if (*pEffect == NULL)
 		return E_FAIL;
-	(*pEffect)->Start(1, 0);
+	// Started by its first update
 	return S_OK;
 }
 
@@ -1855,7 +1863,10 @@ bool CDirectInputSystem::ProcessForceFeedbackCmd(int joyNum, int axisNum, ForceF
 
 		// See if command is to stop all force feedback, if so send appropriate command
 		if (ffCmd.id == FFStop)
+		{
+			SetEffectsStopped(*pInfo);
 			return SUCCEEDED(hr = joystick->SendForceFeedbackCommand(DISFFC_STOPALL));
+		}
 
 		// Create effect for given axis if has not already been created
 		int effNum = (int)ffCmd.id;
@@ -1966,8 +1977,14 @@ bool CDirectInputSystem::ProcessForceFeedbackCmd(int joyNum, int axisNum, ForceF
 				return false;
 		}
 
-		// Set the new parameters and start effect immediately
-		return SUCCEEDED(hr = (*pEffect)->SetParameters(&eff, DIEP_DIRECTION | DIEP_TYPESPECIFICPARAMS | DIEP_START));
+		// Set the new parameters, and start the effect only if it is not playing (new, or stopped since): starting it at
+		// every update would restart a periodic effect's phase each time, and the device gets a start with each update
+		bool &playing = pInfo->dInputEffectPlaying[axisNum][effNum];
+		DWORD flags = playing ? DIEP_TYPESPECIFICPARAMS : DIEP_DIRECTION | DIEP_TYPESPECIFICPARAMS | DIEP_START;
+		hr = (*pEffect)->SetParameters(&eff, flags);
+		// Not downloaded (the device is not acquired exclusively), or failed: started again by the next update
+		playing = SUCCEEDED(hr) && hr != DI_DOWNLOADSKIPPED;
+		return SUCCEEDED(hr);
 	}
 }
 
