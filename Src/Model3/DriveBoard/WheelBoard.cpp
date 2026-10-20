@@ -37,7 +37,7 @@
 #include <cmath>
 #include <zlib.h>
 
-// EPR-18261, the program of the Model 2 Indy 500 drive board. Le Mans 24 uses it with its cabinet type STANDARD
+// EPR-18261, the program of the Model 2 Indy 500 drive board. Le Mans 24 uses it with its cabinet type TWIN-NORMAL
 // (with the cabinet type LE MANS, it uses Scud Race's EPR-19338A). It drives a motor with two powers, one per way,
 // instead of the registers of a servo board, and reads the wheel on ADC channel 1
 static constexpr uint32_t EPR18261_CRC32 = 0x0C7FAC58;
