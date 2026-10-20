@@ -487,6 +487,15 @@ UINT8 CModel3::ReadInputs(unsigned reg)
       data = DriveBoard->Read();
     }
 
+    // A real drive board's reply, sent back by the outputs' client (BackForceFeeder: m3ffb_rx), in place of the
+    // emulated board's while that client is connected
+    if (m_game.driveboard_type != Game::DRIVE_BOARD_NONE && m_game.driveboard_type != Game::DRIVE_BOARD_BILLBOARD)
+    {
+      UINT8 reply;
+      if (NULL != Outputs && Outputs->GetDriveBoardReply(reply))
+        data = reply;
+    }
+
     if ((m_game.inputs & Game::INPUT_JOYSTICK2))
     {
       data &= ~(Inputs->up[1]->value<<5);     // P2 Up
@@ -663,7 +672,10 @@ void CModel3::WriteInputs(unsigned reg, UINT8 data)
     if (DriveBoard->IsAttached())
       DriveBoard->Write(data);
     if (NULL != Outputs) // TODO - check gameInputs
+    {
       Outputs->SetValue(OutputRawDrive, data);
+      Outputs->SetValue(OutputM3ffb, data);   // the same in hexadecimal, for BackForceFeeder's raw mode
+    }
     OutputRegister[0] = data;
     break;
 

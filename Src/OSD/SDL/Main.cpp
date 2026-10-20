@@ -1616,6 +1616,7 @@ Util::Config::Node DefaultConfig()
   config.Set<bool>("OutputsWithLF", false, "Misc");
   config.Set<unsigned int>("OutputsTCPPort", 8000, "Misc", 1024, 65535);
   config.Set<unsigned int>("OutputsUDPBroadcastPort", 8001, "Misc", 1024, 65535);
+  config.Set<bool>("DriveBoardNetReply", true, "Misc");
 
   config.Set("DumpMemory", false, "Misc");
   config.Set("DumpTextures", false, "Misc");
@@ -2494,6 +2495,7 @@ int main(int argc, char **argv)
             netOutputs->SetFrameEnding(std::string("\r\n"));
         netOutputs->SetTcpPort(s_runtime_config["OutputsTCPPort"].ValueAs<unsigned int>());
         netOutputs->SetUdpBroadcastPort(s_runtime_config["OutputsUDPBroadcastPort"].ValueAs<unsigned int>());
+        netOutputs->SetDriveBoardReply(s_runtime_config["DriveBoardNetReply"].ValueAs<bool>());
         Outputs = (COutputs*)netOutputs;
 #ifdef SUPERMODEL_WIN32
     } else if (outputs == "win") {
