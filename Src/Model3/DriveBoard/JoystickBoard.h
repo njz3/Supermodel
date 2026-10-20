@@ -170,23 +170,23 @@ private:
   UINT16 m_adcPortRead;   // ADC port currently reading from
   UINT8 m_adcPortBit;     // Bit number currently reading on ADC port
 
-  UINT8 m_port42Out;      // Last value sent to Z80 I/O port 42 (encoder motor data)
-  UINT8 m_port46Out;      // Last value sent to Z80 I/O port 46 (encoder motor control)
-  UINT8 m_port45Out;      // Last value sent to Z80 I/O port 42 (up-down motor data)
-
-  UINT8 m_prev42Out;      // Previous value sent to Z80 I/O port 42
-  UINT8 m_prev46Out;      // Previous value sent to Z80 I/O port 46
-  UINT8 m_prev45Out;      // Previous value sent to Z80 I/O port 45 (up-down)
-
-  UINT8 m_uncenterVal1;   // First part of pending uncenter command
-  UINT8 m_uncenterVal2;   // Second part of pending uncenter command
+  // The two servo boards: board 1 drives the X axis (read on ADC channel 3), its value on Z80 I/O port 2A; board 2
+  // the Y axis (ADC channel 4), its value on port 2D. Their registers share port 2E
+  struct Servo
+  {
+    UINT8 value;          // Last value sent to its port, before its register
+    UINT8 vibrateVal[2];  // Vibration bytes, assembled nibble by nibble (register FC, sub-registers 0-3)
+    UINT8 gain;           // Torque gain, 0-0x7F (register FB)
+    INT8 constForce;      // Torque (register FE), positive raising the axis
+    UINT8 vibrate;        // Vibration strength
+  };
+  Servo m_servo[2];
 
   // Feedback state
-  INT8 m_lastConstForce;  // Last constant force command sent
-  INT8 m_lastConstForceY;  // Last constant force command sent y axis
-  UINT8 m_lastSelfCenter; // Last self center command sent
-  UINT8 m_lastFriction;   // Last friction command sent
-  UINT8 m_lastVibrate;    // Last vibrate command sent
+  INT8 m_lastConstForce[2]; // Last constant force command sent, by axis
+  UINT8 m_lastSelfCenter;   // Last self center command sent
+  UINT8 m_lastFriction;     // Last friction command sent
+  UINT8 m_lastVibrate[2];   // Last vibrate command sent, by axis
 
   UINT8 SimulateRead(void);
 
@@ -194,19 +194,21 @@ private:
 
   void SimulateFrame(void);
 
-  void ProcessEncoderCmdJoystick(void);
+  void ResetServos(void);
+
+  void ProcessServoRegister(int servoNum, UINT8 reg);
+
+  void UpdateForceFeedback(void);
 
   void SendStopAll(void);
 
-  void SendConstantForce(INT8 val);
-
-  void SendConstantForceY(INT8 val);
+  void SendConstantForce(int axisNum, INT8 val);
 
   void SendSelfCenter(UINT8 val);
 
   void SendFriction(UINT8 val);
 
-  void SendVibrate(UINT8 val);
+  void SendVibrate(int axisNum, UINT8 val);
 
   uint8_t ReadADCChannel1() const;
 
