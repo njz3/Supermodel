@@ -34,6 +34,7 @@
 #include "Supermodel.h"
 #include <cstdio>
 #include <algorithm>
+#include <cmath>
 #include <zlib.h>
 
 // EPR-18261, the program of the Model 2 Indy 500 drive board. Le Mans 24 uses it with its cabinet type STANDARD
@@ -148,6 +149,9 @@ void CWheelBoard::Reset(void)
   m_servoGain = 0x7F;
   m_constForce = 0;
   m_vibrate = 0;
+  m_powerUp = m_powerDown = 0;
+  m_powerSumUp = m_powerSumDown = m_powerNmis = 0;
+  m_lastWheel = -1;
 
   m_lastConstForce = 0;
   m_lastSelfCenter = 0;
@@ -458,7 +462,13 @@ void CWheelBoard::IOWrite8(UINT32 portNum, UINT8 data)
   case 0x2e: // Encoder motor control, or EPR-18261's motor power "down"
     m_port46Out = data;
     if (m_twoPowerOutputs)
+    {
       ProcessMotorPowers();
+      // Written at every NMI, after "up": the NMI's sample
+      m_powerSumUp += m_powerUp;
+      m_powerSumDown += m_powerDown;
+      m_powerNmis++;
+    }
     return;
   default:
     DebugLog("Unhandled Z80 output on port %u (at PC = %04X)\n", portNum, m_z80.GetPC());
@@ -580,15 +590,43 @@ void CWheelBoard::ProcessMotorPowers(void)
     return value & 0x3F;
   };
 
+  m_powerUp = power(m_port42Out);
+  m_powerDown = power(m_port46Out);
+
   // 63 is the full force, as 0x80 +- 63 is on the servo boards
-  m_constForce = 2 * (power(m_port42Out) - power(m_port46Out));
+  m_constForce = 2 * (m_powerUp - m_powerDown);
 }
 
 void CWheelBoard::UpdateForceFeedback(void)
 {
   // The servo board's gain scales the torque and the vibration, not its own spring
-  SendConstantForce(m_constForce * m_servoGain / 0x7F);
+  if (m_twoPowerOutputs)
+    SendMotorPowers();
+  else
+    SendConstantForce(m_constForce * m_servoGain / 0x7F);
   SendVibrate(m_vibrate * m_servoGain / 0x7F);
+}
+
+void CWheelBoard::SendMotorPowers(void)
+{
+  // EPR-18261: the two powers averaged over the frame's NMIs (the last NMI's alone would turn the brake of 2x, both
+  // powers one NMI in two, and the vibration into noise from frame to frame), "up" pushing to the right, and what both
+  // have in common braking the motor, as measured on a real board: a force against the wheel's speed, full from 4
+  // steps of 255 a frame
+  float up = float(m_powerUp), down = float(m_powerDown);
+  if (m_powerNmis > 0)
+  {
+    up = float(m_powerSumUp) / m_powerNmis;
+    down = float(m_powerSumDown) / m_powerNmis;
+  }
+  m_powerSumUp = m_powerSumDown = m_powerNmis = 0;
+  int wheel = m_inputs && m_inputs->steering ? int(m_inputs->steering->value) : -1;
+  float speed = (wheel >= 0 && m_lastWheel >= 0) ? std::clamp((wheel - m_lastWheel) / 4.0f, -1.0f, 1.0f) : 0.0f;
+  m_lastWheel = wheel;
+  float force = (up - down) - std::min(up, down) * speed;
+  // 63 the full force: x 2 to the -128..127 of a constant force
+  int val = int(std::lround(force * 2.0f)) * m_servoGain / 0x7F;
+  SendConstantForce(INT8(std::clamp(val, -128, 127)));
 }
 
 
@@ -607,6 +645,7 @@ void CWheelBoard::SendStopAll(void)
   
   m_constForce     = 0;
   m_vibrate        = 0;
+  m_powerSumUp = m_powerSumDown = m_powerNmis = 0;
   m_lastConstForce = 0;
   m_lastSelfCenter = 0;
   m_lastFriction   = 0;
@@ -773,6 +812,9 @@ CWheelBoard::CWheelBoard(const Util::Config::Node &config)
   m_servoGain = 0x7F;
   m_constForce = 0;
   m_vibrate = 0;
+  m_powerUp = m_powerDown = 0;
+  m_powerSumUp = m_powerSumDown = m_powerNmis = 0;
+  m_lastWheel = -1;
 
   // Feedback state
   m_lastConstForce = 0;

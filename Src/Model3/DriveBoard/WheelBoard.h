@@ -195,6 +195,10 @@ private:
   // What the board asks for, sent to the wheel once a frame
   INT8 m_constForce;      // Torque, before the gain
   UINT8 m_vibrate;        // Vibration, before the gain
+  // EPR-18261: its two powers (0-63), summed over the frame's NMIs (one sample at each write of "down")
+  int m_powerUp, m_powerDown;
+  int m_powerSumUp, m_powerSumDown, m_powerNmis;
+  int m_lastWheel;        // The wheel's position at the last frame (0-255), -1 unknown: its speed brakes
 
   // Feedback state
   INT8 m_lastConstForce;  // Last constant force command sent
@@ -213,6 +217,8 @@ private:
   void ProcessMotorPowers(void);
 
   void UpdateForceFeedback(void);
+
+  void SendMotorPowers(void);
 
   void SendStopAll(void);
 
