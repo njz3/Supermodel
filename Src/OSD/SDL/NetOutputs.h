@@ -36,6 +36,7 @@
 #include <cstring>
 #include <atomic>
 #include <iostream>
+#include <mutex>
 #include <thread>
 #include <vector>
 
@@ -105,6 +106,7 @@ private:
 	std::string m_separatorIdAndValue = NET_OUTPUTS_DEFAULT_SEPARATOR_ID_AND_VALUE;
 	unsigned int m_maxClients = NET_OUTPUTS_MAX_CLIENTS;
 	std::atomic<bool> m_running = false;
+	std::mutex m_clientsMutex;      // m_clients and the socket set, shared by the emulation and server threads
 	std::vector<RegisteredClientTcp> m_clients;
 	TCPsocket m_serverSocket{};
 	SDLNet_SocketSet m_tcpSocketSet{};
@@ -150,16 +152,17 @@ private:
 	 * SendAllToClient(client):
 	 *
 	 * Sends the current state of all the outputs to the given registered client.
-	 * Called whenever a client is registered with the emulator.
+	 * Called whenever a client is registered with the emulator. False if sending failed.
 	 */
-	void SendAllDataToClient(RegisteredClientTcp& client);
+	bool SendAllDataToClient(RegisteredClientTcp& client);
 
 	/*
-	 * UnregisterClient(hwnd, id):
+	 * UnregisterClient(socket, sendStop):
 	 *
-	 * Unregisters a client from the emulator.
+	 * Unregisters a client from the emulator (the stop message sent first unless sending to it failed).
+	 * Called with m_clientsMutex held.
 	 */
-	bool UnregisterClient(TCPsocket socket);
+	bool UnregisterClient(TCPsocket socket, bool sendStop = true);
 
 	/*
 	 * UnregisterAllClients():

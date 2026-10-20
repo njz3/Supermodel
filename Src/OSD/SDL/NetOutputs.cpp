@@ -28,22 +28,19 @@ CNetOutputs::CNetOutputs()
 
 CNetOutputs::~CNetOutputs()
 {
-    // Unregister all clients and destroy the TCP server socket.
-    UnregisterAllClients();
-    DestroyTcpServerSocket();
-
-    // Stop the server thread.
+    // Stop the server thread first: it uses the clients and the server socket.
     m_running.store(false);
     if (m_tcpServerThread.joinable()) {
         m_tcpServerThread.join();
     }
 
+    // Unregister all clients and destroy the TCP server socket.
+    UnregisterAllClients();
+    DestroyTcpServerSocket();
+
     // Free up resources.
     if (m_tcpSocketSet) {
         SDLNet_FreeSocketSet(m_tcpSocketSet);
-    }
-    if (m_serverSocket) {
-        SDLNet_TCP_Close(m_serverSocket);
     }
 
     SDLNet_Quit();
@@ -76,15 +73,20 @@ void CNetOutputs::Attached()
 
 void CNetOutputs::SendOutput(EOutputs output, UINT8 prevValue, UINT8 value)
 {
-    // Loop through all registered clients and send them new output values.
+    // Loop through all registered clients and send them new output values (those that fail unregistered after).
+    std::lock_guard<std::mutex> lock(m_clientsMutex);
+    std::string name = GetOutputName(output);
+    std::string strvalue = std::to_string(value);
+    std::string line = name + m_separatorIdAndValue + strvalue + m_frameEnding;
+    std::vector<TCPsocket> failed;
     for (auto& client : m_clients) {
-        std::string name = GetOutputName(output);
-        std::string strvalue = std::to_string(value);
-        std::string line = name + m_separatorIdAndValue + strvalue + m_frameEnding;
         if (!SendTcpData(client, line)) {
-            ErrorLog("Failed to send output data to client. Unregistering client.");
-            UnregisterClient(client.ClientSocket);
+            failed.push_back(client.ClientSocket);
         }
+    }
+    for (TCPsocket socket : failed) {
+        ErrorLog("Failed to send output data to client. Unregistering client.");
+        UnregisterClient(socket, false);
     }
 }
 
@@ -103,6 +105,7 @@ bool CNetOutputs::CreateServerThread()
                 } else {
                     ErrorLog("Failed to get client IP address: %s", SDLNet_GetError());
                 }
+                std::lock_guard<std::mutex> lock(m_clientsMutex);
                 RegisterClient(clientSocket);
             }
             // Sleep to prevent busy waiting.
@@ -196,7 +199,10 @@ bool CNetOutputs::RegisterClient(TCPsocket socket)
     for (auto& client : m_clients) {
         if (client.ClientSocket == socket) {
             // If so, just send it current state of all outputs.
-            SendAllDataToClient(client);
+            if (!SendAllDataToClient(client)) {
+                ErrorLog("Failed to send all output data to client. Unregistering client.");
+                UnregisterClient(socket, false);
+            }
             return false;
         }
     }
@@ -212,15 +218,19 @@ bool CNetOutputs::RegisterClient(TCPsocket socket)
     // Send the data to the new client.
     if (!SendGameIdString(client)) {
         ErrorLog("Failed to send game id string to client. Unregistering client.");
-        UnregisterClient(socket);
+        UnregisterClient(socket, false);
         return false;
     }
-    SendAllDataToClient(client);
+    if (!SendAllDataToClient(client)) {
+        ErrorLog("Failed to send all output data to client. Unregistering client.");
+        UnregisterClient(socket, false);
+        return false;
+    }
 
     return true;
 }
 
-void CNetOutputs::SendAllDataToClient(RegisteredClientTcp& client)
+bool CNetOutputs::SendAllDataToClient(RegisteredClientTcp& client)
 {
     // Loop through all known outputs and send their current state to given client.
     for (unsigned i = 0; i < NUM_OUTPUTS; i++) {
@@ -230,32 +240,33 @@ void CNetOutputs::SendAllDataToClient(RegisteredClientTcp& client)
             std::string strvalue = std::to_string(GetValue(output));
             std::string line = name + m_separatorIdAndValue + strvalue + m_frameEnding;
             if (!SendTcpData(client, line)) {
-                ErrorLog("Failed to send all output data to client. Unregistering client.");
-                UnregisterClient(client.ClientSocket);
-                break;
+                return false;
             }
         }
     }
+    return true;
 }
 
 bool CNetOutputs::UnregisterAllClients()
 {
-    for (auto& client : m_clients) {
-        UnregisterClient(client.ClientSocket);
+    std::lock_guard<std::mutex> lock(m_clientsMutex);
+    while (!m_clients.empty()) {
+        UnregisterClient(m_clients.front().ClientSocket);
     }
-    m_clients.clear();
     return true;
 }
 
-bool CNetOutputs::UnregisterClient(TCPsocket socket)
+bool CNetOutputs::UnregisterClient(TCPsocket socket, bool sendStop)
 {
     // Find any matching clients and remove them.
     bool found = false;
     std::vector<RegisteredClientTcp>::iterator it = m_clients.begin();
     while (it != m_clients.end()) {
         if (it->ClientSocket == socket) {
-            // Client found, send stop message and remove it.
-            SendStopString(*it, true);
+            // Client found, send stop message (unless sending to it failed) and remove it.
+            if (sendStop) {
+                SendStopString(*it, true);
+            }
             it = m_clients.erase(it);
             found = true;
             // Remove from socket set and close the socket.
