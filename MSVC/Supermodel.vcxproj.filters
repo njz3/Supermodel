@@ -488,6 +488,9 @@
     <ClCompile Include="..\Src\Model3\DriveBoard\SkiBoard.cpp">
       <Filter>Source Files\Model3\DriveBoard</Filter>
     </ClCompile>
+    <ClCompile Include="..\Src\Model3\DriveBoard\ServoProgramSim.cpp">
+      <Filter>Source Files\Model3\DriveBoard</Filter>
+    </ClCompile>
     <ClCompile Include="..\Src\Model3\DriveBoard\WheelBoard.cpp">
       <Filter>Source Files\Model3\DriveBoard</Filter>
     </ClCompile>
@@ -854,6 +857,9 @@
       <Filter>Header Files\Model3\DriveBoard</Filter>
     </ClInclude>
     <ClInclude Include="..\Src\Model3\DriveBoard\SkiBoard.h">
+      <Filter>Header Files\Model3\DriveBoard</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Src\Model3\DriveBoard\ServoProgramSim.h">
       <Filter>Header Files\Model3\DriveBoard</Filter>
     </ClInclude>
     <ClInclude Include="..\Src\Model3\DriveBoard\WheelBoard.h">

@@ -30,8 +30,12 @@
 #define INCLUDED_JOYBOARD_H
 
 #include "DriveBoard.h"
+#include "ServoProgramSim.h"
 #include "Util/NewConfig.h"
 #include "Game.h"
+
+#include <memory>
+#include <mutex>
 
 /*
  * CJoyBoard
@@ -188,9 +192,15 @@ private:
   UINT8 m_lastFriction;     // Last friction command sent
   UINT8 m_lastVibrate[2];   // Last vibrate command sent, by axis
 
-  UINT8 SimulateRead(void);
+  // SimulateDriveBoard: the program's logic (ServoProgramSim) instead of its Z80, the Z80's cycles run and the next
+  // NMI's, the last reply
+  std::unique_ptr<IJoystickProgram> m_joySim;
+  std::mutex m_simMutex;
+  double m_joyNmiAcc = 0;
+  double m_joyNextNmi = 0;
+  UINT8 m_simLastReply = 0;
 
-  void SimulateWrite(UINT8 data);
+  UINT8 SimulateRead(void);
 
   void SimulateFrame(void);
 

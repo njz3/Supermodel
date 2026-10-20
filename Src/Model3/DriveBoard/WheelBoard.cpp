@@ -35,9 +35,10 @@
 #include <cstdio>
 #include <algorithm>
 #include <cmath>
+#include <mutex>
 #include <zlib.h>
 
-// EPR-18261, the program of the Model 2 Indy 500 drive board. Le Mans 24 uses it with its cabinet type TWIN-NORMAL
+// EPR-18261, the program of the Model 2 Indy 500 drive board. Le Mans 24 uses it with its cabinet type STANDARD
 // (with the cabinet type LE MANS, it uses Scud Race's EPR-19338A). It drives a motor with two powers, one per way,
 // instead of the registers of a servo board, and reads the wheel on ADC channel 1
 static constexpr uint32_t EPR18261_CRC32 = 0x0C7FAC58;
@@ -61,13 +62,8 @@ void CWheelBoard::SaveState(CBlockFile *SaveState)
 
   SaveState->NewBlock("WheelBoard", __FILE__);
   SaveState->Write(m_simulated);
-  if (m_simulated)
   {
-    // TODO - save board simulation state
-  }
-  else
-  {
-    // Save DIP switches and digit displays
+    // Save DIP switches and digit displays (both modes)
     SaveState->Write(m_dip1);
     SaveState->Write(m_dip2);
 
@@ -79,6 +75,25 @@ void CWheelBoard::SaveState(CBlockFile *SaveState)
     // In a block of its own, so that older save states still load
     SaveState->NewBlock("WheelBoardServo", __FILE__);
     SaveState->Write(m_servoGain);
+
+  }
+
+  // Simulated: the program's state
+  if (m_simulated)
+  {
+    std::lock_guard<std::mutex> lock(m_indyMutex);
+    if (m_servoSim)
+    {
+      m_servoSim->SaveState(SaveState);
+      SaveState->NewBlock("WheelBoardSimTime", __FILE__);
+      SaveState->Write(m_servoNmiAcc);
+      SaveState->Write(m_servoNextNmi);
+    }
+    else
+    {
+      SaveState->NewBlock("WheelBoardIndySim", __FILE__);
+      SaveState->Write(m_indy);
+    }
   }
 }
 
@@ -91,14 +106,10 @@ void CWheelBoard::LoadState(CBlockFile *SaveState)
 
   bool wasSimulated;
   SaveState->Read(&wasSimulated, sizeof(wasSimulated));
-  if (wasSimulated)
-  {
-    // Simulation has never existed
-    ErrorLog("Save state contains unexpected data. Halting drive board emulation.");
-    Disable();
-    return;
-  }
-  else
+  if (wasSimulated && !m_simulated)
+    // No Z80 state to resume from: CDriveBoard::LoadState halts the board
+    ErrorLog("Save state from a simulated drive board, loaded with it emulated (SimulateDriveBoard): the drive board "
+             "is halted.");
   {
     // Load DIP switches and digit displays
     SaveState->Read(m_dip1);
@@ -115,7 +126,47 @@ void CWheelBoard::LoadState(CBlockFile *SaveState)
       m_servoGain = 0x7F;
   }
 
-  CDriveBoard::LoadState(SaveState);
+  if (m_simulated && m_servoSim)
+  {
+    // A Model 3 program simulated: its own state, or from an emulated board's save state its Z80's RAM (the base
+    // board's state read as emulated, then the simulation going on from it)
+    if (wasSimulated)
+    {
+      std::lock_guard<std::mutex> lock(m_indyMutex);
+      m_servoSim->LoadState(SaveState);
+      if (SaveState->FindBlock("WheelBoardSimTime") == Result::OKAY)
+      {
+        SaveState->Read(m_servoNmiAcc);
+        SaveState->Read(m_servoNextNmi);
+      }
+    }
+    else
+    {
+      m_simulated = false;
+      CDriveBoard::LoadState(SaveState);
+      m_simulated = true;
+      std::lock_guard<std::mutex> lock(m_indyMutex);
+      m_servoSim->ImportRam(m_ram);
+      // The next NMI where the emulated board's timer had it (not the power-up's wait)
+      m_servoNmiAcc = 0;
+      m_servoNextNmi = m_allowNMIInterupts ? std::max(m_nmiTimerVal, 0) : m_servoSim->FirstNmiCycles();
+    }
+  }
+  else if (m_simulated)
+  {
+    // EPR-18261 simulated: its own state; from an emulated drive board's save state, the simulation from power-up
+    // (the games send their effect again at every frame), the base board's state (its Z80's) of no use
+    std::lock_guard<std::mutex> lock(m_indyMutex);
+    if (wasSimulated && SaveState->FindBlock("WheelBoardIndySim") == Result::OKAY)
+      SaveState->Read(m_indy);
+    else
+    {
+      InfoLog("Save state from an emulated drive board: its simulation starts again from power-up.");
+      IndyReset();
+    }
+  }
+  else
+    CDriveBoard::LoadState(SaveState);
 }
 
 void CWheelBoard::Disable(void)
@@ -158,7 +209,30 @@ void CWheelBoard::Reset(void)
   m_lastFriction = 0;
   m_lastVibrate = 0;
 
-  m_simulated = false;  //TODO: make this run-time configurable when simulation mode is supported
+  // SimulateDriveBoard: the program's logic instead of its Z80, for the programs simulated (EPR-18261 here, the
+  // Model 3 ones in ServoProgramSim); the others are emulated
+  bool simulate = m_config["SimulateDriveBoard"].ValueAsDefault<bool>(false);
+  uint32_t crc = crc32(0, m_rom, 0x10000);
+  m_servoSim.reset();
+  m_servoNmiAcc = 0;
+  m_servoNextNmi = 1876648;
+  m_simLastReply = 0;
+  if (simulate && !m_twoPowerOutputs)
+  {
+    m_servoSim = MakeServoProgram(crc);
+    if (m_servoSim)
+    {
+      m_servoSim->Reset(m_rom, m_dip1, m_dip2);
+      m_servoNextNmi = m_servoSim->FirstNmiCycles();
+    }
+  }
+  m_simulated = simulate && (m_twoPowerOutputs || m_servoSim);
+  if (simulate && !m_simulated)
+    InfoLog("Drive board: its program (CRC32 %08X) is not simulated yet, it is emulated.", crc);
+  {
+    std::lock_guard<std::mutex> lock(m_indyMutex);
+    IndyReset();
+  }
 
   if (!m_config["ForceFeedback"].ValueAsDefault<bool>(false))
     Disable();
@@ -208,6 +282,13 @@ void CWheelBoard::Write(UINT8 data)
 
 UINT8 CWheelBoard::SimulateRead(void)
 {
+  if (m_servoSim)
+  {
+    std::lock_guard<std::mutex> lock(m_indyMutex);
+    return m_servoSim->Reply();
+  }
+  if (m_twoPowerOutputs)
+    return IndyReply();
   if (m_initialized)
   {
     switch (m_readMode)
@@ -240,6 +321,21 @@ UINT8 CWheelBoard::SimulateRead(void)
 
 void CWheelBoard::SimulateWrite(UINT8 cmd)
 {
+  if (m_servoSim)
+  {
+    // Queued and shown to the program a frame each, as to the emulated Z80 (CDriveBoard::Write)
+    CDriveBoard::Write(cmd);
+    if (cmd == 0xCB)
+      m_initialized = false;
+    return;
+  }
+  if (m_twoPowerOutputs)
+  {
+    std::lock_guard<std::mutex> lock(m_indyMutex);
+    IndyCommand(cmd);
+    return;
+  }
+
   // Following are commands for Scud Race.  Daytona 2 has a compatible command set while Sega Rally 2 is completely different
   // TODO - finish for Scud Race and Daytona 2
   // TODO - implement for Sega Rally 2
@@ -354,9 +450,256 @@ void CWheelBoard::RunFrame(void)
 
 void CWheelBoard::SimulateFrame(void)
 {
+  if (m_servoSim)
+  {
+    // The frame's NMIs, each perhaps a servo board register written, turned into force feedback as the emulated
+    // program's writes are
+    // The wheel as the emulated board reads it (80 until the program has answered CC)
+    UINT8 wheel = ReadADCChannel2();
+    bool newCommand = false;
+    {
+      std::lock_guard<std::mutex> lock(m_commandMutex);
+      if (!m_commands.empty())
+      {
+        m_dataSent = m_commands.front();
+        m_commands.pop_front();
+        newCommand = true;
+      }
+    }
+    {
+      std::lock_guard<std::mutex> lock(m_indyMutex);
+      if (newCommand)
+        m_servoSim->SetCommand(m_dataSent);
+      // The NMIs as the Z80's CTC raises them: every 16000 cycles of 8 MHz from the first, which comes after the
+      // program's ROM checksum and RAM test (FirstNmiCycles), the frames 139072 cycles each
+      m_servoNmiAcc += GetFramecycles();
+      while (m_servoNextNmi <= m_servoNmiAcc)
+      {
+        m_servoNextNmi += 16000;
+        UINT8 mode, value;
+        if (m_servoSim->Nmi(wheel, ReadADCChannel3(), mode, value))
+        {
+          m_port46Out = mode;
+          m_port42Out = value;
+          ProcessEncoderCmd();
+        }
+        UINT8 reply = m_servoSim->Reply();
+        if (reply != m_simLastReply)
+        {
+          m_simLastReply = reply;
+          if (reply == 0xCC)
+            m_initialized = true;
+        }
+      }
+    }
+    UpdateForceFeedback();
+    return;
+  }
+  if (m_twoPowerOutputs)
+  {
+    int up, down;
+    {
+      std::lock_guard<std::mutex> lock(m_indyMutex);
+      IndyFrame(ReadADCChannel1(), up, down);
+    }
+    m_powerUp = up;
+    m_powerDown = down;
+    m_powerNmis = 0;
+    UpdateForceFeedback();
+    return;
+  }
   if (!m_initialized)
     m_initState++;
   // TODO - update m_statusFlags and play preset scripts according to board mode
+}
+
+/*
+ * EPR-18261 simulated: the logic of its program (Indy 500's drive board, Le Mans 24's cabinet TWIN-NORMAL), from
+ * BFF's docs/EPR-18261-Indy500-DriveBoard and sm2-emu's IndyBoard (its author's), run once a frame over its ~8.7
+ * NMIs. The program takes a command, works out two motor powers (0-63, "up" raising the wheel's position, to the
+ * right) from it and the wheel's position, and answers the game.
+ */
+
+void CWheelBoard::IndyReset(void)
+{
+  // As at power-up: the centre at 80, the base at 2, the effect a stop, no vibration
+  m_indy = IndyBoard{};
+  m_indy.effect = 0x10;
+  m_indy.centre = 0x80;
+  m_indy.base = 2;
+  m_indy.speedRef = 0x80;
+}
+
+void CWheelBoard::IndyCommand(UINT8 data)
+{
+  // The reply: the command itself (as the program answers), a question's answer, or as it was
+  if (data < 0x80)
+  {
+    m_indy.replyKind = 0;
+    m_indy.replyByte = data;
+  }
+  else if (data == 0x80 || data == 0x83)
+    m_indy.replyKind = 1;
+  else if (data == 0x81)
+  {
+    m_indy.replyKind = 0;
+    m_indy.replyByte = 0xFF;
+  }
+  else if (data == 0x82)
+    m_indy.replyKind = 2;
+  else if (data == 0x84)
+    m_indy.replyKind = 3;
+
+  // From 70 up a setting or a question, the effect running on
+  switch (data >> 4)
+  {
+  case 0x7: m_indy.base = (data & 0x0F) / 2 + 2; return;
+  case 0x9: m_indy.centre = UINT8((m_indy.centre & 0x0F) | ((data & 0x0F) << 4)); return;
+  case 0xA: m_indy.vibPeriod = data & 7; return;
+  case 0xB: m_indy.vibAmp = data & 7; return;
+  case 0xC: m_indy.centre = UINT8((m_indy.centre & 0xF0) | (data & 0x0F)); return;
+  default: break;
+  }
+  if (data < 0x70)
+    m_indy.effect = data;
+}
+
+UINT8 CWheelBoard::IndyReply(void) const
+{
+  switch (m_indy.replyKind)
+  {
+  case 1: return ReadADCChannel1();
+  case 2: return m_dip1;
+  case 3: return m_indy.centre;
+  default: return m_indy.replyByte;
+  }
+}
+
+int CWheelBoard::IndyStrength(void) const
+{
+  // (2n + base) x 2, and the DIP switches' 0 to 7 (measured on a board)
+  return (2 * (m_indy.effect & 7) + m_indy.base) * 2 + int(GetForceFeedbackStrength()) - 1;
+}
+
+void CWheelBoard::IndySpring(int position, int shift, bool dampOtherSide)
+{
+  // Towards the centre, the sine table's curve capped at the strength, plus the damping; exactly on the centre the
+  // powers stay as they were
+  int s = IndyStrength();
+  int centre = m_indy.centre;
+  if (position < centre)
+  {
+    m_indy.up = std::min<int>(m_sine[std::min((centre - position) >> shift, 127)], s) + m_indy.speedDown;
+    m_indy.down = dampOtherSide ? m_indy.speedUp : 0;
+  }
+  else if (position > centre)
+  {
+    m_indy.down = std::min<int>(m_sine[std::min((position - centre) >> shift, 127)], s) + m_indy.speedUp;
+    m_indy.up = m_indy.speedDown;
+  }
+}
+
+void CWheelBoard::IndyRunEffect(int position)
+{
+  int n = m_indy.effect & 0x0F;
+  switch (m_indy.effect >> 4)
+  {
+  case 0x0:
+    if (n == 1 || n >= 8)
+    {
+      // A reset: no force, base 2, no vibration
+      m_indy.up = m_indy.down = 0;
+      m_indy.base = 2;
+      m_indy.vibPeriod = m_indy.vibAmp = 0;
+    }
+    else if (n < 6)
+    {
+      // An idle centring: base 1, the soft spring at strength 0
+      m_indy.base = 1;
+      UINT8 effect = m_indy.effect;
+      m_indy.effect = 0x38;
+      IndySpring(position, 2, false);
+      m_indy.effect = effect;
+    }
+    break;    // 06, 07: the powers stay
+  case 0x1:   // stop
+    m_indy.up = m_indy.down = 0;
+    m_indy.vibPeriod = m_indy.vibAmp = 0;
+    break;
+  case 0x2:   // both ways at the strength one NMI in two: the motor brakes (the frame's mean)
+    m_indy.up = m_indy.down = IndyStrength() / 2;
+    break;
+  case 0x3:   // 30-37 the spring, 38-3F the soft spring
+    if (n < 8)
+      IndySpring(position, 1, true);
+    else
+      IndySpring(position, 2, false);
+    break;
+  case 0x4:   // away from the centre
+    if (position < m_indy.centre)
+    {
+      m_indy.down = IndyStrength();
+      m_indy.up = 0;
+    }
+    else
+    {
+      m_indy.up = IndyStrength();
+      m_indy.down = 0;
+    }
+    break;
+  case 0x5:   // push down (left)
+    m_indy.down = IndyStrength();
+    m_indy.up = 0;
+    break;
+  case 0x6:   // push up (right)
+    m_indy.up = IndyStrength();
+    m_indy.down = 0;
+    break;
+  default:
+    break;
+  }
+}
+
+void CWheelBoard::IndyFrame(int position, int &up, int &down)
+{
+  // The frame's NMIs (500 Hz)
+  m_indy.nmiAcc += 500.0 / 57.524;
+  int elapsed = int(m_indy.nmiAcc);
+  m_indy.nmiAcc -= elapsed;
+  m_indy.nmis += UINT32(elapsed);
+
+  // Every 18 NMIs, how far the wheel went down or up (none with DIP switch 2-1 ON, bit 7 at 0)
+  m_indy.speedNmis += elapsed;
+  if (m_indy.speedNmis >= 18)
+  {
+    m_indy.speedNmis %= 18;
+    bool damped = (m_dip2 & 0x80) != 0;
+    m_indy.speedDown = damped && position < m_indy.speedRef ? m_indy.speedRef - position : 0;
+    m_indy.speedUp = damped && position > m_indy.speedRef ? position - m_indy.speedRef : 0;
+    m_indy.speedRef = position;
+  }
+
+  IndyRunEffect(position);
+
+  // A vibration: an extra push one way then the other, each half 16 x its period NMIs, the damping the other way
+  up = m_indy.up;
+  down = m_indy.down;
+  if (m_indy.vibPeriod != 0 && m_indy.vibAmp != 0)
+  {
+    int extra = m_indy.vibAmp + std::abs(int(m_indy.centre) - position) / 8 + 1;
+    if (((m_indy.nmis >> 4) / UINT32(m_indy.vibPeriod)) % 2 != 0)
+    {
+      up += extra;
+      down += m_indy.speedUp;
+    }
+    else
+    {
+      up += m_indy.speedDown;
+      down += extra;
+    }
+  }
+  up = std::min(up, 63);
+  down = std::min(down, 63);
 }
 
 UINT8 CWheelBoard::IORead8(UINT32 portNum)
@@ -821,6 +1164,11 @@ CWheelBoard::CWheelBoard(const Util::Config::Node &config)
   m_lastSelfCenter = 0;
   m_lastFriction = 0;
   m_lastVibrate = 0;
+
+  // The program's sine table (its positive half, 80 at the peak): 128 sin(pi i / 128), its integer part, exactly
+  for (int i = 0; i < 128; i++)
+    m_sine[i] = UINT8(128.0 * std::sin(3.14159265358979323846 * i / 128.0) + 1e-9);
+  IndyReset();
 
   DebugLog("Built Drive Board (wheel)\n");
 }

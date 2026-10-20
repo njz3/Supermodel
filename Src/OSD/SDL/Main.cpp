@@ -1540,6 +1540,9 @@ Util::Config::Node DefaultConfig()
   config.Set("LegacySoundDSP", false, "Sound"); // New config option for games that do not play correctly with MAME's SCSP sound core.
   // CDriveBoard
   config.Set("ForceFeedback", false, "ForceFeedback");
+  // The drive board's program run by its Z80 (emulated), or its logic (simulated: EPR-18261, the Model 3 wheel drive
+  // boards' programs and Star Wars Trilogy's joystick board's, ServoProgramSim)
+  config.Set("SimulateDriveBoard", false, "ForceFeedback");
 
   // Platform-specific/UI
   config.Set("New3DEngine", true, "Video");
@@ -1931,6 +1934,8 @@ static void Help(void)
   puts("");
   puts("Input Options:");
   puts("  -force-feedback         Enable force feedback (DirectInput, XInput)");
+  puts("  -simulate-driveboard    Simulate the drive board (wheel and joystick boards)");
+  puts("  -emulate-driveboard     Emulate the drive board's Z80 [Default]");
   puts("  -config-inputs          Configure keyboards, mice, and game controllers");
 #ifdef SUPERMODEL_WIN32
   printf("  -input-system=<s>       Input system [Default: %s]\n", defaultConfig["InputSystem"].ValueAs<std::string>().c_str());
@@ -2049,6 +2054,8 @@ static ParsedCommandLine ParseCommandLine(int argc, char **argv)
     { "-emulate-netboard",    { "SimulateNet",      false } },
     { "-no-force-feedback",   { "ForceFeedback",    false } },
     { "-force-feedback",      { "ForceFeedback",    true } },
+    { "-simulate-driveboard", { "SimulateDriveBoard", true } },
+    { "-emulate-driveboard",  { "SimulateDriveBoard", false } },
     { "-dump-memory",         { "DumpMemory",       true } },
     { "-dump-textures",       { "DumpTextures",     true } },
   };

@@ -30,8 +30,10 @@
 #define INCLUDED_WHEELBOARD_H
 
 #include "DriveBoard.h"
+#include "ServoProgramSim.h"
 #include "Util/NewConfig.h"
 #include "Game.h"
+#include <mutex>
 
 /*
  * CWheelBoard
@@ -205,6 +207,38 @@ private:
   UINT8 m_lastSelfCenter; // Last self center command sent
   UINT8 m_lastFriction;   // Last friction command sent
   UINT8 m_lastVibrate;    // Last vibrate command sent
+
+  // EPR-18261 simulated (SimulateDriveBoard): its program's logic, once a frame instead of its Z80
+  struct IndyBoard
+  {
+    UINT8 effect;         // The last command below 70
+    UINT8 centre;         // 9x its high nibble, Cx its low
+    int base;             // 7x: x / 2 + 2; 1 after an idle centring
+    int vibPeriod;        // Ax & 7: the vibration's half period, in 16 NMIs; 0 none
+    int vibAmp;           // Bx & 7; 0 none
+    int up, down;         // The powers the effect asks for, kept when it leaves them be
+    int speedDown, speedUp, speedRef, speedNmis;  // How far the wheel moved over the last 18 NMIs
+    double nmiAcc;        // The NMIs of the frames, their fraction carried over
+    UINT32 nmis;          // The NMI counter
+    UINT8 replyKind;      // What the reply is: 0 a byte, 1 the wheel, 2 DIP switches 1, 3 the centre
+    UINT8 replyByte;
+  };
+  IndyBoard m_indy;
+  // The other programs simulated (the Model 3 drive boards, ServoProgramSim)
+  std::unique_ptr<IServoProgram> m_servoSim;
+  double m_servoNmiAcc;   // The Z80's cycles run (simulated), and the next NMI's
+  double m_servoNextNmi;
+  UINT8 m_simLastReply;   // The simulated program's last reply
+  std::mutex m_indyMutex; // The game's commands (its thread) against the frames (the drive board's)
+  UINT8 m_sine[128];      // The program's sine table: 128 sin(pi i / 128), its integer part
+
+  void IndyReset(void);
+  void IndyCommand(UINT8 data);
+  UINT8 IndyReply(void) const;
+  int IndyStrength(void) const;
+  void IndySpring(int position, int shift, bool dampOtherSide);
+  void IndyRunEffect(int position);
+  void IndyFrame(int position, int &up, int &down);
 
   UINT8 SimulateRead(void);
 
