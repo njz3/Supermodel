@@ -480,8 +480,11 @@ void CWheelBoard::ProcessEncoderCmd(void)
           }
           else
           {
-            // Bits 3-6 = centering strength 0x0-0xF.  This is scaled to range 0x0F-0xFF
-            UINT8 strength = ((m_port42Out&0x78)>>3) * 0x10 + 0xF;
+            // Bits 3-6 = the servo board's spring gain, 1 to 15 (0C-7C). Its spring is a stiff position loop: on a
+            // cabinet it is strong at the gains the games send (5 to 8 in Dirt Devils, with DIP row 4), while a
+            // DirectInput spring grows with the angle over the wheel's whole travel. 47 % at 5, 75 % at 8, full from
+            // 11: full from 8 made the wheel oscillate on a cabinet
+            UINT8 strength = (UINT8)std::min(((m_port42Out&0x78)>>3) * 0x18, 0xFF);
             SendSelfCenter(strength);
           }
         }
