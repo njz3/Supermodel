@@ -201,6 +201,8 @@ private:
 
   void UpdateForceFeedback(void);
 
+  void ResendForceFeedback(void);
+
   void SendStopAll(void);
 
   void SendConstantForce(INT8 val);

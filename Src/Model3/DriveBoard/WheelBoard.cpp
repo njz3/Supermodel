@@ -72,6 +72,17 @@ void CWheelBoard::SaveState(CBlockFile *SaveState)
     // In a block of its own, so that older save states still load
     SaveState->NewBlock("WheelBoardServo", __FILE__);
     SaveState->Write(m_servoGain);
+
+    // The effects in force, played again when the state is loaded: a game may set its spring once (Sega Rally 2)
+    SaveState->NewBlock("WheelBoardEffects", __FILE__);
+    SaveState->Write(m_port42Out);
+    SaveState->Write(m_port46Out);
+    SaveState->Write(m_prev42Out);
+    SaveState->Write(m_prev46Out);
+    SaveState->Write(m_constForce);
+    SaveState->Write(m_vibrate);
+    SaveState->Write(m_lastSelfCenter);
+    SaveState->Write(m_lastFriction);
   }
 }
 
@@ -83,6 +94,7 @@ void CWheelBoard::LoadState(CBlockFile *SaveState)
   }
 
   bool wasSimulated;
+  bool hasEffects = false;
   SaveState->Read(&wasSimulated, sizeof(wasSimulated));
   if (wasSimulated)
   {
@@ -106,9 +118,26 @@ void CWheelBoard::LoadState(CBlockFile *SaveState)
       SaveState->Read(m_servoGain);
     else
       m_servoGain = 0x7F;
+
+    // Older save states: the effects of before the load go on
+    hasEffects = SaveState->FindBlock("WheelBoardEffects") == Result::OKAY;
+    if (hasEffects)
+    {
+      SaveState->Read(m_port42Out);
+      SaveState->Read(m_port46Out);
+      SaveState->Read(m_prev42Out);
+      SaveState->Read(m_prev46Out);
+      SaveState->Read(m_constForce);
+      SaveState->Read(m_vibrate);
+      SaveState->Read(m_lastSelfCenter);
+      SaveState->Read(m_lastFriction);
+    }
   }
 
   CDriveBoard::LoadState(SaveState);
+
+  if (hasEffects && !IsDisabled())
+    ResendForceFeedback();
 }
 
 void CWheelBoard::Disable(void)
@@ -556,6 +585,26 @@ void CWheelBoard::ProcessEncoderCmd(void)
 void CWheelBoard::UpdateForceFeedback(void)
 {
   // The servo board's gain scales the torque and the vibration, not its own spring
+  SendConstantForce(m_constForce * m_servoGain / 0x7F);
+  SendVibrate(m_vibrate * m_servoGain / 0x7F);
+}
+
+void CWheelBoard::ResendForceFeedback(void)
+{
+  if (!m_inputs || !m_inputs->steering)
+    return;
+
+  // A state loaded: the wheel still plays the effects of before, and a game may set its spring once (Sega Rally 2),
+  // so the state's effects are played again from scratch
+  UINT8 selfCenter = m_lastSelfCenter;
+  UINT8 friction = m_lastFriction;
+  INT8 constForce = m_constForce;
+  UINT8 vibrate = m_vibrate;
+  SendStopAll();
+  m_constForce = constForce;
+  m_vibrate = vibrate;
+  SendSelfCenter(selfCenter);
+  SendFriction(friction);
   SendConstantForce(m_constForce * m_servoGain / 0x7F);
   SendVibrate(m_vibrate * m_servoGain / 0x7F);
 }
