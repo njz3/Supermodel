@@ -513,7 +513,11 @@ void CWheelBoard::ProcessEncoderCmd(void)
         break;
 
       case 0xFD:
-        // TODO - unsure?  Sent as velocity changes, similar to self-centering
+        // [guess] A damping: with each spring the high nibble grows with its gain (11 to 51 with FC 4 0C to 7C on
+        // Scud Race; 11 to 51 by the strength row on Sega Rally 2, 11 with each of its torques), 00 with Scud's
+        // torques and always on Daytona 2, 66 at start-up. Without it the spring oscillated on a cabinet. Sent as a
+        // friction, which a wheel feeder may play as a force against the wheel's speed: 1 = 12 %, 5 = 62 %
+        SendFriction((UINT8)std::min((m_port42Out >> 4) * 0x20, 0xFF));
         break;
 
       case 0xFE:
