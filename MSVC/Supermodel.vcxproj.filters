@@ -440,6 +440,9 @@
     <ClCompile Include="..\Src\OSD\Logger.cpp">
       <Filter>Source Files\OSD</Filter>
     </ClCompile>
+    <ClCompile Include="..\Src\OSD\WriteDirectory.cpp">
+      <Filter>Source Files\OSD</Filter>
+    </ClCompile>
     <ClCompile Include="..\Src\Graphics\New3D\R3DScrollFog.cpp">
       <Filter>Source Files\Graphics\New</Filter>
     </ClCompile>

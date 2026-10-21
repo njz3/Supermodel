@@ -69,6 +69,7 @@
 #include <cstdio>
 #include <cstring>
 #include <cstdarg>
+#include <filesystem>
 #include <memory>
 #include <vector>
 #include <algorithm>
@@ -133,10 +134,11 @@ extern "C"
 ******************************************************************************/
 
 static const std::string s_analysisPath = Util::Format() << FileSystemPath::GetPath(FileSystemPath::Analysis);
-static const std::string s_configFilePath = Util::Format() << FileSystemPath::GetPath(FileSystemPath::Config) << "Supermodel.ini";
-static const std::string s_gameXMLFilePath = Util::Format() << FileSystemPath::GetPath(FileSystemPath::Config) << "Games.xml";
-static const std::string s_musicXMLFilePath = Util::Format() << FileSystemPath::GetPath(FileSystemPath::Config) << "Music.xml";
-static const std::string s_logFilePath = Util::Format() << FileSystemPath::GetPath(FileSystemPath::Log) << "Supermodel.log";
+// In the write directory when one is set (ResolveWriteDirectory)
+static std::string s_configFilePath = Util::Format() << FileSystemPath::GetPath(FileSystemPath::Config) << "Supermodel.ini";
+static std::string s_gameXMLFilePath = Util::Format() << FileSystemPath::GetPath(FileSystemPath::Config) << "Games.xml";
+static std::string s_musicXMLFilePath = Util::Format() << FileSystemPath::GetPath(FileSystemPath::Config) << "Music.xml";
+static std::string s_logFilePath = Util::Format() << FileSystemPath::GetPath(FileSystemPath::Log) << "Supermodel.log";
 
 static Util::Config::Node s_runtime_config("Global");
 
@@ -571,7 +573,7 @@ void Screenshot()
     // Make a screenshot
     time_t now = std::time(nullptr);
     tm* ltm = std::localtime(&now);
-    std::string file = Util::Format() << FileSystemPath::GetPath(FileSystemPath::Screenshots)
+    std::string file = Util::Format() << FileSystemPath::GetWritePath(FileSystemPath::Screenshots)
         << "Screenshot_"
         << std::setfill('0') << std::setw(4) << (1900 + ltm->tm_year)
         << '-'
@@ -725,7 +727,7 @@ static bool SaveState(IEmulator *Model3, std::string file_path = std::string())
   CBlockFile  SaveState;
 
   if (file_path.empty())
-    file_path = Util::Format() << FileSystemPath::GetPath(FileSystemPath::Saves) << Model3->GetGame().name << ".st" << s_saveSlot;
+    file_path = Util::Format() << FileSystemPath::GetWritePath(FileSystemPath::Saves) << Model3->GetGame().name << ".st" << s_saveSlot;
   if (Result::OKAY != SaveState.Create(file_path, "Supermodel Save State", "Supermodel Version " SUPERMODEL_VERSION))
   {
     ErrorLog("Unable to save state to '%s'.", file_path.c_str());
@@ -749,9 +751,9 @@ static bool LoadState(IEmulator *Model3, std::string file_path = std::string())
 {
   CBlockFile  SaveState;
 
-  // Generate file path
+  // Generate file path (with a write directory: its save state, else the one of the usual place)
   if (file_path.empty())
-    file_path = Util::Format() << FileSystemPath::GetPath(FileSystemPath::Saves) << Model3->GetGame().name << ".st" << s_saveSlot;
+    file_path = FileSystemPath::GetReadPath(FileSystemPath::Saves, Util::Format() << Model3->GetGame().name << ".st" << s_saveSlot);
 
   // Open and check to make sure format is correct
   if (Result::OKAY != SaveState.Load(file_path))
@@ -786,7 +788,7 @@ static void SaveNVRAM(IEmulator *Model3)
 {
   CBlockFile  NVRAM;
 
-  std::string file_path = Util::Format() << FileSystemPath::GetPath(FileSystemPath::NVRAM) << Model3->GetGame().name << ".nv";
+  std::string file_path = Util::Format() << FileSystemPath::GetWritePath(FileSystemPath::NVRAM) << Model3->GetGame().name << ".nv";
   if (Result::OKAY != NVRAM.Create(file_path, "Supermodel NVRAM State", "Supermodel Version " SUPERMODEL_VERSION))
   {
     ErrorLog("Unable to save NVRAM to '%s'. Make sure directory exists!", file_path.c_str());
@@ -808,8 +810,8 @@ static void LoadNVRAM(IEmulator *Model3)
 {
   CBlockFile  NVRAM;
 
-  // Generate file path
-  std::string file_path = Util::Format() << FileSystemPath::GetPath(FileSystemPath::NVRAM) << Model3->GetGame().name << ".nv";
+  // Generate file path (with a write directory: its NVRAM, else the one of the usual place)
+  std::string file_path = FileSystemPath::GetReadPath(FileSystemPath::NVRAM, Util::Format() << Model3->GetGame().name << ".nv");
 
   // Open and check to make sure format is correct
   if (Result::OKAY != NVRAM.Load(file_path))
@@ -1458,6 +1460,74 @@ static void WriteDefaultConfigurationFileIfNotPresent()
     InfoLog("Wrote default configuration file to %s", s_configFilePath.c_str());
 }
 
+// The write directory (-write-dir=<path>, or WriteDirectory in the [Global] section of the usual Supermodel.ini): when
+// set, Supermodel writes nothing elsewhere, so that the rest of the disk can be read only. The user's settings are
+// read and saved there (Config/Supermodel.ini, the usual one copied at the first run); each game's NVRAM, save states,
+// screenshots and dumps go to a folder named after it, the log to its root; Games.xml, Music.xml, NVRAM and save
+// states are read from it first, else from their usual places. A relative path is relative to Supermodel's folder.
+// Called first, before anything is written.
+static void ResolveWriteDirectory(int argc, char **argv)
+{
+  std::string dir;
+  for (int i = 1; i < argc; i++)
+  {
+    std::string arg(argv[i]);
+    for (const std::string option : { "-write-dir=", "--write-dir=" })
+    {
+      if (arg.compare(0, option.size(), option) == 0)
+        dir = arg.substr(option.size());
+    }
+  }
+  std::error_code ec;
+  if (dir.empty() && std::filesystem::exists(s_configFilePath, ec))
+  {
+    Util::Config::Node usual("Global");
+    Util::Config::FromINIFile(&usual, s_configFilePath);
+    dir = usual["WriteDirectory"].ValueAsDefault<std::string>(std::string());
+  }
+  if (dir.empty())
+    return;
+
+  std::filesystem::path path(dir);
+  if (path.is_relative())
+  {
+    char *base = SDL_GetBasePath();
+    if (base)
+    {
+      path = std::filesystem::path(base) / path;
+      SDL_free(base);
+    }
+  }
+  FileSystemPath::SetWriteDirectory(path.lexically_normal().string());
+
+  std::string usualConfig = s_configFilePath;
+  s_configFilePath = FileSystemPath::GetWritePath(FileSystemPath::Config) + "Supermodel.ini";
+  if (!std::filesystem::exists(s_configFilePath, ec) && std::filesystem::exists(usualConfig, ec))
+    std::filesystem::copy_file(usualConfig, s_configFilePath, ec);
+  s_gameXMLFilePath = FileSystemPath::GetReadPath(FileSystemPath::Config, "Games.xml");
+  s_musicXMLFilePath = FileSystemPath::GetReadPath(FileSystemPath::Config, "Music.xml");
+  s_logFilePath = FileSystemPath::GetWritePath(FileSystemPath::Log) + "Supermodel.log";
+}
+
+// With a write directory, a log file given by a relative path (-log-output) goes there too
+static void PutLogFilesInWriteDirectory(Util::Config::Node &config)
+{
+  if (!FileSystemPath::HasWriteDirectory())
+    return;
+  std::vector<std::string> outputs = Util::Format(config["LogOutput"].ValueAsDefault<std::string>(std::string())).Split(',');
+  std::vector<std::string> placed;
+  for (const std::string &output : outputs)
+  {
+    std::string name = Util::TrimWhiteSpace(output);
+    std::string lower = Util::ToLower(name);
+    if (!name.empty() && lower != "stdout" && lower != "stderr" && lower != "syslog" &&
+        std::filesystem::path(name).is_relative())
+      name = FileSystemPath::GetWritePath(FileSystemPath::Log) + name;
+    placed.push_back(name);
+  }
+  config.Set("LogOutput", Util::Format(",").Join(placed).str());
+}
+
 // Create and configure inputs
 static Result ConfigureInputs(CInputs *Inputs, Util::Config::Node *fileConfig, Util::Config::Node *runtimeConfig, const Game &game, bool configure)
 {
@@ -1916,6 +1986,8 @@ static void Help(void)
   printf("  -game-xml-file=<file>   ROM set definition file [Default: %s]\n", s_gameXMLFilePath.c_str());
   printf("  -log-output=<outputs>   Log output destination(s) [Default: %s]\n", s_logFilePath.c_str());
   puts("  -log-level=<level>      Logging threshold [Default: info]");
+  puts("  -write-dir=<path>       Write everything (settings, NVRAM, save states, log)");
+  puts("                          under this directory only [Default: none]");
   puts("");
   puts("Core Options:");
   puts("  -ppc-frequency=<mhz>    PowerPC frequency (default varies by stepping)");
@@ -2064,7 +2136,8 @@ static ParsedCommandLine ParseCommandLine(int argc, char **argv)
     { "-telemetry",             "TelemetryPort"           },
     { "-telemetry-forza",       "TelemetryForza"          },
     { "-log-output",            "LogOutput"               },
-    { "-log-level",             "LogLevel"                }
+    { "-log-level",             "LogLevel"                },
+    { "-write-dir",             "WriteDirectory"          }   // taken at start-up (ResolveWriteDirectory)
   };
   static const std::map<std::string, std::pair<std::string, bool>> bool_options
   { // -option
@@ -2171,6 +2244,8 @@ static ParsedCommandLine ParseCommandLine(int argc, char **argv)
         cmd_line.print_games = true;
       else if (arg.find("-game=") == 0)
         cmd_line.game = arg.substr(6);
+      else if (arg.find("--write-dir=") == 0)
+        ;   // taken at start-up (ResolveWriteDirectory), as -write-dir
       else if (arg == "-game")
       {
         ErrorLog("'-game' requires the name of a game (e.g., '-game=dayto2pe').");
@@ -2340,6 +2415,7 @@ int main(int argc, char **argv)
 {
   Agent::Init(argc, argv);
   Title();
+  ResolveWriteDirectory(argc, argv);
   WriteDefaultConfigurationFileIfNotPresent();
 
   bool loadGUI = false;
@@ -2358,6 +2434,7 @@ int main(int argc, char **argv)
   {
     return 1;
   }
+  PutLogFilesInWriteDirectory(cmd_line.config);
 
   if (loadGUI) {
       // Load up what settings we have so far. The complete file is passed to the GUI,
@@ -2386,6 +2463,8 @@ int main(int argc, char **argv)
   InfoLog("Started as:");
   for (int i = 0; i < argc; i++)
     InfoLog("  argv[%d] = %s", i, argv[i]);
+  if (FileSystemPath::HasWriteDirectory())
+    InfoLog("Write directory: %s (settings: %s)", FileSystemPath::GetWriteDirectory().c_str(), s_configFilePath.c_str());
 
   // Finish processing command line
   if (cmd_line.print_help)
@@ -2437,6 +2516,7 @@ int main(int argc, char **argv)
       }
       if (loader.Load(&game, &rom_set, *cmd_line.rom_files.begin(), cmd_line.game))
         return 1;
+      FileSystemPath::SetGame(game.name);   // with a write directory, the folder of the game's files
       Util::Config::MergeINISections(&config4, config3, fileConfig[game.name]);   // apply game-specific config
     }
     else

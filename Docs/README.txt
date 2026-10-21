@@ -1200,6 +1200,26 @@ not.  All options are case sensitive.
 
     ----------------
 
+    Option:         -write-dir=<path>
+                    --write-dir=<path>
+
+    Description:    Writes everything under this directory and nowhere else,
+                    so that the rest of the disk can be read only (a cabinet
+                    under Windows' Unified Write Filter, the ROM sets on a
+                    network share).  The settings are read and saved in
+                    <path>/Config/Supermodel.ini: the usual Supermodel.ini is
+                    copied there the first time, and only read afterwards.
+                    Each game's NVRAM, save states, screenshots and debug dumps
+                    go to <path>/<game>/ (NVRAM/ and Saves/ in it), the game
+                    being its ROM set's name (e.g., 'daytona2'), and the log to
+                    <path>/Supermodel.log.  Games.xml, Music.xml, NVRAM files
+                    and save states are read from there first, else from their
+                    usual places.  A relative path is relative to Supermodel's
+                    directory.  Without it (the default), nothing changes.  Same
+                    as the WriteDirectory setting, which it overrides.
+
+    ----------------
+
     Option:         -no-threads
 
     Description:    Disables multi-threading.  When enabled (the default), the
@@ -1528,6 +1548,18 @@ All settings are case sensitive.
                     when that holds it, as a MAME merged ROM set does.  The
                     default is 'ROMs', relative to the working directory.  Not
                     used when a ROM set is given on the command line.
+
+    ----------------
+
+    Name:           WriteDirectory
+
+    Argument:       String.
+
+    Description:    The directory everything is written to (see the
+                    '-write-dir' option, which overrides it).  Read from the
+                    'Global' section of the usual Supermodel.ini only: the
+                    settings themselves then move to that directory.  Empty
+                    (the default), the usual places.
 
     ----------------
 

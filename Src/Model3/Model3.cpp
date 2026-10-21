@@ -225,6 +225,7 @@
 #include "DriveBoard/WheelBoard.h"
 #include "Game.h"
 #include "ROMSet.h"
+#include "OSD/FileSystemPath.h"
 #include "Network/NetBoard.h"
 #include "Network/SimNetBoard.h"
 #include "OSD/Audio.h"
@@ -3282,9 +3283,11 @@ CModel3::CModel3(Util::Config::Node &config)
   DebugLog("Built Model 3\n");
 }
 
-// Dumps a memory region to a file for debugging purposes
-static void Dump(const char *name, const char *file, uint8_t *buf, size_t size, bool reverse32, bool reverse16)
+// Dumps a memory region to a file for debugging purposes (with a write directory, in the game's folder there)
+static void Dump(const char *name, const char *fileName, uint8_t *buf, size_t size, bool reverse32, bool reverse16)
 {
+  std::string path = FileSystemPath::HasWriteDirectory() ? FileSystemPath::GetWritePath(FileSystemPath::Log) + fileName : fileName;
+  const char *file = path.c_str();
   FILE *fp = fopen(file, "wb");
   if (NULL != fp)
   {

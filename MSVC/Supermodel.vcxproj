@@ -381,6 +381,7 @@ xcopy /D /Y "$(ProjectDir)..\Assets\*" "$(TargetDir)Assets"</Command>
     <ClCompile Include="..\Src\Network\TCPSend.cpp" />
     <ClCompile Include="..\Src\OSD\ConsoleInput.cpp" />
     <ClCompile Include="..\Src\OSD\Logger.cpp" />
+    <ClCompile Include="..\Src\OSD\WriteDirectory.cpp" />
     <ClCompile Include="..\Src\OSD\Outputs.cpp" />
     <ClCompile Include="..\Src\OSD\SDL\Audio.cpp" />
     <ClCompile Include="..\Src\OSD\SDL\Agent.cpp" />
