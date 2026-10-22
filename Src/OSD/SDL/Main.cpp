@@ -113,6 +113,10 @@
 #include "TelemetryServer.h"
 #include "OSD/ConfigFile.h"
 #include "Gui.h"
+#include "GameMenu.h"
+#include "Graphics/AspectRatio.h"
+#include <fstream>
+#include <sstream>
 
 #ifdef SUPERMODEL_WIN32
 /*
@@ -139,6 +143,10 @@ static std::string s_configFilePath = Util::Format() << FileSystemPath::GetPath(
 static std::string s_gameXMLFilePath = Util::Format() << FileSystemPath::GetPath(FileSystemPath::Config) << "Games.xml";
 static std::string s_musicXMLFilePath = Util::Format() << FileSystemPath::GetPath(FileSystemPath::Config) << "Music.xml";
 static std::string s_logFilePath = Util::Format() << FileSystemPath::GetPath(FileSystemPath::Log) << "Supermodel.log";
+// The settings file read: the common one above, or the game's own (<game>.ini beside it), which s_configFilePath then
+// names (with a write directory, there even when it was read from the usual place)
+static std::string s_settingsReadFrom;
+static bool s_gameSettingsFile = false;
 
 static Util::Config::Node s_runtime_config("Global");
 
@@ -162,9 +170,37 @@ static int aaValue = 1;                 // default is 1 which is no aa
 static CRTcolor CRTcolors = CRTcolor::None; // default to no gamma/color adaption being done
 
 /*
+ * Where the renderers draw: the window as above, or with the AspectRatio
+ * setting the image's own frame buffer, which SuperAA then draws in its frame
+ * (xOffset... then give the image's rectangle in the window, for the light
+ * guns and their crosshairs).
+ */
+static unsigned s_targetXOffset, s_targetYOffset, s_targetXRes, s_targetYRes, s_targetTotalXRes, s_targetTotalYRes;
+static bool s_presentation = false;
+static AspectRatio::Layout s_layout;
+
+/*
  * Crosshair stuff
  */
 static CCrosshair* s_crosshair = nullptr;
+
+// The scissor box (to clip visible area) in the frame buffer the renderers draw into, the window or SuperAA's; the
+// renderers enable the test
+static void SetScissor(unsigned xOffset, unsigned yOffset, unsigned xRes, unsigned yRes, unsigned totalXRes, unsigned totalYRes)
+{
+  UINT32 correction = (UINT32)(((yRes / 384.) * 2.) + 0.5); // due to the 2D layer compensation (2 pixels off)
+
+  glEnable(GL_SCISSOR_TEST);
+
+  if (s_runtime_config["WideScreen"].ValueAsDefault<bool>(false))
+  {
+    glScissor(0* aaValue, correction* aaValue, totalXRes * aaValue, (totalYRes - (correction * 2)) * aaValue);
+  }
+  else
+  {
+    glScissor((xOffset + correction) * aaValue, (yOffset + correction) * aaValue, (xRes - (correction * 2)) * aaValue, (yRes - (correction * 2)) * aaValue);
+  }
+}
 
 static Result SetGLGeometry(unsigned *xOffsetPtr, unsigned *yOffsetPtr, unsigned *xResPtr, unsigned *yResPtr, unsigned *totalXResPtr, unsigned *totalYResPtr, bool keepAspectRatio)
 {
@@ -216,19 +252,7 @@ static Result SetGLGeometry(unsigned *xOffsetPtr, unsigned *yOffsetPtr, unsigned
   *xResPtr = (unsigned) xResF;
   *yResPtr = (unsigned) yResF;
 
-  UINT32 correction = (UINT32)(((*yResPtr / 384.) * 2.) + 0.5); // due to the 2D layer compensation (2 pixels off)
-
-  glEnable(GL_SCISSOR_TEST);
-
-  // Scissor box (to clip visible area)
-  if (s_runtime_config["WideScreen"].ValueAsDefault<bool>(false))
-  {
-    glScissor(0* aaValue, correction* aaValue, *totalXResPtr * aaValue, (*totalYResPtr - (correction * 2)) * aaValue);
-  }
-  else
-  {
-    glScissor((*xOffsetPtr + correction) * aaValue, (*yOffsetPtr + correction) * aaValue, (*xResPtr - (correction * 2)) * aaValue, (*yResPtr - (correction * 2)) * aaValue);
-  }
+  SetScissor(*xOffsetPtr, *yOffsetPtr, *xResPtr, *yResPtr, *totalXResPtr, *totalYResPtr);
   return Result::OKAY;
 }
 
@@ -865,6 +889,7 @@ static void PrintGLError(GLenum error)
 
 static CInputs *videoInputs = NULL;
 static uint32_t currentInputs = 0;
+static std::string s_gameTitle;   // the in-game menu's
 
 bool BeginFrameVideo()
 {
@@ -876,6 +901,10 @@ void EndFrameVideo()
   // Show crosshairs for light gun games
   if (videoInputs)
     s_crosshair->Update(currentInputs, videoInputs, xOffset, yOffset, xRes, yRes);
+
+  // The in-game menu over the frame
+  if (GameMenu::IsOpen())
+    GameMenu::Draw(s_runtime_config, s_gameTitle, s_configFilePath, s_gameSettingsFile);
 
   // Swap the buffers
   SDL_GL_SwapWindow(s_window);
@@ -942,6 +971,223 @@ static IRender2D *CreateRender2D(IEmulator *Emu)
   return new CRender2D(s_runtime_config);
 }
 
+/*
+ * SetUpVideoLayout():
+ *
+ * The AspectRatio setting: where the renderers draw and where the image lands
+ * in the window. The window's own layout (SetGLGeometry's) is taken when the
+ * window has just been set up, and restored otherwise. ORIGINAL, the default:
+ * the usual display, the renderers drawing in the window.
+ */
+static void SetUpVideoLayout(bool windowChanged)
+{
+  static unsigned windowXOffset, windowYOffset, windowXRes, windowYRes;
+  if (windowChanged)
+  {
+    windowXOffset = xOffset;
+    windowYOffset = yOffset;
+    windowXRes = xRes;
+    windowYRes = yRes;
+  }
+  else
+  {
+    xOffset = windowXOffset;
+    yOffset = windowYOffset;
+    xRes = windowXRes;
+    yRes = windowYRes;
+  }
+
+  AspectRatio::Settings settings;
+  if (!AspectRatio::FromConfig(&settings, s_runtime_config))
+    ErrorLog("Unknown AspectRatio '%s', ORIGINAL used instead.", s_runtime_config["AspectRatio"].ValueAs<std::string>().c_str());
+  s_presentation = settings.fit != AspectRatio::Fit::Original;
+  if (!s_presentation)
+  {
+    s_targetXOffset = xOffset;
+    s_targetYOffset = yOffset;
+    s_targetXRes = xRes;
+    s_targetYRes = yRes;
+    s_targetTotalXRes = totalXRes;
+    s_targetTotalYRes = totalYRes;
+    SetScissor(xOffset, yOffset, xRes, yRes, totalXRes, totalYRes);
+    return;
+  }
+
+  s_layout = AspectRatio::Compute(settings, totalXRes, totalYRes, s_runtime_config["Stretch"].ValueAs<bool>(), s_runtime_config["WideScreen"].ValueAs<bool>(), float(496.0 / 384.0));
+  s_targetXOffset = s_layout.imageX;
+  s_targetYOffset = s_layout.imageY;
+  s_targetXRes = s_layout.imageWidth;
+  s_targetYRes = s_layout.imageHeight;
+  s_targetTotalXRes = s_layout.targetWidth;
+  s_targetTotalYRes = s_layout.targetHeight;
+  SetScissor(s_targetXOffset, s_targetYOffset, s_targetXRes, s_targetYRes, s_targetTotalXRes, s_targetTotalYRes);
+
+  // The image's rectangle in the window for the light guns and their crosshairs, within the frame (cropped parts and
+  // curved edges are not followed)
+  float left = (std::max)(s_layout.image[0], s_layout.frame[0]);
+  float top = (std::max)(s_layout.image[1], s_layout.frame[1]);
+  float right = (std::min)(s_layout.image[0] + s_layout.image[2], s_layout.frame[0] + s_layout.frame[2]);
+  float bottom = (std::min)(s_layout.image[1] + s_layout.image[3], s_layout.frame[1] + s_layout.frame[3]);
+  xOffset = unsigned(std::lround(left));
+  yOffset = unsigned(std::lround(top));
+  xRes = unsigned(std::lround(right - left));
+  yRes = unsigned(std::lround(bottom - top));
+}
+
+/*
+ * InitRenderers():
+ *
+ * Once the window is set up, or after the AspectRatio setting changed: the
+ * video layout, SuperAA's frame buffer, the 2D renderer recreated, both
+ * renderers initialized on it and attached to the emulator.
+ */
+static Result InitRenderers(IEmulator *Emu, SuperAA *superAA, IRender2D *&Render2D, IRender3D *Render3D, UpscaleMode upscaleMode, bool windowChanged)
+{
+  SetUpVideoLayout(windowChanged);
+  superAA->SetPresentation(s_presentation ? &s_layout : nullptr, totalXRes, totalYRes);
+  superAA->Init(s_targetTotalXRes, s_targetTotalYRes);  // pass actual frame sizes here
+
+  delete Render2D;
+  Render2D = CreateRender2D(Emu);
+  if (Result::OKAY != Render2D->Init(s_targetXOffset * aaValue, s_targetYOffset * aaValue, s_targetXRes * aaValue, s_targetYRes * aaValue, s_targetTotalXRes * aaValue, s_targetTotalYRes * aaValue, superAA->GetTargetID(), upscaleMode))
+    return Result::FAIL;
+  if (Result::OKAY != Render3D->Init(s_targetXOffset * aaValue, s_targetYOffset * aaValue, s_targetXRes * aaValue, s_targetYRes * aaValue, s_targetTotalXRes * aaValue, s_targetTotalYRes * aaValue, superAA->GetTargetID()))
+    return Result::FAIL;
+
+  Emu->AttachRenderers(Render2D, Render3D, superAA);
+  return Result::OKAY;
+}
+
+/******************************************************************************
+ Settings Files
+******************************************************************************/
+
+// Sets values in an INI file and keeps all the rest (comments, layout): each in the game's section when the key is
+// there, else in the global section, added after its last setting when missing
+static bool SetINIFileValues(const std::string &file, const std::string &game, const std::vector<std::pair<std::string, std::string>> &values)
+{
+  std::string text;
+  {
+    std::ifstream in(file, std::ios::binary);
+    std::ostringstream contents;
+    contents << in.rdbuf();
+    text = contents.str();
+  }
+  const char *newline = text.find("\r\n") != std::string::npos ? "\r\n" : "\n";
+
+  struct Line
+  {
+    std::string text;
+    bool header;
+    bool global;  // in the global section
+    bool game;    // in the game's section
+  };
+  std::vector<Line> lines;
+  bool global = true, inGame = false;
+  for (size_t start = 0; start < text.size(); )
+  {
+    size_t end = text.find('\n', start);
+    std::string line = text.substr(start, end == std::string::npos ? std::string::npos : end - start);
+    start = end == std::string::npos ? text.size() : end + 1;
+    if (!line.empty() && line.back() == '\r')
+      line.pop_back();
+    std::string trimmed = Util::TrimWhiteSpace(line);
+    bool header = trimmed.size() >= 2 && trimmed.front() == '[' && trimmed.back() == ']';
+    if (header)
+    {
+      global = inGame = false;
+      for (const std::string &s : Util::Format(trimmed.substr(1, trimmed.size() - 2)).Split(','))
+      {
+        std::string section = Util::TrimWhiteSpace(s);
+        global |= section.empty() || section == "Global";
+        inGame |= section == game;
+      }
+    }
+    lines.push_back({ line, header, global, inGame });
+  }
+
+  auto keyOf = [](const std::string &line)
+  {
+    std::string trimmed = Util::TrimWhiteSpace(line);
+    size_t equals = trimmed.find('=');
+    if (trimmed.empty() || trimmed[0] == ';' || trimmed[0] == '#' || equals == std::string::npos)
+      return std::string();
+    return Util::TrimWhiteSpace(trimmed.substr(0, equals));
+  };
+
+  for (const auto &[key, value] : values)
+  {
+    std::string assignment = key + " = " + value;
+    int found = -1;
+    for (int pass = 0; pass < 2 && found < 0; pass++)
+    {
+      for (size_t i = 0; i < lines.size() && found < 0; i++)
+      {
+        if (!lines[i].header && (pass == 0 ? lines[i].game : lines[i].global) && keyOf(lines[i].text) == key)
+          found = int(i);
+      }
+    }
+    if (found >= 0)
+    {
+      lines[found].text = assignment;
+      continue;
+    }
+
+    // Missing: after the first global part's last setting, else before the first other section
+    size_t at = lines.size();
+    int last = -1;
+    for (size_t i = 0; i < lines.size(); i++)
+    {
+      if (lines[i].header && !lines[i].global)
+      {
+        at = i;
+        break;
+      }
+      if (!lines[i].header && !keyOf(lines[i].text).empty())
+        last = int(i);
+    }
+    if (last >= 0)
+      at = size_t(last) + 1;
+    lines.insert(lines.begin() + at, { assignment, false, true, false });
+  }
+
+  std::ofstream out(file, std::ios::binary | std::ios::trunc);
+  for (const Line &line : lines)
+    out << line.text << newline;
+  return bool(out);
+}
+
+// The in-game menu's Save buttons: its settings written into the settings file in use, or into the game's own file
+// (forGame), made the first time as a copy of the file read, so with all its other settings, and used from then on
+static bool SaveMenuSettings(const std::string &game, bool forGame)
+{
+  std::error_code ec;
+  if (forGame && !s_gameSettingsFile)
+  {
+    s_configFilePath = FileSystemPath::GetWritePath(FileSystemPath::Config) + game + ".ini";
+    s_gameSettingsFile = true;
+  }
+
+  // Not there yet: first a copy of what was read (the common file, or with a write directory the usual place's)
+  if (!std::filesystem::exists(s_configFilePath, ec) && s_settingsReadFrom != s_configFilePath && std::filesystem::exists(s_settingsReadFrom, ec))
+    std::filesystem::copy_file(s_settingsReadFrom, s_configFilePath, ec);
+  s_settingsReadFrom = s_configFilePath;
+
+  std::vector<std::pair<std::string, std::string>> values;
+  values.emplace_back("AspectRatio", s_runtime_config["AspectRatio"].ValueAs<std::string>());
+  values.emplace_back("CropPosition", s_runtime_config["CropPosition"].ValueAs<std::string>());
+  values.emplace_back("CropBarrel", s_runtime_config["CropBarrel"].ValueAs<bool>() ? "true" : "false");
+  values.emplace_back("BarrelCenter", s_runtime_config["BarrelCenter"].ValueAs<std::string>());
+  values.emplace_back("BarrelRadius", s_runtime_config["BarrelRadius"].ValueAs<std::string>());
+  if (!SetINIFileValues(s_configFilePath, game, values))
+  {
+    ErrorLog("Unable to save the settings to '%s'.", s_configFilePath.c_str());
+    return false;
+  }
+  InfoLog("Saved the in-game menu's settings to '%s'.", s_configFilePath.c_str());
+  return true;
+}
+
 #ifdef SUPERMODEL_DEBUGGER
 int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Inputs, COutputs *Outputs, std::shared_ptr<Debugger::CDebugger> Debugger)
 {
@@ -976,6 +1222,7 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
   totalYRes = yRes = s_runtime_config["YResolution"].ValueAs<unsigned>();
   snprintf(baseTitleStr, sizeof(baseTitleStr), "Supermodel - %s", game.title.c_str());
   SDL_SetWindowTitle(s_window, baseTitleStr);
+  s_gameTitle = baseTitleStr;
   SDL_SetWindowSize(s_window, totalXRes, totalYRes);
 
   int xpos = s_runtime_config["WindowXPosition"].ValueAsDefault<int>(SDL_WINDOWPOS_CENTERED);
@@ -1027,8 +1274,7 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
 
   // Initialize the renderers
   SuperAA* superAA = new SuperAA(aaValue, CRTcolors, Agent::Enabled());  // the agent reads the frames from its target
-  superAA->Init(totalXRes, totalYRes);  // pass actual frame sizes here
-  IRender2D *Render2D = CreateRender2D(Emu);
+  IRender2D *Render2D = nullptr;
 #ifndef SUPERMODEL_OSX
   IRender3D *Render3D = s_runtime_config["New3DEngine"].ValueAs<bool>() ? ((IRender3D *) new New3D::CNew3D(s_runtime_config, Emu->GetGame().name)) : ((IRender3D *) new Legacy3D::CLegacy3D(s_runtime_config));
 #else
@@ -1037,13 +1283,10 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
 #endif
 
   UpscaleMode upscaleMode = (UpscaleMode)s_runtime_config["UpscaleMode"].ValueAs<int>();
+  bool pausedBeforeMenu = false;
 
-  if (Result::OKAY != Render2D->Init(xOffset*aaValue, yOffset*aaValue, xRes*aaValue, yRes*aaValue, totalXRes*aaValue, totalYRes*aaValue, superAA->GetTargetID(), upscaleMode))
+  if (Result::OKAY != InitRenderers(Emu, superAA, Render2D, Render3D, upscaleMode, true))
     goto QuitError;
-  if (Result::OKAY != Render3D->Init(xOffset*aaValue, yOffset*aaValue, xRes*aaValue, yRes*aaValue, totalXRes*aaValue, totalYRes*aaValue, superAA->GetTargetID()))
-    goto QuitError;
-
-  Emu->AttachRenderers(Render2D,Render3D, superAA);
 
   // Reset emulator
   Emu->Reset();
@@ -1078,7 +1321,22 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
     Agent::Run(Emu, Inputs, superAA, s_runtime_config,
       [&]() { return Inputs->Poll(&game, xOffset, yOffset, xRes, yRes); },
       [&](const std::string &path) { return SaveState(Emu, path); },
-      [&](const std::string &path) { return LoadState(Emu, path); });
+      [&](const std::string &path) { return LoadState(Emu, path); },
+      [&](const std::string &request) -> std::string
+      {
+        // What the in-game menu does: a setting changed and applied, or saved
+        std::istringstream words(request);
+        std::string verb, key, value;
+        words >> verb >> key >> value;
+        if (verb == "set" && !key.empty())
+        {
+          s_runtime_config.Set(key, value);
+          return Result::OKAY == InitRenderers(Emu, superAA, Render2D, Render3D, upscaleMode, false) ? "ok" : "err renderers";
+        }
+        if (verb == "save" || verb == "savegame")
+          return (SaveMenuSettings(game.name, verb == "savegame") ? "ok " : "err ") + s_configFilePath;
+        return "err menu open|close|set KEY VALUE|save|savegame";
+      });
     quit = true;
   }
 #ifdef DEBUG
@@ -1090,8 +1348,10 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
 #endif
   while (!quit)
   {
-    // Poll the inputs
+    // Poll the inputs (while the in-game menu is open, the window's events are its own)
     if (!Inputs->Poll(&game, xOffset, yOffset, xRes, yRes))
+      quit = true;
+    if (GameMenu::IsOpen() && !GameMenu::ProcessEvents())
       quit = true;
 
     // Render if paused, otherwise run a frame
@@ -1129,7 +1389,30 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
 #endif // SUPERMODEL_DEBUGGER
 
     // Check UI controls
-    if (Inputs->uiExit->Pressed())
+    if (GameMenu::IsOpen())
+    {
+      // The in-game menu: its settings applied at once, saved on request; closed by UIMenu, Escape or its button
+      if (GameMenu::TakeChanged() && Result::OKAY != InitRenderers(Emu, superAA, Render2D, Render3D, upscaleMode, false))
+        goto QuitError;
+      GameMenu::Action action = GameMenu::TakeAction();
+      if (action != GameMenu::Action::None)
+      {
+        bool saved = SaveMenuSettings(game.name, action == GameMenu::Action::SaveForGame);
+        GameMenu::SetStatus((saved ? "Saved to " : "Unable to save to ") + s_configFilePath);
+      }
+      if (GameMenu::CloseRequested() || Inputs->uiMenu->Pressed())
+      {
+        GameMenu::Close();
+        Inputs->GetInputSystem()->SetPollConsumesEvents(true);
+        if (!pausedBeforeMenu)
+        {
+          paused = false;
+          Emu->ResumeThreads();
+          SetAudioEnabled(true);
+        }
+      }
+    }
+    else if (Inputs->uiExit->Pressed())
     {
       // Quit emulator
       quit = true;
@@ -1200,15 +1483,8 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
         goto QuitError;
 
       // Recreate renderers and attach to the emulator
-      superAA->Init(totalXRes, totalYRes);
-      Render2D = CreateRender2D(Emu);
-
-      if (Result::OKAY != Render2D->Init(xOffset * aaValue, yOffset * aaValue, xRes * aaValue, yRes * aaValue, totalXRes * aaValue, totalYRes * aaValue, superAA->GetTargetID(), upscaleMode))
+      if (Result::OKAY != InitRenderers(Emu, superAA, Render2D, Render3D, upscaleMode, true))
         goto QuitError;
-      if (Result::OKAY != Render3D->Init(xOffset * aaValue, yOffset * aaValue, xRes * aaValue, yRes * aaValue, totalXRes * aaValue, totalYRes * aaValue, superAA->GetTargetID()))
-        goto QuitError;
-
-      Emu->AttachRenderers(Render2D, Render3D, superAA);
 
       Inputs->GetInputSystem()->SetMouseVisibility(!s_runtime_config["FullScreen"].ValueAs<bool>());
     }
@@ -1274,6 +1550,24 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
       }
       else
         puts("This game does not have an MPEG music board.");
+    }
+    else if (Inputs->uiMenu->Pressed())
+    {
+      // Open the in-game menu (after the music volume, whose key is Shift with the same one): the game is paused
+      // while it is open, and it takes the window's events
+      if (GameMenu::Open(s_window))
+      {
+        pausedBeforeMenu = paused;
+        if (!paused)
+        {
+          paused = true;
+          Emu->PauseThreads();
+          SetAudioEnabled(false);
+        }
+        Inputs->GetInputSystem()->SetPollConsumesEvents(false);
+      }
+      else
+        ErrorLog("Unable to open the in-game menu.");
     }
     else if (Inputs->uiMusicVolDown->Pressed())
     {
@@ -1396,6 +1690,7 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
 
   // Make sure all threads are paused before shutting down
   Emu->PauseThreads();
+  GameMenu::Shutdown();
 
 #ifdef SUPERMODEL_DEBUGGER
   // If debugger was supplied, detach it from system and restore old logger
@@ -1423,6 +1718,7 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
 
   // Quit with an error
 QuitError:
+  GameMenu::Shutdown();
   delete Render2D;
   delete Render3D;
   delete superAA;
@@ -1671,6 +1967,13 @@ Util::Config::Node DefaultConfig()
   config.Set("WideScreen", false, "Video");
   config.Set("Stretch", false, "Video");
   config.Set("WideBackground", false, "Video");
+  // The frame the image is shown in and how it fills it, same names and values as the cabinets' other emulators
+  config.Set<std::string>("AspectRatio", "ORIGINAL", "Video", "", "", { AspectRatio::kNames[0], AspectRatio::kNames[1], AspectRatio::kNames[2], AspectRatio::kNames[3], AspectRatio::kNames[4], AspectRatio::kNames[5], AspectRatio::kNames[6] });
+  SetLabels("AspectRatio", { AspectRatio::kLabels[0], AspectRatio::kLabels[1], AspectRatio::kLabels[2], AspectRatio::kLabels[3], AspectRatio::kLabels[4], AspectRatio::kLabels[5], AspectRatio::kLabels[6] });
+  config.Set("CropPosition", 0, "Video", -100, 100);
+  config.Set("CropBarrel", false, "Video");
+  config.Set("BarrelCenter", 60, "Video", 0, 100);
+  config.Set("BarrelRadius", 50, "Video", 10, 300);
   config.Set("VSync", true, "Video");
   config.Set("Throttle", true, "Video");
   config.Set("RefreshRate", 60.0f, "Video", 0.0f, 0.0f, { 57.524f, 60.f });
@@ -1988,6 +2291,10 @@ static void Help(void)
   puts("  -log-level=<level>      Logging threshold [Default: info]");
   puts("  -write-dir=<path>       Write everything (settings, NVRAM, save states, log)");
   puts("                          under this directory only [Default: none]");
+  puts("  --set <section>.<key>=<value>");
+  puts("                          Override a setting, as the cabinets' other emulators");
+  puts("                          do (e.g., --set Display.ASPECT_RATIO=4:3_CROP); the key");
+  puts("                          matches whatever its case and underscores");
   puts("");
   puts("Core Options:");
   puts("  -ppc-frequency=<mhz>    PowerPC frequency (default varies by stepping)");
@@ -2007,6 +2314,15 @@ static void Help(void)
   puts("  -wide-bg                When wide-screen mode is enabled, also expand the 2D");
   puts("                          background layer to screen width");
   puts("  -stretch                Fit viewport to resolution, ignoring aspect ratio");
+  puts("  -aspect-ratio=<r>       Frame the image is shown in, and how it fills it:");
+  puts("                          ORIGINAL [Default], 4:3, 16:9 (letterbox), 4:3_STRETCH,");
+  puts("                          16:9_STRETCH, 4:3_CROP, 16:9_CROP");
+  puts("  -crop-position=<n>      Part a crop keeps (-100 left/top, 0 middle [Default],");
+  puts("                          100 right/bottom)");
+  puts("  -crop-barrel            Curve the cropped parts onto the edges instead of");
+  puts("                          cutting them");
+  puts("  -barrel-center=<n>      Middle shown undistorted, % of the frame [Default: 60]");
+  puts("  -barrel-radius=<n>      Curvature radius, % of the frame [Default: 50]");
   puts("  -upscalemode=<n>        2D layer upscaling filter mode (range 0-3)");
   puts("  -crtcolors=<n>          CRT color emulation (range 0-5)");
   puts("  -no-throttle            Disable frame rate lock");
@@ -2088,6 +2404,65 @@ static void Help(void)
   puts("");
 }
 
+/*
+ * ApplySetOption():
+ *
+ * --set SECTION.KEY=VALUE, how the cabinets' front-end overrides a setting in
+ * all its emulators. The key names a setting whatever its case and
+ * underscores (ASPECT_RATIO is AspectRatio). The section is accepted but not
+ * used: the command line overrides every section here. DISPLAY_MODE (WINDOW,
+ * WINDOW_STRETCH, FULLSCREEN, FULLSCREEN_STRETCH) sets FullScreen and Stretch.
+ * An unknown key is reported and ignored, so that one command line suits all
+ * the emulators.
+ */
+static bool ApplySetOption(Util::Config::Node *config, const std::string &assignment)
+{
+  size_t equals = assignment.find('=');
+  if (equals == std::string::npos || equals == 0)
+  {
+    ErrorLog("'--set %s': SECTION.KEY=VALUE expected (e.g., '--set Display.ASPECT_RATIO=4:3_CROP').", assignment.c_str());
+    return false;
+  }
+  std::string name = assignment.substr(0, equals);
+  std::string value = assignment.substr(equals + 1);
+  size_t dot = name.find('.');
+  auto normalize = [](const std::string &s)
+  {
+    std::string n;
+    for (char c : s)
+    {
+      if (c != '_' && !std::isspace(static_cast<unsigned char>(c)))
+        n += char(std::tolower(static_cast<unsigned char>(c)));
+    }
+    return n;
+  };
+  std::string key = normalize(dot == std::string::npos ? name : name.substr(dot + 1));
+
+  if (key == "displaymode")
+  {
+    std::string mode = Util::ToLower(Util::TrimWhiteSpace(value));
+    if (mode != "window" && mode != "window_stretch" && mode != "fullscreen" && mode != "fullscreen_stretch")
+    {
+      ErrorLog("'--set %s': DISPLAY_MODE is WINDOW, WINDOW_STRETCH, FULLSCREEN or FULLSCREEN_STRETCH.", assignment.c_str());
+      return false;
+    }
+    config->Set("FullScreen", mode.rfind("fullscreen", 0) == 0);
+    config->Set("Stretch", mode.find("_stretch") != std::string::npos);
+    return true;
+  }
+
+  for (const auto &setting : DefaultConfig())
+  {
+    if (setting.IsLeaf() && normalize(setting.Key()) == key)
+    {
+      config->Set(setting.Key(), value);
+      return true;
+    }
+  }
+  ErrorLog("Ignoring '--set %s': Supermodel has no such setting.", assignment.c_str());
+  return true;
+}
+
 struct ParsedCommandLine
 {
   Util::Config::Node config = Util::Config::Node("CommandLine");
@@ -2123,6 +2498,10 @@ static ParsedCommandLine ParseCommandLine(int argc, char **argv)
     { "-load-state",            "InitStateFile"           },
     { "-ppc-frequency",         "PowerPCFrequency"        },
     { "-crosshairs",            "Crosshairs"              },
+    { "-aspect-ratio",          "AspectRatio"             },
+    { "-crop-position",         "CropPosition"            },
+    { "-barrel-center",         "BarrelCenter"            },
+    { "-barrel-radius",         "BarrelRadius"            },
     { "-crosshair-style",       "CrosshairStyle"          },
     { "-vert-shader",           "VertexShader"            },
     { "-frag-shader",           "FragmentShader"          },
@@ -2151,6 +2530,8 @@ static ParsedCommandLine ParseCommandLine(int argc, char **argv)
     { "-no-wide-screen",      { "WideScreen",       false } },
     { "-wide-screen",         { "WideScreen",       true } },
     { "-stretch",             { "Stretch",          true } },
+    { "-crop-barrel",         { "CropBarrel",       true } },
+    { "-no-crop-barrel",      { "CropBarrel",       false } },
     { "-no-stretch",          { "Stretch",          false } },
     { "-wide-bg",             { "WideBackground",   true } },
     { "-no-wide-bg",          { "WideBackground",   false } },
@@ -2246,6 +2627,16 @@ static ParsedCommandLine ParseCommandLine(int argc, char **argv)
         cmd_line.game = arg.substr(6);
       else if (arg.find("--write-dir=") == 0)
         ;   // taken at start-up (ResolveWriteDirectory), as -write-dir
+      else if (arg == "--set" || arg.find("--set=") == 0)
+      {
+        if (arg == "--set" && i + 1 >= argc)
+        {
+          ErrorLog("'--set' requires SECTION.KEY=VALUE (e.g., '--set Display.ASPECT_RATIO=4:3_CROP').");
+          cmd_line.error = true;
+        }
+        else if (!ApplySetOption(&cmd_line.config, arg == "--set" ? std::string(argv[++i]) : arg.substr(6)))
+          cmd_line.error = true;
+      }
       else if (arg == "-game")
       {
         ErrorLog("'-game' requires the name of a game (e.g., '-game=dayto2pe').");
@@ -2503,6 +2894,7 @@ int main(int argc, char **argv)
     Util::Config::Node config3("Global");
     Util::Config::Node config4("Global");
     Util::Config::FromINIFile(&fileConfig, s_configFilePath);
+    s_settingsReadFrom = s_configFilePath;
     Util::Config::MergeINISections(&fileConfigWithDefaults, DefaultConfig(), fileConfig); // apply .ini file's global section over defaults
     Util::Config::MergeINISections(&config3, fileConfigWithDefaults, cmd_line.config);    // apply command line overrides
     if (rom_specified || print_games)
@@ -2517,6 +2909,22 @@ int main(int argc, char **argv)
       if (loader.Load(&game, &rom_set, *cmd_line.rom_files.begin(), cmd_line.game))
         return 1;
       FileSystemPath::SetGame(game.name);   // with a write directory, the folder of the game's files
+
+      // The game's own settings file (<game>.ini beside Supermodel.ini), read instead of the common one when it
+      // exists: a complete file, not a layer over it. Saved where the common one is (the write directory, if any)
+      std::string gameSettings = FileSystemPath::GetReadPath(FileSystemPath::Config, game.name + ".ini");
+      std::error_code ec;
+      if (std::filesystem::exists(gameSettings, ec))
+      {
+        fileConfig = Util::Config::Node("Global");
+        Util::Config::FromINIFile(&fileConfig, gameSettings);
+        Util::Config::MergeINISections(&fileConfigWithDefaults, DefaultConfig(), fileConfig);
+        Util::Config::MergeINISections(&config3, fileConfigWithDefaults, cmd_line.config);
+        s_settingsReadFrom = gameSettings;
+        s_configFilePath = FileSystemPath::GetWritePath(FileSystemPath::Config) + game.name + ".ini";
+        s_gameSettingsFile = true;
+        InfoLog("Settings read from '%s', this game's own file.", gameSettings.c_str());
+      }
       Util::Config::MergeINISections(&config4, config3, fileConfig[game.name]);   // apply game-specific config
     }
     else

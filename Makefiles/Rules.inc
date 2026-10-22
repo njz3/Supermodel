@@ -118,6 +118,7 @@ SRC_FILES = \
 	Src/Graphics/Render2D.cpp \
 	Src/Graphics/Pro1000Render2D.cpp \
 	Src/Graphics/SuperAA.cpp \
+	Src/Graphics/AspectRatio.cpp \
 	Src/Model3/TileGen.cpp \
 	Src/Model3/Model3.cpp \
 	Src/Pro1000/Pro1000.cpp \
@@ -132,6 +133,7 @@ SRC_FILES = \
 	Src/OSD/SDL/Audio.cpp \
 	Src/OSD/SDL/Thread.cpp \
 	Src/OSD/SDL/Gui.cpp \
+	Src/OSD/SDL/GameMenu.cpp \
 	Src/Model3/SoundBoard.cpp \
 	Src/Sound/SCSP.cpp \
 	Src/Sound/SCSPDSP.cpp \

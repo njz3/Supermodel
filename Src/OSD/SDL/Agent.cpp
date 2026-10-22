@@ -55,6 +55,13 @@
  *                       omitted or 0): "obs W H", a new line, then W * H * 3
  *                       bytes, RGB, top row first.
  *   shot PATH           Saves the last frame as a BMP file. "ok" or "err".
+ *   shotwin PATH        Saves the window's image as a BMP file: with an
+ *                       AspectRatio other than ORIGINAL, the image in its
+ *                       frame, and the in-game menu if shown. "ok" or "err".
+ *   menu open|close     Shows the in-game menu over the next frames, or not.
+ *   menu set KEY VALUE  Changes one of its settings, applied from the next
+ *                       frame on. "ok" or "err".
+ *   menu save|savegame  Its Save buttons: "ok FILE" or "err FILE".
  *   save PATH           Saves a state. "ok" or "err".
  *   load PATH           Loads a state. "ok" or "err".
  *   ffb                 The force feedback commands sent since the last call,
@@ -99,6 +106,7 @@
  */
 
 #include "Agent.h"
+#include "GameMenu.h"
 #include "TelemetryServer.h"
 
 #include "Supermodel.h"
@@ -465,11 +473,11 @@ namespace Agent
     }
   }
 
-  // The last frame, from the frame buffer the renderers draw into (SuperAA's, forced in agent mode): RGBA, bottom row
-  // first
-  static bool ReadFrame(SuperAA *superAA, std::vector<uint8_t> &rgba, int &width, int &height)
+  // The last frame, from the frame buffer the renderers draw into (SuperAA's, forced in agent mode), or with window the
+  // window's image (the AspectRatio setting's presentation and the in-game menu over it): RGBA, bottom row first
+  static bool ReadFrame(SuperAA *superAA, std::vector<uint8_t> &rgba, int &width, int &height, bool window = false)
   {
-    GLuint fbo = superAA ? superAA->GetTargetID() : 0;
+    GLuint fbo = superAA ? (window ? superAA->GetWindowTargetID() : superAA->GetTargetID()) : 0;
     if (fbo == 0)
       return false;
     GLint previousRead = 0, previousTexture = 0, texture = 0;
@@ -532,7 +540,8 @@ namespace Agent
   void Run(IEmulator *emulator, CInputs *inputs, SuperAA *superAA, const Util::Config::Node &config,
            std::function<bool()> pollInputs,
            std::function<bool(const std::string &path)> saveState,
-           std::function<bool(const std::string &path)> loadState)
+           std::function<bool(const std::string &path)> loadState,
+           std::function<std::string(const std::string &request)> menu)
   {
     if (!s_enabled || s_out == nullptr || !s_recorder)
     {
@@ -709,10 +718,25 @@ namespace Agent
         Scale(frame, width, height, W, H, rgb);
         ReplyBytes("obs " + std::to_string(W) + " " + std::to_string(H), rgb.data(), rgb.size());
       }
-      else if (command == "shot")
+      else if (command == "menu")
       {
+        // The in-game menu shown over the frames (open) or not (close), to look at it with shotwin; what it does
+        std::string what = RestOfLine(in);
+        if (what == "open")
+          Reply(GameMenu::Open(SDL_GL_GetCurrentWindow()) ? "ok" : "err cannot open the menu");
+        else if (what == "close")
+        {
+          GameMenu::Close();
+          Reply("ok");
+        }
+        else
+          Reply("%s", menu(what).c_str());
+      }
+      else if (command == "shot" || command == "shotwin")
+      {
+        // shotwin: the window's image, with an AspectRatio other than ORIGINAL
         std::string path = RestOfLine(in);
-        if (path.empty() || !ReadFrame(superAA, frame, width, height))
+        if (path.empty() || !ReadFrame(superAA, frame, width, height, command == "shotwin"))
           Reply("err no path or no frame buffer");
         else if (Util::WriteSurfaceToBMP<Util::RGBA8>(path, frame.data(), width, height, true))
           Reply("err cannot write %s", path.c_str());

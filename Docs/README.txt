@@ -270,6 +270,27 @@ To stretch the 2D background layers, use '-wide-bg'.  Many games use 2D back-
 grounds instead of 3D skyboxes and when playing in wide screen mode, this option
 often enhances their appearance.
 
+The '-aspect-ratio' option chooses the frame the image is shown in and how the
+image fills it, with the same names as the other emulators of a cabinet front-
+end: ORIGINAL (the default, the display described above), 4:3 and 16:9 (the
+whole image in a frame of that shape, black bars where the shapes differ),
+4:3_STRETCH and 16:9_STRETCH (the image fills the frame, distorted), 4:3_CROP
+and 16:9_CROP (the image fills the frame at its proportions, what overflows is
+cut).  '-crop-position' chooses the part a crop keeps and '-crop-barrel' curves
+the cropped parts onto the edges, as on a cylinder seen from the front, so that
+the whole image stays visible; '-barrel-center' and '-barrel-radius' shape it.
+The frame fills the window with '-stretch', else it keeps its shape with black
+bars around it, and '-wide-screen' fills the bars of a letterboxed frame with
+the extended field of view.  For example, a 16:9 screen showing the middle of
+the image at its proportions, the top and bottom curved onto the edges:
+
+    supermodel game.zip -fullscreen -aspect-ratio=16:9_CROP -crop-barrel
+
+During a game, the settings menu (F10) changes these settings, applied at once,
+and saves them in the settings file in use, or with 'Save for this game' in the
+game's own settings file (see 'The Configuration File').  The game is paused
+while the menu is open; Escape or F10 closes it.
+
 By default, Supermodel limits the frame rate to 60 frames per second.  This has
 no impact on performance except when the frame rate exceeds 60 FPS on fast
 systems.  Frame rate limiting can be disabled with the '-no-throttle' option.
@@ -313,8 +334,8 @@ from 0 (muted) to 200% (maximum, doubled amplitude).  For example:
 This command line cuts the sound volume in half and increases the music volume
 by 70%.
 
-The F9 and F10 keys can be used to adjust music volume during run-time, while
-F11 and F12 control sound volume.
+The F9 and Shift-F10 keys can be used to adjust music volume during run-time,
+while F11 and F12 control sound volume.
 
 Clipping and distortion will occur if the combined sound and music volume
 levels become too high.
@@ -355,8 +376,9 @@ are listed below.
     Save State                              F5
     Load State                              F7
     Change Save Slot                        F6
+    Settings Menu                           F10
     Decrease Music Volume                   F9
-    Increase Music Volume                   F10
+    Increase Music Volume                   Shift-F10
     Decrease Sound Volume                   F11
     Increase Sound Volume                   F12
 
@@ -898,6 +920,24 @@ following order:
 In other words, command line options have the highest precedence, followed by
 game-specific settings, and lastly, global settings.
 
+A game can also have its own settings file, named after its ROM set beside
+'Supermodel.ini' (e.g., 'Config/scud.ini').  When it exists, it is read instead
+of 'Supermodel.ini': it is a complete file, not a layer over it, read and
+written the same way.  The settings menu's 'Save for this game' button creates
+it the first time as a copy of 'Supermodel.ini', then writes the menu's
+settings into it, and its 'Save' button writes into the file in use.  With a
+write directory, these files are in its 'Config' directory.
+
+The '--set' option overrides a setting the way the other emulators of a cabinet
+front-end do: '--set <section>.<key>=<value>' (or '--set=...'), repeatable.  The
+key names a setting whatever its case and underscores ('ASPECT_RATIO' is
+'AspectRatio'); the section is accepted but not used, since command line options
+override every section.  'DISPLAY_MODE' (WINDOW, WINDOW_STRETCH, FULLSCREEN,
+FULLSCREEN_STRETCH) sets 'FullScreen' and 'Stretch'.  A key that is not a
+Supermodel setting is reported and ignored.  For example:
+
+    supermodel scud.zip --set Display.ASPECT_RATIO=4:3_CROP --set Display.CROP_POSITION=-30
+
 An index of all allowed settings is provided further below in this document.
 
 NOTE: Type carefully!  Supermodel will not report syntax errors nor detect
@@ -1217,6 +1257,37 @@ not.  All options are case sensitive.
                     usual places.  A relative path is relative to Supermodel's
                     directory.  Without it (the default), nothing changes.  Same
                     as the WriteDirectory setting, which it overrides.
+
+    ----------------
+
+    Option:         --set <section>.<key>=<value>
+                    --set=<section>.<key>=<value>
+
+    Description:    Overrides a setting, as the other emulators of a cabinet
+                    front-end do (see 'The Configuration File').  The key names
+                    a setting whatever its case and underscores; the section is
+                    not used.  Repeatable.
+
+    ----------------
+
+    Option:         -aspect-ratio=<ratio>
+
+    Description:    The frame the image is shown in and how the image fills
+                    it: ORIGINAL (the default), 4:3, 16:9, 4:3_STRETCH,
+                    16:9_STRETCH, 4:3_CROP, 16:9_CROP (see 'Video Settings').
+                    Same as the AspectRatio setting.
+
+    ----------------
+
+    Option:         -crop-position=<n>
+                    -crop-barrel, -no-crop-barrel
+                    -barrel-center=<percent>
+                    -barrel-radius=<percent>
+
+    Description:    With 4:3_CROP and 16:9_CROP: the part kept, the cropped
+                    parts curved onto the edges, the middle shown undistorted
+                    and the curvature radius.  Same as the CropPosition,
+                    CropBarrel, BarrelCenter and BarrelRadius settings.
 
     ----------------
 
@@ -1560,6 +1631,60 @@ All settings are case sensitive.
                     'Global' section of the usual Supermodel.ini only: the
                     settings themselves then move to that directory.  Empty
                     (the default), the usual places.
+
+    ----------------
+
+    Name:           AspectRatio
+
+    Argument:       String: ORIGINAL, 4:3, 16:9, 4:3_STRETCH, 16:9_STRETCH,
+                    4:3_CROP or 16:9_CROP (4:3_LETTERBOX is 4:3).
+
+    Description:    The frame the image is shown in and how the image fills
+                    it (see 'Video Settings'), with the same names and meanings
+                    as the other emulators of a cabinet front-end.  The frame
+                    fills the window when Stretch is set, else it keeps its
+                    shape in the middle of the window.  ORIGINAL (the default):
+                    the usual display.
+
+    ----------------
+
+    Name:           CropPosition
+
+    Argument:       Integer from -100 to 100.
+
+    Description:    The part of the image a crop keeps: -100 the left or the
+                    top, 0 the middle (the default), 100 the right or the
+                    bottom.
+
+    ----------------
+
+    Name:           CropBarrel
+
+    Argument:       Boolean.
+
+    Description:    With a crop, the cropped parts compressed onto the edges
+                    as on a cylinder seen from the front instead of cut, so
+                    that the whole image stays visible.  Off by default.
+
+    ----------------
+
+    Name:           BarrelCenter
+
+    Argument:       Integer from 0 to 100.
+
+    Description:    With CropBarrel, the middle of the frame shown without
+                    distortion, as by a plain crop, in percent of the frame.
+                    The default is 60.
+
+    ----------------
+
+    Name:           BarrelRadius
+
+    Argument:       Integer, in percent of the frame (10 to 300 in the menus).
+
+    Description:    With CropBarrel, the cylinder's radius: small, a strong
+                    curvature near the edges; large, an almost uniform
+                    compression.  The default is 50.
 
     ----------------
 

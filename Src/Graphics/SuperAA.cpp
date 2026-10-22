@@ -1,4 +1,5 @@
 #include "SuperAA.h"
+#include <algorithm>
 #include <string>
 
 SuperAA::SuperAA(int aaValue, CRTcolor CRTcolors, bool forceTarget) :
@@ -7,10 +8,24 @@ SuperAA::SuperAA(int aaValue, CRTcolor CRTcolors, bool forceTarget) :
 	m_forceTarget(forceTarget),
 	m_vao(0),
 	m_width(0),
-	m_height(0)
+	m_height(0),
+	m_present(false),
+	m_layout{},
+	m_windowWidth(0),
+	m_windowHeight(0),
+	m_locPresent(-1), m_locWindowSize(-1), m_locFrame(-1), m_locImage(-1), m_locImageInTarget(-1),
+	m_locBarrelAxis(-1), m_locBarrel1(-1), m_locBarrel2(-1), m_locSamples(-1)
 {
-	if (UsesTarget()) {
+}
 
+// The shader, once, when a target is first used (the AspectRatio setting can bring one in during the game)
+void SuperAA::CreateShader()
+{
+	if (m_vao) {
+		return;
+	}
+
+	{
 		static const char* vertexShader = R"glsl(
 
 			#version 410 core
@@ -142,9 +157,67 @@ SuperAA::SuperAA(int aaValue, CRTcolor CRTcolors, bool forceTarget) :
 				return pow(color * (1.0/1.055) + (0.055/1.055), 2.4);
 		}
 
+		// The AspectRatio setting: each window pixel from the image in its frame (see AspectRatio.cpp)
+		uniform int present;
+		uniform vec2 windowSize;
+		uniform vec4 frameRect;			// window pixels, origin at the top left
+		uniform vec4 imageRect;
+		uniform vec4 imageInTarget;		// the image in the texture (0..1, origin at the bottom left)
+		uniform int barrelAxis;			// curved edges: 0 horizontal, 1 vertical, -1 none
+		uniform vec4 barrel1;			// edge, center, start, scale
+		uniform vec4 barrel2;			// length before, after, angle before, after
+		uniform int samples;			// per axis and pixel
+
+		float EdgeArc(float x, float len, float angle, float edge)
+		{
+			if (len <= edge * 1.0001 || angle < 1e-4)
+				return len * x / edge;
+			return len * asin(sin(angle) * x / edge) / angle;
+		}
+
+		float Barrel(float q)
+		{
+			float u;
+			if (q < barrel1.x)
+				u = barrel1.z - EdgeArc(barrel1.x - q, barrel2.x, barrel2.z, barrel1.x);
+			else if (q > barrel1.x + barrel1.y)
+				u = barrel1.z + barrel1.y + EdgeArc(q - barrel1.x - barrel1.y, barrel2.y, barrel2.w, barrel1.x);
+			else
+				u = barrel1.z + q - barrel1.x;
+			return u * barrel1.w;
+		}
+
+		vec3 PresentSample(sampler2D s, vec2 p)
+		{
+			vec2 q = (p - frameRect.xy) / frameRect.zw;
+			if (any(lessThan(q, vec2(0.0))) || any(greaterThan(q, vec2(1.0))))
+				return vec3(0.0);
+			vec2 uv = (p - imageRect.xy) / imageRect.zw;
+			if (barrelAxis == 0)
+				uv.x = Barrel(q.x);
+			else if (barrelAxis == 1)
+				uv.y = Barrel(q.y);
+			vec2 t = imageInTarget.xy + vec2(uv.x, 1.0 - uv.y) * imageInTarget.zw;
+			if (any(lessThan(t, vec2(0.0))) || any(greaterThan(t, vec2(1.0))))
+				return vec3(0.0);
+			return textureLod(s, t, 0.0).rgb;
+		}
+
+		vec3 Present(sampler2D s)
+		{
+			vec3 texColour = vec3(0.0);
+			for (int i = 0; i < samples; i++) {
+				for (int j = 0; j < samples; j++) {
+					vec2 sub = (vec2(i, j) + 0.5) / float(samples);
+					texColour += PresentSample(s, vec2(gl_FragCoord.x - 0.5 + sub.x, windowSize.y - (gl_FragCoord.y - 0.5 + sub.y)));
+				}
+			}
+			return texColour / float(samples * samples);
+		}
+
 		void main()
 		{
-			vec3 finalColor = GetTextureValue(tex1);
+			vec3 finalColor = present != 0 ? Present(tex1) : GetTextureValue(tex1);
 
 			#if (CRTCOLORS != 0)
 			{
@@ -170,10 +243,20 @@ SuperAA::SuperAA(int aaValue, CRTcolor CRTcolors, bool forceTarget) :
 		// load shaders
 		m_shader.LoadShaders(vertexShader, fragmentShaderString.c_str());
 		m_shader.GetUniformLocationMap("tex1");
+		m_locPresent		= m_shader.GetUniformLocation("present");
+		m_locWindowSize		= m_shader.GetUniformLocation("windowSize");
+		m_locFrame			= m_shader.GetUniformLocation("frameRect");
+		m_locImage			= m_shader.GetUniformLocation("imageRect");
+		m_locImageInTarget	= m_shader.GetUniformLocation("imageInTarget");
+		m_locBarrelAxis		= m_shader.GetUniformLocation("barrelAxis");
+		m_locBarrel1		= m_shader.GetUniformLocation("barrel1");
+		m_locBarrel2		= m_shader.GetUniformLocation("barrel2");
+		m_locSamples		= m_shader.GetUniformLocation("samples");
 
 		// setup uniform memory
 		m_shader.EnableShader();
 		glUniform1i(m_shader.attribLocMap["tex1"], 0);		// texture will be bound to unit zero
+		glUniform1i(m_locPresent, 0);
 		m_shader.DisableShader();
 
 		glGenVertexArrays(1, &m_vao);
@@ -188,6 +271,7 @@ SuperAA::~SuperAA()
 {
 	m_shader.UnloadShaders();
 	m_fbo.Destroy();
+	m_windowFbo.Destroy();
 
 	if (m_vao) {
 		glDeleteVertexArrays(1, &m_vao);
@@ -197,17 +281,35 @@ SuperAA::~SuperAA()
 
 bool SuperAA::UsesTarget() const
 {
-	return (m_aa > 1) || (m_crtcolors != CRTcolor::None) || m_forceTarget;
+	return (m_aa > 1) || (m_crtcolors != CRTcolor::None) || m_forceTarget || m_present;
+}
+
+void SuperAA::SetPresentation(const AspectRatio::Layout *layout, int windowWidth, int windowHeight)
+{
+	m_present = layout != nullptr;
+	if (layout) {
+		m_layout = *layout;
+	}
+	m_windowWidth = windowWidth;
+	m_windowHeight = windowHeight;
 }
 
 void SuperAA::Init(int width, int height)
 {
+	m_windowFbo.Destroy();
 	if (UsesTarget()) {
+		CreateShader();
 		m_fbo.Destroy();
 		m_fbo.Create(width * m_aa, height * m_aa);
+		if (m_present && m_forceTarget) {
+			m_windowFbo.Create(m_windowWidth, m_windowHeight);
+		}
 
 		m_width = width;
 		m_height = height;
+	}
+	else {
+		m_fbo.Destroy();	// straight on the back buffer again (a presentation removed)
 	}
 }
 
@@ -221,12 +323,37 @@ void SuperAA::Draw()
 
 		glBindTexture(GL_TEXTURE_2D, m_fbo.GetTextureID());
 		glBindVertexArray(m_vao);
-		glViewport(0, 0, m_width, m_height);
 		m_shader.EnableShader();
+		if (m_present) {
+			const AspectRatio::Layout& l = m_layout;
+			float tw = float(l.targetWidth), th = float(l.targetHeight);
+			if (m_windowFbo.GetFBOID()) {
+				glBindFramebuffer(GL_FRAMEBUFFER, m_windowFbo.GetFBOID());
+			}
+			glViewport(0, 0, m_windowWidth, m_windowHeight);
+			glUniform1i(m_locPresent, 1);
+			glUniform2f(m_locWindowSize, float(m_windowWidth), float(m_windowHeight));
+			glUniform4f(m_locFrame, l.frame[0], l.frame[1], l.frame[2], l.frame[3]);
+			glUniform4f(m_locImage, l.image[0], l.image[1], l.image[2], l.image[3]);
+			glUniform4f(m_locImageInTarget, l.imageX / tw, l.imageY / th, l.imageWidth / tw, l.imageHeight / th);
+			glUniform1i(m_locBarrelAxis, l.barrelAxis);
+			glUniform4f(m_locBarrel1, l.edge, l.center, l.start, l.scale);
+			glUniform4f(m_locBarrel2, l.length[0], l.length[1], l.angle[0], l.angle[1]);
+			glUniform1i(m_locSamples, std::max(m_aa, 2));	// the image is scaled: a few filtered samples per pixel
+		}
+		else {
+			glViewport(0, 0, m_width, m_height);
+			glUniform1i(m_locPresent, 0);
+		}
 		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 		m_shader.DisableShader();
 		glBindVertexArray(0);
 	}
+}
+
+GLuint SuperAA::GetWindowTargetID()
+{
+	return m_windowFbo.GetFBOID();
 }
 
 GLuint SuperAA::GetTargetID()

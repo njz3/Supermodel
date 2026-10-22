@@ -94,6 +94,7 @@ public:
   std::shared_ptr<CSwitchInput> uiChangeSlot;
   std::shared_ptr<CSwitchInput> uiLoadState;
   std::shared_ptr<CSwitchInput> uiMusicVolUp;
+  std::shared_ptr<CSwitchInput> uiMenu;
   std::shared_ptr<CSwitchInput> uiMusicVolDown;
   std::shared_ptr<CSwitchInput> uiSoundVolUp;
   std::shared_ptr<CSwitchInput> uiSoundVolDown;

@@ -341,6 +341,7 @@ xcopy /D /Y "$(ProjectDir)..\Assets\*" "$(TargetDir)Assets"</Command>
     <ClCompile Include="..\Src\Graphics\Pro1000Render2D.cpp" />
     <ClCompile Include="..\Src\Graphics\Shader.cpp" />
     <ClCompile Include="..\Src\Graphics\SuperAA.cpp" />
+    <ClCompile Include="..\Src\Graphics\AspectRatio.cpp" />
     <ClCompile Include="..\Src\Inputs\Input.cpp" />
     <ClCompile Include="..\Src\Inputs\Inputs.cpp" />
     <ClCompile Include="..\Src\Inputs\InputSource.cpp" />
@@ -390,6 +391,7 @@ xcopy /D /Y "$(ProjectDir)..\Assets\*" "$(TargetDir)Assets"</Command>
     <ClCompile Include="..\Src\Telemetry\Telemetry.cpp" />
     <ClCompile Include="..\Src\OSD\SDL\Crosshair.cpp" />
     <ClCompile Include="..\Src\OSD\SDL\Gui.cpp" />
+    <ClCompile Include="..\Src\OSD\SDL\GameMenu.cpp" />
     <ClCompile Include="..\Src\OSD\SDL\Main.cpp" />
     <ClCompile Include="..\Src\OSD\SDL\NetOutputs.cpp" />
     <ClCompile Include="..\Src\OSD\SDL\SDLInputSystem.cpp" />
@@ -522,6 +524,7 @@ xcopy /D /Y "$(ProjectDir)..\Assets\*" "$(TargetDir)Assets"</Command>
     <ClInclude Include="..\Src\Graphics\Shader.h" />
     <ClInclude Include="..\Src\Graphics\Shaders2D.h" />
     <ClInclude Include="..\Src\Graphics\SuperAA.h" />
+    <ClInclude Include="..\Src\Graphics\AspectRatio.h" />
     <ClInclude Include="..\Src\Inputs\Input.h" />
     <ClInclude Include="..\Src\Inputs\Inputs.h" />
     <ClInclude Include="..\Src\Inputs\InputSource.h" />
@@ -571,6 +574,7 @@ xcopy /D /Y "$(ProjectDir)..\Assets\*" "$(TargetDir)Assets"</Command>
     <ClInclude Include="..\Src\Telemetry\Telemetry.h" />
     <ClInclude Include="..\Src\OSD\SDL\Crosshair.h" />
     <ClInclude Include="..\Src\OSD\SDL\Gui.h" />
+    <ClInclude Include="..\Src\OSD\SDL\GameMenu.h" />
     <ClInclude Include="..\Src\OSD\SDL\Main.h" />
     <ClInclude Include="..\Src\OSD\SDL\OSDConfig.h" />
     <ClInclude Include="..\Src\OSD\SDL\SDLInputSystem.h" />

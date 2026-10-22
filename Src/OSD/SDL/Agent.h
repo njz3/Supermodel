@@ -66,11 +66,13 @@ namespace Agent
   COutputs *WrapOutputs(COutputs *outputs);
 
   // Serves the agent's commands until "quit" or the end of stdin, instead of
-  // the main loop
+  // the main loop. menu: what the in-game menu does ("set KEY VALUE": a
+  // setting changed and applied, "save", "savegame"), its reply
   void Run(IEmulator *emulator, CInputs *inputs, SuperAA *superAA, const Util::Config::Node &config,
            std::function<bool()> pollInputs,
            std::function<bool(const std::string &path)> saveState,
-           std::function<bool(const std::string &path)> loadState);
+           std::function<bool(const std::string &path)> loadState,
+           std::function<std::string(const std::string &request)> menu);
 }
 
 #endif  // INCLUDED_AGENT_H

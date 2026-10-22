@@ -527,6 +527,9 @@
     <ClCompile Include="..\Src\Graphics\SuperAA.cpp">
       <Filter>Source Files\Graphics</Filter>
     </ClCompile>
+    <ClCompile Include="..\Src\Graphics\AspectRatio.cpp">
+      <Filter>Source Files\Graphics</Filter>
+    </ClCompile>
     <ClCompile Include="..\Src\Graphics\New3D\TextureBank.cpp">
       <Filter>Source Files\Graphics\New</Filter>
     </ClCompile>
@@ -543,6 +546,9 @@
       <Filter>Source Files\Pkgs\imgui</Filter>
     </ClCompile>
     <ClCompile Include="..\Src\OSD\SDL\Gui.cpp">
+      <Filter>Source Files\OSD\SDL</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Src\OSD\SDL\GameMenu.cpp">
       <Filter>Source Files\OSD\SDL</Filter>
     </ClCompile>
     <ClCompile Include="..\Src\Pkgs\imgui\imgui_impl_sdl2.cpp">
@@ -994,10 +1000,16 @@
     <ClInclude Include="..\Src\Graphics\SuperAA.h">
       <Filter>Header Files\Graphics</Filter>
     </ClInclude>
+    <ClInclude Include="..\Src\Graphics\AspectRatio.h">
+      <Filter>Header Files\Graphics</Filter>
+    </ClInclude>
     <ClInclude Include="..\Src\Graphics\New3D\TextureBank.h">
       <Filter>Header Files\Graphics\New</Filter>
     </ClInclude>
     <ClInclude Include="..\Src\OSD\SDL\Gui.h">
+      <Filter>Header Files\OSD\SDL</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Src\OSD\SDL\GameMenu.h">
       <Filter>Header Files\OSD\SDL</Filter>
     </ClInclude>
     <ClInclude Include="..\Src\Pkgs\imgui\imconfig.h">
