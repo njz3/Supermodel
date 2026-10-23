@@ -54,7 +54,9 @@ conversation.
 - **Version comme une officielle** : `python Scripts/release_windows.py` construit un seul
   `supermodel.exe` (SDL2, SDL2_net, zlib et runtime C liés en statique) dans
   `MSVC/x64/ReleaseStatic/`, sans toucher aux projets ni au build en DLL. Il le met dans
-  `pkg/supermodel-<version>-windows.zip`, rangé comme la cible `pkg` officielle. La version est
+  `pkg/supermodel-<version>-windows.zip`, rangé comme la cible `pkg` officielle, avec depuis le 21 octobre
+  `wnaspi32.dll` (32 bits, pour les programmes hôtes du Pro-1000, comme le paquet d'upstream), compilée par MSVC x86
+  dans `MSVC/x86/ReleaseStatic/`. La version est
   `0.3a-AAAAMMJJ-git-<hash>` de HEAD. Visual Studio 2026 est marqué incomplet par son installeur :
   le script le trouve avec `vswhere -all`.
 
