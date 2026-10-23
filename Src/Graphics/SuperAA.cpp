@@ -327,9 +327,6 @@ void SuperAA::Draw()
 		if (m_present) {
 			const AspectRatio::Layout& l = m_layout;
 			float tw = float(l.targetWidth), th = float(l.targetHeight);
-			if (m_windowFbo.GetFBOID()) {
-				glBindFramebuffer(GL_FRAMEBUFFER, m_windowFbo.GetFBOID());
-			}
 			glViewport(0, 0, m_windowWidth, m_windowHeight);
 			glUniform1i(m_locPresent, 1);
 			glUniform2f(m_locWindowSize, float(m_windowWidth), float(m_windowHeight));
@@ -346,6 +343,11 @@ void SuperAA::Draw()
 			glUniform1i(m_locPresent, 0);
 		}
 		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+		if (m_present && m_windowFbo.GetFBOID()) {
+			// Again into the agent's copy of the window, left bound for what is drawn over it (the in-game menu)
+			glBindFramebuffer(GL_FRAMEBUFFER, m_windowFbo.GetFBOID());
+			glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+		}
 		m_shader.DisableShader();
 		glBindVertexArray(0);
 	}
