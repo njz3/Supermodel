@@ -305,6 +305,10 @@ try:
 
     supermodel game.zip -res=1920,1080 -fullscreen
 
+'-borderless-fullscreen' fills the screen with a borderless window at the
+desktop's resolution instead, without a video mode change (switching to and
+from other programs is then immediate); add '-stretch' to fill it, distorted.
+
 Video settings may also be specified globally or on a per-game basis in the
 configuration file, described elsewhere in this manual.
 
@@ -933,8 +937,9 @@ front-end do: '--set <section>.<key>=<value>' (or '--set=...'), repeatable.  The
 key names a setting whatever its case and underscores ('ASPECT_RATIO' is
 'AspectRatio'); the section is accepted but not used, since command line options
 override every section.  'DISPLAY_MODE' (WINDOW, WINDOW_STRETCH, FULLSCREEN,
-FULLSCREEN_STRETCH) sets 'FullScreen' and 'Stretch'.  A key that is not a
-Supermodel setting is reported and ignored.  For example:
+FULLSCREEN_STRETCH, BORDERLESS, BORDERLESS_STRETCH) sets 'FullScreen',
+'BorderlessFullScreen' and 'Stretch'.  A key that is not a Supermodel setting is
+reported and ignored.  For example:
 
     supermodel scud.zip --set Display.ASPECT_RATIO=4:3_CROP --set Display.CROP_POSITION=-30
 
@@ -1267,6 +1272,15 @@ not.  All options are case sensitive.
                     front-end do (see 'The Configuration File').  The key names
                     a setting whatever its case and underscores; the section is
                     not used.  Repeatable.
+
+    ----------------
+
+    Option:         -borderless-fullscreen
+
+    Description:    Full screen in a borderless window covering the screen at
+                    the desktop's resolution, without a video mode change ('-res'
+                    is not used then).  With '-stretch', the image fills it.
+                    Sets the FullScreen and BorderlessFullScreen settings.
 
     ----------------
 
@@ -1631,6 +1645,17 @@ All settings are case sensitive.
                     'Global' section of the usual Supermodel.ini only: the
                     settings themselves then move to that directory.  Empty
                     (the default), the usual places.
+
+    ----------------
+
+    Name:           BorderlessFullScreen
+
+    Argument:       Boolean.
+
+    Description:    With FullScreen, a borderless window covering the screen
+                    at the desktop's resolution instead of a video mode change
+                    (XResolution and YResolution are not used then).  The
+                    full screen toggle keeps this choice.  Off by default.
 
     ----------------
 

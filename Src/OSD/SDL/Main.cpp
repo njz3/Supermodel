@@ -416,13 +416,33 @@ static void DestroyGLScreen()
   }
 }
 
-static Result ResizeGLScreen(unsigned *xOffsetPtr, unsigned *yOffsetPtr, unsigned *xResPtr, unsigned *yResPtr, unsigned *totalXResPtr, unsigned *totalYResPtr, bool keepAspectRatio, bool fullScreen)
+// The window's full screen flags: with FullScreen, a video mode change, or with BorderlessFullScreen a borderless window
+// covering the screen at the desktop's resolution; none in a window
+static Uint32 FullScreenFlags()
+{
+  if (!s_runtime_config["FullScreen"].ValueAs<bool>())
+    return 0;
+  return s_runtime_config["BorderlessFullScreen"].ValueAsDefault<bool>(false) ? SDL_WINDOW_FULLSCREEN_DESKTOP : SDL_WINDOW_FULLSCREEN;
+}
+
+static Result ResizeGLScreen(unsigned *xOffsetPtr, unsigned *yOffsetPtr, unsigned *xResPtr, unsigned *yResPtr, unsigned *totalXResPtr, unsigned *totalYResPtr, bool keepAspectRatio, Uint32 fullScreenFlags)
 {
   // Set full screen mode
-  if (SDL_SetWindowFullscreen(s_window, fullScreen ? SDL_WINDOW_FULLSCREEN : 0) < 0)
+  if (SDL_SetWindowFullscreen(s_window, fullScreenFlags) < 0)
   {
-    ErrorLog("Unable to enter %s mode: %s\n", fullScreen ? "fullscreen" : "windowed", SDL_GetError());
+    ErrorLog("Unable to enter %s mode: %s\n", fullScreenFlags == SDL_WINDOW_FULLSCREEN_DESKTOP ? "borderless fullscreen" : fullScreenFlags ? "fullscreen" : "windowed", SDL_GetError());
     return Result::FAIL;
+  }
+
+  // Borderless full screen: the image at the desktop's resolution, whatever the resolution asked for
+  if (fullScreenFlags == SDL_WINDOW_FULLSCREEN_DESKTOP)
+  {
+    SDL_DisplayMode desktop;
+    if (SDL_GetDesktopDisplayMode(SDL_GetWindowDisplayIndex(s_window), &desktop) == 0)
+    {
+      *xResPtr = desktop.w;
+      *yResPtr = desktop.h;
+    }
   }
 
   return SetGLGeometry(xOffsetPtr, yOffsetPtr, xResPtr, yResPtr, totalXResPtr, totalYResPtr, keepAspectRatio);
@@ -1237,8 +1257,7 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
   SetFullScreenRefreshRate();
 
   bool stretch = s_runtime_config["Stretch"].ValueAs<bool>();
-  bool fullscreen = s_runtime_config["FullScreen"].ValueAs<bool>();
-  if (Result::OKAY != ResizeGLScreen(&xOffset, &yOffset ,&xRes, &yRes, &totalXRes, &totalYRes, !stretch, fullscreen))
+  if (Result::OKAY != ResizeGLScreen(&xOffset, &yOffset ,&xRes, &yRes, &totalXRes, &totalYRes, !stretch, FullScreenFlags()))
     return 1;
 
   // Info log GL information
@@ -1467,7 +1486,7 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
     }
     else if (Inputs->uiFullScreen->Pressed())
     {
-      // Toggle emulator fullscreen
+      // Toggle emulator fullscreen (borderless or not, as BorderlessFullScreen says)
       s_runtime_config.Get("FullScreen").SetValue(!s_runtime_config["FullScreen"].ValueAs<bool>());
 
       // Delete renderers and recreate them afterwards since GL context will most likely be lost when switching from/to fullscreen
@@ -1478,8 +1497,7 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
       totalXRes = xRes = s_runtime_config["XResolution"].ValueAs<unsigned>();
       totalYRes = yRes = s_runtime_config["YResolution"].ValueAs<unsigned>();
       bool stretchc = s_runtime_config["Stretch"].ValueAs<bool>();
-      bool fullscreenc = s_runtime_config["FullScreen"].ValueAs<bool>();
-      if (Result::OKAY != ResizeGLScreen(&xOffset,&yOffset,&xRes,&yRes,&totalXRes,&totalYRes,!stretchc,fullscreenc))
+      if (Result::OKAY != ResizeGLScreen(&xOffset,&yOffset,&xRes,&yRes,&totalXRes,&totalYRes,!stretchc,FullScreenFlags()))
         goto QuitError;
 
       // Recreate renderers and attach to the emulator
@@ -1958,6 +1976,8 @@ Util::Config::Node DefaultConfig()
   config.SetEmpty("WindowXPosition");
   config.SetEmpty("WindowYPosition");
   config.Set("FullScreen", false, "Video");
+  // With FullScreen: a borderless window covering the screen at the desktop's resolution, without a video mode change
+  config.Set("BorderlessFullScreen", false, "Video");
   config.Set("BorderlessWindow", false, "Video");
   config.Set("Supersampling", 1, "Video", 1, 8);
   config.Set("CRTcolors", int(0), "Video", 0, 0, { 0,1,2,3,4,5 });
@@ -2310,6 +2330,8 @@ static void Help(void)
   puts("  -window                 Windowed mode [Default]");
   puts("  -borderless             Windowed mode with no border");
   puts("  -fullscreen             Full screen mode");
+  puts("  -borderless-fullscreen  Full screen in a borderless window at the desktop's");
+  puts("                          resolution, without a video mode change");
   puts("  -wide-screen            Expand 3D field of view to screen width");
   puts("  -wide-bg                When wide-screen mode is enabled, also expand the 2D");
   puts("                          background layer to screen width");
@@ -2411,7 +2433,8 @@ static void Help(void)
  * all its emulators. The key names a setting whatever its case and
  * underscores (ASPECT_RATIO is AspectRatio). The section is accepted but not
  * used: the command line overrides every section here. DISPLAY_MODE (WINDOW,
- * WINDOW_STRETCH, FULLSCREEN, FULLSCREEN_STRETCH) sets FullScreen and Stretch.
+ * FULLSCREEN, BORDERLESS, each also with _STRETCH) sets FullScreen,
+ * BorderlessFullScreen and Stretch.
  * An unknown key is reported and ignored, so that one command line suits all
  * the emulators.
  */
@@ -2441,13 +2464,17 @@ static bool ApplySetOption(Util::Config::Node *config, const std::string &assign
   if (key == "displaymode")
   {
     std::string mode = Util::ToLower(Util::TrimWhiteSpace(value));
-    if (mode != "window" && mode != "window_stretch" && mode != "fullscreen" && mode != "fullscreen_stretch")
+    bool stretch = mode.size() > 8 && mode.compare(mode.size() - 8, 8, "_stretch") == 0;
+    std::string kind = stretch ? mode.substr(0, mode.size() - 8) : mode;
+    if (kind != "window" && kind != "fullscreen" && kind != "borderless")
     {
-      ErrorLog("'--set %s': DISPLAY_MODE is WINDOW, WINDOW_STRETCH, FULLSCREEN or FULLSCREEN_STRETCH.", assignment.c_str());
+      ErrorLog("'--set %s': DISPLAY_MODE is WINDOW, FULLSCREEN or BORDERLESS, each also with _STRETCH.", assignment.c_str());
       return false;
     }
-    config->Set("FullScreen", mode.rfind("fullscreen", 0) == 0);
-    config->Set("Stretch", mode.find("_stretch") != std::string::npos);
+    config->Set("FullScreen", kind != "window");
+    if (kind != "window")
+      config->Set("BorderlessFullScreen", kind == "borderless");
+    config->Set("Stretch", stretch);
     return true;
   }
 
@@ -2627,6 +2654,11 @@ static ParsedCommandLine ParseCommandLine(int argc, char **argv)
         cmd_line.game = arg.substr(6);
       else if (arg.find("--write-dir=") == 0)
         ;   // taken at start-up (ResolveWriteDirectory), as -write-dir
+      else if (arg == "-borderless-fullscreen")
+      {
+        cmd_line.config.Set("FullScreen", true);
+        cmd_line.config.Set("BorderlessFullScreen", true);
+      }
       else if (arg == "--set" || arg.find("--set=") == 0)
       {
         if (arg == "--set" && i + 1 >= argc)
