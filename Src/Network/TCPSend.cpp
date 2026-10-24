@@ -23,6 +23,10 @@
 #include "TCPSend.h"
 #include "OSD/Logger.h"
 
+#ifndef _WIN32
+#include <csignal>
+#endif
+
 #if defined(_DEBUG)
 #include <stdio.h>
 #define DPRINTF DebugLog
@@ -36,14 +40,16 @@ TCPSend::TCPSend(std::string& ip, int port) :
 	m_socket(nullptr)
 {
 	SDLNet_Init();
+
+#ifndef _WIN32
+	// Sending to a machine that went away must fail, not end Supermodel without a word
+	std::signal(SIGPIPE, SIG_IGN);
+#endif
 }
 
 TCPSend::~TCPSend()
 {
-	if (m_socket) {
-		SDLNet_TCP_Close(m_socket);
-		m_socket = nullptr;
-	}
+	Disconnect();
 
 	SDLNet_Quit();	// unload lib (winsock dll for windows)
 }
@@ -60,17 +66,30 @@ bool TCPSend::Send(const void * data, int length)
 
 	int sent = SDLNet_TCP_Send(m_socket, &length, sizeof(int));		// pack the length at the start of transmission.
 
+	if (sent < int(sizeof(int))) {
+		Disconnect();
+		return false;
+	}
+
 	if (!length)
 		return true;		// 0 sized packet will blow our connex
 
 	sent = SDLNet_TCP_Send(m_socket, data, length);
 
 	if (sent < length) {
-		SDLNet_TCP_Close(m_socket);
-		m_socket = nullptr;
+		Disconnect();
+		return false;
 	}
 
 	return true;
+}
+
+void TCPSend::Disconnect()
+{
+	if (m_socket) {
+		SDLNet_TCP_Close(m_socket);
+		m_socket = nullptr;
+	}
 }
 
 bool TCPSend::Connected()
@@ -80,6 +99,9 @@ bool TCPSend::Connected()
 
 bool TCPSend::Connect()
 {
+	if (Connected())
+		return true;
+
 	IPaddress ip;
 	int result = SDLNet_ResolveHost(&ip, m_ip.c_str(), m_port);
 

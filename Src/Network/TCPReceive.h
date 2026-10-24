@@ -25,6 +25,7 @@
 
 #include <thread>
 #include <atomic>
+#include <mutex>
 #include <vector>
 #include "SDLIncludes.h"
 
@@ -35,18 +36,26 @@ public:
 	~TCPReceive();
 
 	bool CheckDataAvailable(int timeoutMS = 0);		// timeoutMS -1 = wait forever until data arrives, 0 = no waiting, 1+ wait time in milliseconds
-	std::vector<char>& Receive();
+	// A packet: empty if none came within timeoutMS (-1: wait for it), if the connection was lost (Connected() then
+	// false) or if the packet itself is empty
+	std::vector<char>& Receive(int timeoutMS = -1);
+	bool TimedOut();								// the last Receive found nothing within its time
 	bool Connected();
+	bool Listening();								// the port could be opened
 
 private:
 
 	void ListenFunc();
+	bool ReceiveBytes(void* data, int size);
+	void CloseReceiveSocket();
 
 	TCPsocket m_listenSocket;
 	std::atomic<TCPsocket> m_receiveSocket;
 	SDLNet_SocketSet m_socketSet;
+	std::mutex m_socketMutex;						// the receive socket and its set, also changed by the listening thread
 	std::thread m_listenThread;
 	std::atomic_bool m_running;
+	bool m_timedOut = false;
 	std::vector<char> m_recBuffer;
 };
 

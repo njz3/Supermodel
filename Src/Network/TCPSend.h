@@ -32,9 +32,10 @@ public:
 	TCPSend(std::string& ip, int port);
 	~TCPSend();
 
-	bool Send(const void* data, int length);
-	bool Connect();
+	bool Send(const void* data, int length);	// false if not connected or the connection was lost (it is then closed)
+	bool Connect();								// again after a lost connection
 	bool Connected();
+	void Disconnect();
 private:
 
 	std::string	m_ip;

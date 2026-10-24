@@ -31,10 +31,15 @@
 #define DPRINTF(a, ...)
 #endif
 
+// Larger than any packet the net boards send (a machine's share of the communication RAM): a length beyond it means
+// the stream is out of step
+static const int kMaxPacketSize = 0x20000;
+
 TCPReceive::TCPReceive(int port) :
 	m_listenSocket(nullptr),
 	m_receiveSocket(nullptr),
-	m_socketSet(nullptr)
+	m_socketSet(nullptr),
+	m_running(false)
 {
 	SDLNet_Init();
 
@@ -49,6 +54,10 @@ TCPReceive::TCPReceive(int port) :
 			m_running = true;
 			m_listenThread = std::thread(&TCPReceive::ListenFunc, this);
 		}
+	}
+
+	if (!m_listenSocket) {
+		ErrorLog("Network: unable to listen on port %d (is it used by another program?): %s", port, SDLNet_GetError());
 	}
 }
 
@@ -65,10 +74,7 @@ TCPReceive::~TCPReceive()
 		m_listenSocket = nullptr;
 	}
 
-	if (m_receiveSocket) {
-		SDLNet_TCP_Close(m_receiveSocket);
-		m_receiveSocket = nullptr;
-	}
+	CloseReceiveSocket();
 
 	if (m_socketSet) {
 		SDLNet_FreeSocketSet(m_socketSet);
@@ -87,36 +93,72 @@ bool TCPReceive::CheckDataAvailable(int timeoutMS)
 	return SDLNet_CheckSockets(m_socketSet, timeoutMS) > 0;
 }
 
-std::vector<char>& TCPReceive::Receive()
+// The connection dropped (lost, or out of step): out of the set first, so that it is never checked once freed, and a
+// new connection from the previous machine can take its place
+void TCPReceive::CloseReceiveSocket()
 {
+	std::lock_guard<std::mutex> lock(m_socketMutex);
+
+	TCPsocket socket = m_receiveSocket.exchange(nullptr);
+	if (socket) {
+		SDLNet_TCP_DelSocket(m_socketSet, socket);
+		SDLNet_TCP_Close(socket);
+	}
+}
+
+// Exactly size bytes (a TCP receive can return fewer); false if the connection was lost
+bool TCPReceive::ReceiveBytes(void* data, int size)
+{
+	char* p = static_cast<char*>(data);
+
+	while (size > 0) {
+
+		TCPsocket socket = m_receiveSocket;
+		int result = socket ? SDLNet_TCP_Recv(socket, p, size) : 0;
+		DPRINTF("Received %i bytes\n", result);
+		if (result <= 0) {
+			CloseReceiveSocket();
+			return false;
+		}
+
+		p += result;
+		size -= result;
+	}
+
+	return true;
+}
+
+std::vector<char>& TCPReceive::Receive(int timeoutMS)
+{
+	m_recBuffer.clear();
+	m_timedOut = false;
+
 	if (!m_receiveSocket) {
 		DPRINTF("Can't receive because no socket.\n");
-		m_recBuffer.clear();
 		return m_recBuffer;
 	}
 
-	int size = 0;
-	int result = SDLNet_TCP_Recv(m_receiveSocket, &size, sizeof(int));
-	DPRINTF("Received %i bytes\n", result);
-	if (result <= 0) {
-		SDLNet_TCP_Close(m_receiveSocket);
-		m_receiveSocket = nullptr;
+	if (timeoutMS >= 0 && !CheckDataAvailable(timeoutMS)) {
+		m_timedOut = m_receiveSocket != nullptr;		// nothing yet, still connected
+		return m_recBuffer;
+	}
+
+	int32_t size = 0;
+	if (!ReceiveBytes(&size, sizeof(size))) {
+		return m_recBuffer;
+	}
+
+	if (size < 0 || size > kMaxPacketSize) {
+		ErrorLog("Network: packet of %d bytes received, the connection is out of step: dropped.", int(size));
+		CloseReceiveSocket();
+		return m_recBuffer;
 	}
 
 	// reserve our space
 	m_recBuffer.resize(size);
 
-	while (size) {
-
-		result = SDLNet_TCP_Recv(m_receiveSocket, m_recBuffer.data() + (m_recBuffer.size() - size), size);
-		DPRINTF("Received %i bytes\n", result);
-		if (result <= 0) {
-			SDLNet_TCP_Close(m_receiveSocket);
-			m_receiveSocket = nullptr;
-			break;
-		}
-
-		size -= result;
+	if (size && !ReceiveBytes(m_recBuffer.data(), size)) {
+		m_recBuffer.clear();
 	}
 
 	return m_recBuffer;
@@ -133,16 +175,16 @@ void TCPReceive::ListenFunc()
 
 		if (socket) {
 
-			// remove old socket if required from socket set
-			if (m_receiveSocket) {
-				SDLNet_DelSocket(m_socketSet, (SDLNet_GenericSocket)m_receiveSocket.load());
+			// the new connection in the socket set (a lost one was taken out of it when closed)
+			std::lock_guard<std::mutex> lock(m_socketMutex);
+
+			if (m_receiveSocket || SDLNet_TCP_AddSocket(m_socketSet, socket) < 0) {
+				SDLNet_TCP_Close(socket);
+				continue;
 			}
 
 			m_receiveSocket = socket;
 
-			SDLNet_AddSocket(m_socketSet, (SDLNet_GenericSocket)socket);
-
-			// add socket to socket set
 			DPRINTF("Accepted connection.\n");
 		}
 
@@ -152,4 +194,14 @@ void TCPReceive::ListenFunc()
 bool TCPReceive::Connected()
 {
 	return (m_receiveSocket != 0);
+}
+
+bool TCPReceive::TimedOut()
+{
+	return m_timedOut;
+}
+
+bool TCPReceive::Listening()
+{
+	return m_listenSocket != nullptr;
 }

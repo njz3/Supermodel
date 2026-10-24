@@ -89,6 +89,29 @@ private:
 	std::thread m_connectThread;
 	std::atomic_bool m_quit = false;
 	std::atomic_bool m_connected = false;
+	std::atomic_bool m_connectDone = true;		// ConnectProc has returned
+
+	// Link handling (see Handshake)
+	enum class Role { master, slave, relay };
+	enum class Received { packet, nothing, lost, alert };	// alert: an empty packet, another machine left the link
+	std::vector<char> m_packet;
+	bool m_handshakeSent = false;				// the master's GUID is going round
+	uint32_t m_handshakeStart = 0;
+	uint32_t m_round = 0;					// the master's handshake attempt
+	uint32_t m_testingSince = 0;			// when the testing state (the handshake) began
+	bool m_waitLogged = false;
+
+	void EnsureConnecting(void);
+	bool SendPacket(const void* data, int length);
+	Received ReceivePacket(int timeoutMS);
+	void SetSegmentSize(uint16_t size);
+	Received ReceiveSegment(int timeoutMS);
+	bool SendGUID(uint64_t guid, uint32_t round);
+	bool SendIndex(uint32_t round, const uint8_t value[2], size_t indexSize);
+	bool ReceiveHandshake(size_t size, uint32_t round, int timeoutMS);
+	void Flush(void);
+	void LinkBroken(const char* reason);
+	bool Handshake(Role role, size_t indexSize, uint8_t index[2], uint8_t count[2]);
 
 	std::unique_ptr<TCPSend> nets = nullptr;
 	std::unique_ptr<TCPReceive> netr = nullptr;
