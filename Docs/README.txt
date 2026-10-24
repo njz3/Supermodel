@@ -286,10 +286,16 @@ the image at its proportions, the top and bottom curved onto the edges:
 
     supermodel game.zip -fullscreen -aspect-ratio=16:9_CROP -crop-barrel
 
-During a game, the settings menu (F10) changes these settings, applied at once,
+During a game, the settings menu (Tab) changes these settings, applied at once,
 and saves them in the settings file in use, or with 'Save for this game' in the
 game's own settings file (see 'The Configuration File').  The game is paused
-while the menu is open; Escape or F10 closes it.
+while the menu is open; Escape or Tab closes it.
+
+The menu's 'Game' page describes the game running (title, ROM set, hardware,
+drive and network boards) and shows its notes from Config/GameNotes.txt: how to
+change the region, special modes, cabinet setup (see 'Game-Specific Comments and
+Tips').  The file is plain text, read each time the menu opens, and its format
+is explained at its top; Page Up and Page Down scroll long notes.
 
 By default, Supermodel limits the frame rate to 60 frames per second.  This has
 no impact on performance except when the frame rate exceeds 60 FPS on fast
@@ -338,7 +344,7 @@ from 0 (muted) to 200% (maximum, doubled amplitude).  For example:
 This command line cuts the sound volume in half and increases the music volume
 by 70%.
 
-The F9 and Shift-F10 keys can be used to adjust music volume during run-time,
+The F9 and F10 keys can be used to adjust music volume during run-time,
 while F11 and F12 control sound volume.
 
 Clipping and distortion will occur if the combined sound and music volume
@@ -380,9 +386,9 @@ are listed below.
     Save State                              F5
     Load State                              F7
     Change Save Slot                        F6
-    Settings Menu                           F10
+    Settings Menu                           Tab
     Decrease Music Volume                   F9
-    Increase Music Volume                   Shift-F10
+    Increase Music Volume                   F10
     Decrease Sound Volume                   F11
     Increase Sound Volume                   F12
 
@@ -714,7 +720,9 @@ can be cleared by deleting the NVRAM files or pressing Alt-N.
 =======================================
 
 This section contains additional game-specific setup information, workarounds
-for emulation issues, and region codes for changing the region.
+for emulation issues, and region codes for changing the region.  The same notes,
+and more, are shown during a game on the 'Game' page of the settings menu (Tab),
+from Config/GameNotes.txt.
 
 
 Cyber Troopers Virtual-On Oratorio Tangram
@@ -800,6 +808,26 @@ Le Mans 24
 
 To change the region, enter Test mode and press Start, Start, Service, Service,
 Start, Test.
+
+The game supports two cabinets, each with its own drive board, chosen by
+CABINET TYPE in Test mode (GAME ASSIGNMENTS) and kept in the NVRAM:
+
+    TWIN-LEMANS    the 'Le Mans' cabinet, with Scud Race's Model 3 drive
+                   board (program EPR-19338A, a servo board) and four view
+                   buttons, one per view (VR1 to VR4)
+    TWIN-NORMAL    the standard cabinet, with the Model 2 drive board of
+                   Indy 500 (program EPR-18261, two motor powers) and two
+                   view buttons, zoom in and zoom out (VR1 and VR2; VR3 and
+                   VR4 do nothing)
+
+The drive board program Supermodel loads must match the cabinet type set in the
+game: it is chosen in Config/Games.xml (the 'driveboard_program' region of
+lemans24, EPR-18261 by default: comment it out and uncomment EPR-19338A to
+switch), and the program's file must be in the ROM set's ZIP file.  A game set
+to one cabinet with the other's drive board gets the wrong force feedback.
+Using a single cabinet type, with one NVRAM file, is simpler than switching
+NVRAM files between the two.  The cabinets of this fork's front-end use the
+standard cabinet only (TWIN-NORMAL with EPR-18261, the default of Games.xml).
 
 
 Magical Truck Adventure

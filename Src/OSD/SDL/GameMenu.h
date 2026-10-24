@@ -22,9 +22,11 @@
 /*
  * GameMenu.h
  *
- * The in-game menu (UIMenu, F10 by default): the AspectRatio setting and its
- * companions, applied from the next frame on, and saving them in the settings
- * file in use or in the game's own file. The game is paused while it is open.
+ * The in-game menu (UIMenu, Tab by default). Its Display page: the AspectRatio
+ * setting and its companions, applied from the next frame on, and saving them
+ * in the settings file in use or in the game's own file. Its Game page: the
+ * game's description and its notes from Config/GameNotes.txt (region change
+ * codes, special modes, cabinet setup). The game is paused while it is open.
  */
 
 #ifndef INCLUDED_GAMEMENU_H
@@ -41,6 +43,8 @@ namespace Util
   }
 }
 
+struct Game;
+
 namespace GameMenu
 {
   enum class Action
@@ -50,7 +54,18 @@ namespace GameMenu
     SaveForGame     // into the game's own file (<game>.ini: a copy of the common file the first time)
   };
 
+  enum class Page
+  {
+    Display,
+    Game
+  };
+
+  // The game the Game page describes, and the file of the notes (read each time the menu opens: see GameNotes.txt
+  // for its format)
+  void SetGame(const Game &game, const std::string &notesFile);
+
   bool Open(SDL_Window *window);  // false if it cannot be shown
+  void SelectPage(Page page);     // shown from the next frame
   void Close();
   bool IsOpen();
   bool CloseRequested();          // its Close button or Escape: the host closes it

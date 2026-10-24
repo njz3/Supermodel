@@ -1,0 +1,286 @@
+; Supermodel game notes: shown on the Game page of the in-game menu (Tab), for
+; the game running. Read each time the menu opens.
+;
+; [name] or [name1, name2, ...] starts the notes of those ROM sets (the names
+; of Games.xml). A clone without notes of its own shows its parent's. A game
+; named in several sections shows them all, in order.
+; Blank lines separate paragraphs. "## Title" is a heading, "- text" a bullet
+; point; a line that follows without a blank line continues the paragraph or
+; the point. A line starting with ";" is a comment.
+;
+; "Test mode": press the Test button. In its menus, Service moves the cursor
+; and Test selects. Tips marked "not verified" come from a single source or
+; from sources that disagree.
+
+
+[von2]
+## Region
+In Test mode, press Start, Start, Service, Start, Start, Start, Service,
+Service, Test.
+
+
+[daytona2, dayto2pe]
+## Region
+The region change menu (Japan, Korea, Australia, Export, USA) opens in two
+ways:
+- In Test mode, press Service and Test together.
+- In Test mode, hold Start and press VR4, VR4, VR2, VR3, VR1, VR3, VR2.
+
+## Race modes
+GAME MODE, in GAME ASSIGNMENTS, sets the race length. The Grand Prix and
+Endurance modes add tyre wear and pit stops.
+
+## Secrets
+- Time Lap (alone on the track, no CPU cars): at the transmission select, hold
+  Start and confirm with the accelerator. Linked, every player must do it.
+- Other singer: hold Start on the "Gentlemen, start your engines" screen. The
+  race plays the singer the operator did not choose (Dennis St. James or
+  Takenobu Mitsuyoshi).
+- Wheel cameras: VR1 and VR2 together, left front wheel; VR2 and VR3
+  together, right front wheel. VR2 again in the VR2 view: cockpit.
+- Rocket start (Advanced and Expert, standing starts): hold the brake and keep
+  the revs in the yellow zone (about 7000 rpm) during the countdown, then
+  release the brake at GO.
+- Advanced course, laps 3 and 4: tap Start quickly at the space attraction,
+  and the spaceships fire at the track.
+
+[daytona2]
+- Reverse courses: at the course select, hold Start and confirm the course
+  with the accelerator.
+- Hornet, the special car with a tuning screen: put the shifter in 1st before
+  inserting a coin, then start. At the course select, shift to 4th and press
+  VR1, VR4, VR2, VR4, VR1; shift back to 1st (or press VR2) and choose the
+  course. A tuning screen (engine, steering, suspension) replaces the car
+  select: the view buttons choose a slider, the wheel moves it. One wrong
+  gear or button cancels the sequence.
+
+[dayto2pe]
+- Reverse courses (not verified, sources disagree): hold Start while choosing
+  the course, or hold the brake at the car select until REVERSE shows.
+- The Power Edition adds the Challenge course, the three courses joined into
+  one long race.
+
+## Music
+The Power Edition plays music remixed by Takenobu Mitsuyoshi. The Dennis
+St. James versions of Daytona USA 2 are chosen in Test mode, under GAME
+ASSIGNMENTS.
+
+
+[scud, scudau, scudj, scudplus, scudplusa]
+## Region
+No code is needed: COUNTRY is in GAME ASSIGNMENTS, except on the Australian
+version (scudau). Scud Race Plus set to USA becomes Sega Super GT Plus.
+
+## Network board
+"NETWORK BOARD NOT PRESENT" at boot: set LINK ID to SINGLE in GAME
+ASSIGNMENTS, or link the cabinets.
+
+## Secrets
+- Time Lap (alone on the track, no CPU cars): hold Start while choosing the
+  transmission. Linked, every player must do it.
+- Rocket start (Mystery Ruins and Classic Castle, standing starts): hold the
+  brake, keep the revs in the lower yellow zone, then release the brake and
+  floor it at the start.
+
+[scudplus, scudplusa]
+- Reverse courses: hold Start on the course select.
+- Super Beginner, the new oval course in a giant house, has joke cars: on
+  that course only, hold Start while confirming the car. The Porsche becomes
+  a bus full of AM2 staff, the Ferrari a tank, the Viper a cat, the McLaren a
+  rocket car. In the race, Start sets off each one's special: horn, cannon,
+  meow, or a boost usable three times.
+
+
+[dirtdvls]
+## Region
+In Test mode, press Start, Start, Service, Start, Start, Start, Service, Test.
+In COUNTRY SELECT MODE, Service changes the country and Test leaves.
+
+## Secrets
+- Super-Truck (not verified): beat the No. 1 time of the high score list on
+  all three courses.
+
+
+[eca]
+## Region
+No region menu: the region is the ROM set's (eca Export, ecau USA, ecaj
+Japan).
+
+## Stretcher mode
+To play as the paramedics pushing a stretcher: at the transmission select,
+highlight Manual without touching the pedals, then shift Up, Up, Down, Down,
+Up. On a cabinet with a 4-way H shifter: 3, 3, 4, 4, 3 or 1, 1, 2, 2, 1
+(Supermodel emulates the sequential shifter only). It drives like the
+ambulance.
+
+## Other tips
+- Start skips the cutscenes.
+- "Special" bonus (not verified): case 1, drive through the blue Emergency
+  Call Ambulance billboard in the park after the first crossing on the hill
+  down to the lake; case 3, take the narrow passage at the far right of the
+  petrol station; case 4, after the bridge jump, pass under the burning house
+  before the log falls.
+
+
+[fvipers2]
+## Region
+In Test mode, GAME ASSIGNMENTS, put the cursor on the Country line and press
+Left, Left, Left, Right, Right, Left. Test then changes the country.
+
+
+[bassdx]
+## Region
+In Test mode, go to the second screen of the CRT test (C.R.T. Test 2/2),
+press Service four times, then leave the CRT test. In GAME ASSIGNMENTS press
+Service three times, then hold Service and press Test: the region select menu
+appears.
+
+
+[harley]
+## Region
+In Test mode, GAME ASSIGNMENTS, press Shift Up, Shift Up, Shift Down, Shift
+Down, View, Music, View, Music. A Country line appears at the bottom.
+
+## Tips
+- Start sounds the horn; on Suzy's police bike, a siren it switches on and
+  off. The Music button changes the track once the race has started.
+- Jingle Bells: hold the foot brake at the bike select, choose the
+  transmission with Start, and keep the brake and Start held until the race
+  starts; the Music button then reaches "Jingle Bells".
+- The number of stages (3, 4 or 5) is an operator setting.
+
+
+[lamachin]
+## Gun calibration
+The guns need calibrating once: in Test mode, AIM SET; pull the trigger
+first, then move the gun around until the axes read 255 to 0, and leave the
+screen (the setting is saved).
+
+## Region
+In Test mode, press P1 Start, P1 Start, Service, P1 Start, P1 Start, P1
+Start, Service, Test.
+
+
+[lemans24]
+## Region
+In Test mode, press Start, Start, Service, Service, Start, Test. In COUNTRY
+SELECT MODE, Service changes the country (Japan, USA, Export, Australia) and
+Test leaves.
+
+## Cabinet type, drive board and view buttons
+The game knows two cabinets, set by CABINET TYPE in Test mode (GAME
+ASSIGNMENTS) and kept in the NVRAM. Each has its own drive board (force
+feedback) and its own view buttons:
+- TWIN-NORMAL: the standard twin cabinet, with the Model 2 drive board of
+  Indy 500 (program EPR-18261), and two view buttons, zoom in and zoom out
+  (VR1 and VR2 in Supermodel; VR3 and VR4 do nothing).
+- TWIN-LEMANS: the "Le Mans" cabinet, with the Model 3 drive board of Scud
+  Race (program EPR-19338A), and four view buttons, one per view (VR1 to
+  VR4).
+
+The program Supermodel loads is chosen in Config/Games.xml (lemans24's
+driveboard_program region: EPR-18261 by default) and must match CABINET TYPE,
+otherwise the force feedback is wrong. This front-end's cabinets use
+TWIN-NORMAL with EPR-18261.
+
+## Linked cabinets
+COMMUNICATION MODE (MASTER, SLAVE, NO LINK) and Cabinet Number, in GAME
+ASSIGNMENTS, set each cabinet's place in the link. Entering Test mode on one
+linked cabinet puts them all in Test mode.
+
+## Secrets
+- The Porsche 917K is the rival when the full 24 hours are completed.
+- Secret cars (not verified, sources disagree): at the car select, highlight
+  the Nismo GT-R (far left), hold the brake and Start, and press the
+  accelerator while holding VR1 and VR3 (Sonic in a buggy) or VR1 and VR2
+  (Porsche 917K). Another source: both zoom buttons held while pressing the
+  accelerator, then release the brake.
+
+
+[magtruck]
+## Region
+In Test mode, press P1 Start, P1 Start, Service, P1 Start, Service, Test.
+
+
+[srally2]
+## Region
+In Test mode, press Service short and long (held 4 to 5 seconds): 4 short,
+2 long, 2 short, 1 long.
+
+## Starting a game
+Starting a game before any 3D graphics show (during the Sega logo, for
+instance) can cause problems.
+
+## Secrets
+- Sega Rally 1 cars (Toyota Celica GT-Four, Lancia Delta HF Integrale): at
+  the car select, press View and pull the handbrake together. Only once the
+  machine has run more than 30 days and 100 games: not with a new NVRAM.
+- Cone game (Riviera, same condition): on lap 1, knock down both red cones
+  after the second hairpin. An opening appears on the left: drive through it
+  on lap 2 for 30 seconds of knocking cones down, the race timer stopped.
+- Music off: after the name entry, hold Start until the race begins.
+- Simple display (time difference): after the name entry, hold View and the
+  handbrake until the race begins.
+- No handicap in a linked race: every player holds the brake from choosing
+  the course until the race starts.
+
+
+[skichamp]
+## Views
+The cabinet has no Start button: the three select buttons start the game and
+choose the camera for the whole game. Supermodel's keys: Q 3rd person far,
+W 3rd person near, E 1st person. Hold one while inserting a coin, or press it
+with free play. No key held: 3rd person near. P1 Start selects the 1st person
+view.
+
+## Region
+In Test mode, press Select 1, Select 3, Select 1, Select 3, Service, Service.
+
+
+[spikeout]
+## Region
+In Test mode, put the cursor on GAME ASSIGNMENTS and press Charge, Start,
+Jump, Start, Start, Start, Shift, Start, Start: the region change menu
+appears.
+
+
+[spikeofe]
+## Region
+In Test mode, put the cursor on GAME ASSIGNMENTS. Hold Service and press
+Jump, Start, Jump, Start; release Service and press Shift, Start, Start,
+Start, Charge, Start, Start, Shift, Start, Test: the region change menu
+appears.
+
+
+[swtrilgy]
+## Starting a game
+Wait for the Darth Vader sequence of the attract mode before starting a game:
+started before any 3D graphics show, the game crashes before the stage loads.
+
+If the game boots straight to the stage select, Supermodel was quit with
+credits in the machine: clear the NVRAM (Alt+N) and reset (Alt+R).
+
+## Region
+In Test mode, press Service short and long (held 4 to 5 seconds): 3 short,
+2 long, 2 short, 1 long.
+
+
+[lostwsga]
+## Reloading
+To reload, point off screen: hold the off-screen button and pull the trigger
+(the InputAutoTrigger setting changes this).
+
+## Region
+In Test mode, press P1 Start, P1 Start, Service, P1 Start, Service, Test.
+
+
+[oceanhun]
+## Region
+In Test mode, GAME ASSIGNMENTS, press P1 Start, P2 Start, P1 Start, P2 Start,
+P1 Start, P2 Start, P2 Start.
+
+
+[vs298]
+## Region
+In Test mode, GAME ASSIGNMENTS, press Service short and long (held 4 to 5
+seconds): 1 long, 3 short, 1 long.

@@ -59,6 +59,7 @@
  *                       AspectRatio other than ORIGINAL, the image in its
  *                       frame, and the in-game menu if shown. "ok" or "err".
  *   menu open|close     Shows the in-game menu over the next frames, or not.
+ *   menu page display|game  Shows that page of it. "ok".
  *   menu set KEY VALUE  Changes one of its settings, applied from the next
  *                       frame on. "ok" or "err".
  *   menu save|savegame  Its Save buttons: "ok FILE" or "err FILE".
@@ -727,6 +728,11 @@ namespace Agent
         else if (what == "close")
         {
           GameMenu::Close();
+          Reply("ok");
+        }
+        else if (what == "page display" || what == "page game")
+        {
+          GameMenu::SelectPage(what == "page game" ? GameMenu::Page::Game : GameMenu::Page::Display);
           Reply("ok");
         }
         else

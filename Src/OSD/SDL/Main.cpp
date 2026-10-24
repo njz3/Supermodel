@@ -1243,6 +1243,7 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
   snprintf(baseTitleStr, sizeof(baseTitleStr), "Supermodel - %s", game.title.c_str());
   SDL_SetWindowTitle(s_window, baseTitleStr);
   s_gameTitle = baseTitleStr;
+  GameMenu::SetGame(game, FileSystemPath::GetReadPath(FileSystemPath::Config, "GameNotes.txt"));
   SDL_SetWindowSize(s_window, totalXRes, totalYRes);
 
   int xpos = s_runtime_config["WindowXPosition"].ValueAsDefault<int>(SDL_WINDOWPOS_CENTERED);
@@ -1571,8 +1572,7 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
     }
     else if (Inputs->uiMenu->Pressed())
     {
-      // Open the in-game menu (after the music volume, whose key is Shift with the same one): the game is paused
-      // while it is open, and it takes the window's events
+      // Open the in-game menu: the game is paused while it is open, and it takes the window's events
       if (GameMenu::Open(s_window))
       {
         pausedBeforeMenu = paused;

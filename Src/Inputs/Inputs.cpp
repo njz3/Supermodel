@@ -53,8 +53,8 @@ CInputs::CInputs(std::shared_ptr<CInputSystem> system)
 	uiSaveState        = AddSwitchInput("UISaveState",        "Save State",            Game::INPUT_UI, "KEY_F5");
 	uiChangeSlot       = AddSwitchInput("UIChangeSlot",       "Change Save Slot",      Game::INPUT_UI, "KEY_F6");
 	uiLoadState        = AddSwitchInput("UILoadState",        "Load State",            Game::INPUT_UI, "KEY_F7");
-	uiMusicVolUp       = AddSwitchInput("UIMusicVolUp",       "Increase Music Volume", Game::INPUT_UI, "KEY_SHIFT+KEY_F10");	// F10 is the menu's, as in the cabinets' other emulators
-	uiMenu             = AddSwitchInput("UIMenu",             "Settings Menu",         Game::INPUT_UI, "KEY_F10");
+	uiMusicVolUp       = AddSwitchInput("UIMusicVolUp",       "Increase Music Volume", Game::INPUT_UI, "KEY_F10");
+	uiMenu             = AddSwitchInput("UIMenu",             "Settings Menu",         Game::INPUT_UI, "KEY_TAB");	// F10 is the music volume's
 	uiMusicVolDown     = AddSwitchInput("UIMusicVolDown",     "Decrease Music Volume", Game::INPUT_UI, "KEY_F9");
 	uiSoundVolUp       = AddSwitchInput("UISoundVolUp",       "Increase Sound Volume", Game::INPUT_UI, "KEY_F12");
 	uiSoundVolDown     = AddSwitchInput("UISoundVolDown",     "Decrease Sound Volume", Game::INPUT_UI, "KEY_F11");
