@@ -522,11 +522,12 @@ void CNew3D::RenderFrame(void)
 		}
 	}
 
-	// A full ROM cache is cleared to make room, we will lose rom models for 1 frame. At most once a second: a frame
+	// A full ROM cache is cleared to make room, we will lose rom models for 1 frame. At most every 5 seconds: a frame
 	// drawing more ROM models than the cache holds (Daytona USA 2 Power Edition draws all of them, 3 million triangles,
 	// for about 4 seconds at boot) would otherwise cache them all again every frame
-	m_romCacheAge = std::min(m_romCacheAge + 1, 60);
-	if (m_romCacheFull && m_romCacheAge >= 60) {
+	static constexpr int kRomCacheClearFrames = 300;
+	m_romCacheAge = std::min(m_romCacheAge + 1, kRomCacheClearFrames);
+	if (m_romCacheFull && m_romCacheAge >= kRomCacheClearFrames) {
 		m_polyBufferRom.clear();
 		m_romMap.clear();
 		m_vbo.Reset();
@@ -668,13 +669,15 @@ bool CNew3D::DrawModel(UINT32 modelAddr)
 		m->dynamic = false;
 		cached = true;
 	}
+	else if (m_romCacheFull) {
+		// no room until the cache is cleared (RenderFrame): no model is cached meanwhile, not even a dynamic one (the
+		// frame that fills the cache leaves out its ROM models anyway, and the cache is cleared after it unless it was
+		// within the last 5 seconds)
+		m_nodes.back().models.pop_back();
+		m_romModelLeftOut = true;
+		return true;
+	}
 	else if (IsVROMModel(modelAddr) && !IsDynamicModel((UINT32*)modelAddress)) {
-
-		if (m_romCacheFull) {
-			m_nodes.back().models.pop_back();	// no room until the cache is cleared (RenderFrame)
-			m_romModelLeftOut = true;
-			return true;
-		}
 
 		m->meshes = std::make_shared<std::vector<Mesh>>();
 		m->dynamic = false;
