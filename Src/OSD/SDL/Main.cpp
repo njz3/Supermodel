@@ -137,6 +137,9 @@ extern "C"
  Global Run-time Config
 ******************************************************************************/
 
+// The windows' titles start with it: this branch's name and the build's version (the release package's)
+static const std::string s_windowTitle = "Supermodel FFB Edition " SUPERMODEL_VERSION;
+
 static const std::string s_analysisPath = Util::Format() << FileSystemPath::GetPath(FileSystemPath::Analysis);
 // In the write directory when one is set (ResolveWriteDirectory)
 static std::string s_configFilePath = Util::Format() << FileSystemPath::GetPath(FileSystemPath::Config) << "Supermodel.ini";
@@ -459,7 +462,7 @@ static void PrintGLInfo(bool createScreen, bool infoLog, bool printExtensions)
   unsigned xOffset, yOffset, xRes=496, yRes=384, totalXRes, totalYRes;
   if (createScreen)
   {
-    if (Result::OKAY != CreateGLScreen(s_runtime_config["New3DEngine"].ValueAs<bool>(), "Supermodel - Querying OpenGL Information...", false, &xOffset, &yOffset, &xRes, &yRes, &totalXRes, &totalYRes, false, false))
+    if (Result::OKAY != CreateGLScreen(s_runtime_config["New3DEngine"].ValueAs<bool>(), s_windowTitle + " - Querying OpenGL Information...", false, &xOffset, &yOffset, &xRes, &yRes, &totalXRes, &totalYRes, false, false))
     {
       ErrorLog("Unable to query OpenGL.\n");
       return;
@@ -1236,11 +1239,11 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
   LoadNVRAM(Emu);
 
   // Set the video mode
-  char baseTitleStr[128];
-  char titleStr[128];
+  char baseTitleStr[256];
+  char titleStr[256];
   totalXRes = xRes = s_runtime_config["XResolution"].ValueAs<unsigned>();
   totalYRes = yRes = s_runtime_config["YResolution"].ValueAs<unsigned>();
-  snprintf(baseTitleStr, sizeof(baseTitleStr), "Supermodel - %s", game.title.c_str());
+  snprintf(baseTitleStr, sizeof(baseTitleStr), "%s - %s", s_windowTitle.c_str(), game.title.c_str());
   SDL_SetWindowTitle(s_window, baseTitleStr);
   s_gameTitle = baseTitleStr;
   GameMenu::SetGame(game, FileSystemPath::GetReadPath(FileSystemPath::Config, "GameNotes.txt"));
@@ -1850,7 +1853,7 @@ static Result ConfigureInputs(CInputs *Inputs, Util::Config::Node *fileConfig, U
   // If the user wants to configure the inputs, do that now
   if (configure)
   {
-    std::string title("Supermodel - ");
+    std::string title(s_windowTitle + " - ");
     if (game.name.empty())
       title.append("Configuring Default Inputs...");
     else
@@ -2994,7 +2997,7 @@ int main(int argc, char **argv)
   // Create a window
   xRes = 496;
   yRes = 384;
-  if (Result::OKAY != CreateGLScreen(s_runtime_config["New3DEngine"].ValueAs<bool>(), "Supermodel", false, &xOffset, &yOffset, &xRes, &yRes, &totalXRes, &totalYRes, false, false))
+  if (Result::OKAY != CreateGLScreen(s_runtime_config["New3DEngine"].ValueAs<bool>(), s_windowTitle, false, &xOffset, &yOffset, &xRes, &yRes, &totalXRes, &totalYRes, false, false))
   {
     exitCode = 1;
     goto Exit;

@@ -355,7 +355,7 @@ namespace GameMenu
     ImGui::SetNextWindowSizeConstraints(ImVec2(width, 0.0f), ImVec2(width, io.DisplaySize.y * 0.9f));
     ImGui::SetNextWindowBgAlpha(0.92f);
     ImGui::Begin("Settings", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
-    ImGui::TextUnformatted(title.c_str());
+    ImGui::TextWrapped("%s", title.c_str());
 
     bool selectDisplay = s_selectPage && s_page == Page::Display;
     bool selectGame = s_selectPage && s_page == Page::Game;
