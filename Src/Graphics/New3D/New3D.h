@@ -317,6 +317,9 @@ private:
 	std::vector<FVertex> m_polyBufferRam;		// dynamic polys
 	std::vector<FVertex> m_polyBufferRom;		// rom polys
 	std::unordered_map<UINT32, std::shared_ptr<std::vector<Mesh>>> m_romMap;	// a hash table for all the ROM models. The meshes don't have model matrices or tex offsets yet
+	bool				m_romCacheFull = false;		// a ROM model did not fit: the ones not cached yet are not drawn until the cache is cleared
+	bool				m_romModelLeftOut = false;	// this frame: a ROM model was not drawn for want of room in the cache
+	int					m_romCacheAge = 0;			// frames since the ROM cache was last cleared
 	TextureBank			m_textureBank[2];
 
 	GLuint m_vao;

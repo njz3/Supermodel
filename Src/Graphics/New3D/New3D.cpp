@@ -495,8 +495,18 @@ void CNew3D::RenderFrame(void)
 		return;
 	}
 
+	m_romModelLeftOut = false;
 	RenderViewport(0x800000);						// build model structure
-	
+
+	// A frame whose ROM models don't all fit in the cache draws none of them, as when the cache used to overflow:
+	// Daytona USA 2 Power Edition draws all its models at the eye for about 4 seconds at boot, 3 million triangles,
+	// behind its 2D screen
+	if (m_romModelLeftOut) {
+		for (auto& n : m_nodes) {
+			n.models.erase(std::remove_if(n.models.begin(), n.models.end(), [](const Model& m) { return !m.dynamic; }), n.models.end());
+		}
+	}
+
 	m_vbo.Bind(true);
 	m_vbo.BufferSubData(MAX_ROM_VERTS*sizeof(FVertex), m_polyBufferRam.size()*sizeof(FVertex), m_polyBufferRam.data());	// upload all the dynamic data to GPU in one go
 
@@ -508,17 +518,20 @@ void CNew3D::RenderFrame(void)
 		int size		= romBytes - vboBytes;
 
 		if (size) {
-			//check we haven't blown up the memory buffers
-			//we will lose rom models for 1 frame if this happens, not the end of the world, as probably won't ever happen anyway
-			if (m_polyBufferRom.size() >= MAX_ROM_VERTS) {
-				m_polyBufferRom.clear();
-				m_romMap.clear();
-				m_vbo.Reset();
-			}
-			else {
-				m_vbo.AppendData(size, &m_polyBufferRom[vboBytes / sizeof(FVertex)]);
-			}
+			m_vbo.AppendData(size, &m_polyBufferRom[vboBytes / sizeof(FVertex)]);	// DrawModel keeps the ROM polys within MAX_ROM_VERTS
 		}
+	}
+
+	// A full ROM cache is cleared to make room, we will lose rom models for 1 frame. At most once a second: a frame
+	// drawing more ROM models than the cache holds (Daytona USA 2 Power Edition draws all of them, 3 million triangles,
+	// for about 4 seconds at boot) would otherwise cache them all again every frame
+	m_romCacheAge = std::min(m_romCacheAge + 1, 60);
+	if (m_romCacheFull && m_romCacheAge >= 60) {
+		m_polyBufferRom.clear();
+		m_romMap.clear();
+		m_vbo.Reset();
+		m_romCacheFull = false;
+		m_romCacheAge = 0;
 	}
 
 	m_r3dFrameBuffers.SetFBO(Layer::colour);		// colour will draw to all 3 buffers. For regular opaque pixels the transparent layers will be essentially masked
@@ -646,21 +659,26 @@ bool CNew3D::DrawModel(UINT32 modelAddr)
 	// get the last model in the array
 	Model* const m = &m_nodes.back().models.back();
 
-	if (IsVROMModel(modelAddr) && !IsDynamicModel((UINT32*)modelAddress)) {
+	// try to find meshes in the rom cache first: only models that aren't dynamic are stored there
+	const auto romModel = IsVROMModel(modelAddr) ? m_romMap.find(modelAddr) : m_romMap.end();
+	bool romCache = false;
 
-		// try to find meshes in the rom cache
-
-		m->meshes = m_romMap[modelAddr];	// will create an entry with a null pointer if empty
-
-		if (m->meshes) {
-			cached = true;
-		}
-		else {
-			m->meshes = std::make_shared<std::vector<Mesh>>();
-			m_romMap[modelAddr] = m->meshes;		// store meshes in our rom map here
-		}
-
+	if (romModel != m_romMap.end() && romModel->second) {
+		m->meshes = romModel->second;
 		m->dynamic = false;
+		cached = true;
+	}
+	else if (IsVROMModel(modelAddr) && !IsDynamicModel((UINT32*)modelAddress)) {
+
+		if (m_romCacheFull) {
+			m_nodes.back().models.pop_back();	// no room until the cache is cleared (RenderFrame)
+			m_romModelLeftOut = true;
+			return true;
+		}
+
+		m->meshes = std::make_shared<std::vector<Mesh>>();
+		m->dynamic = false;
+		romCache = true;
 	}
 	else {
 		m->meshes = std::make_shared<std::vector<Mesh>>();
@@ -679,7 +697,22 @@ bool CNew3D::DrawModel(UINT32 modelAddr)
 	m->alpha			= m_nodeAttribs.currentModelAlpha;
 
 	if (!cached) {
+		const size_t romVerts = m_polyBufferRom.size();
+
 		CacheModel(m, modelAddress);
+
+		if (romCache) {
+			if (m_polyBufferRom.size() > MAX_ROM_VERTS) {
+				// it doesn't fit: taken back, and the cache is full
+				m_polyBufferRom.resize(romVerts);
+				m_nodes.back().models.pop_back();
+				m_romCacheFull = true;
+				m_romModelLeftOut = true;
+			}
+			else {
+				m_romMap[modelAddr] = m->meshes;	// store meshes in our rom map here
+			}
+		}
 	}
 
 	return true;
