@@ -88,8 +88,10 @@ struct VBORef
 	
 	VBORef *nextTextureOffsetState; // linked list of models with different texture offset states
 	uint16_t textureOffsetState;    // texture offset data for this model
+	UINT32 colorTableAddr;          // color table its colors were read from (dynamic models)
 	bool useStencil;                // whether to draw with stencil mask ("layered" polygons)
-	
+	bool stencilShadow;             // all its polygons are probably shadows: its own stencil bit, not the layered ones'
+
 	CTextureRefs texRefs; // unique texture references contained in this model
 	
 	/*
@@ -103,8 +105,10 @@ struct VBORef
 		texRefs.Clear();
 		lutIdx = 0;
 		textureOffsetState = 0;
+		colorTableAddr = 0;
 		nextTextureOffsetState = NULL;
 		useStencil = false;
+		stencilShadow = false;
 		for (int i = 0; i < 2; i++)
 		{
 			index[i] = 0;
@@ -137,6 +141,7 @@ struct DisplayList
 		unsigned	numVerts;				      // number of vertices
 		GLint		  frontFace;				    // GL_CW (default), GL_CCW, or -GL_CW to indicate no culling
 		bool      useStencil;           // draw with stencil testing
+		bool      stencilShadow;        // with the shadows' stencil bit
 	};
 
   bool isViewport;    // if true, this is a viewport node
@@ -408,7 +413,7 @@ private:
 	Result 			InsertPolygon(ModelCache *cache, const Poly *p);
 	void 			InsertVertex(ModelCache *cache, const Vertex *v, const Poly *p, float normFlip);
 	struct VBORef	*BeginModel(ModelCache *cache);
-	void			EndModel(ModelCache *cache, struct VBORef *Model, int lutIdx, UINT16 textureOffsetState, bool useStencil);
+	void			EndModel(ModelCache *cache, struct VBORef *Model, int lutIdx, UINT16 textureOffsetState, bool useStencil, bool stencilShadow);
 	struct VBORef	*CacheModel(ModelCache *cache, int lutIdx, UINT16 textureOffsetState, const UINT32 *data);
 	struct VBORef	*LookUpModel(ModelCache *cache, int lutIdx, UINT16 textureOffsetState);
 	void 			ClearModelCache(ModelCache *cache);
@@ -421,6 +426,7 @@ private:
 	// Matrix stack
 	void	MultMatrix(UINT32 matrixOffset);
 	void	MultInverseMatrix(UINT32 matrixOffset);
+	void	ResetRotation();
 	void 	InitMatrixStack(UINT32 matrixBaseAddr, UINT32 envIdx);
 	
 	// Scene database traversal
@@ -429,6 +435,9 @@ private:
 	void DescendPointerList(UINT32 addr);
 	void DescendNodePtr(UINT32 nodeAddr);
 	void RenderViewport(UINT32 addr, int pri, bool wideScreen);
+	void RenderViewportNode(const UINT32 *vpnode, int pri, bool wideScreen);
+	bool ViewportRect(const UINT32 *vpnode, bool wideScreen, GLint *x, GLint *y, GLint *width, GLint *height) const;
+	void DrawScrollFog(bool wideScreen);
 	
 	// In-frame error reporting
 	Result ErrorLocalVertexOverflow(void);
@@ -456,6 +465,12 @@ private:
 	// Stepping
 	bool	step10;			// Model 3 Step 1.0 or Pro-1000 (Step 1.0 formats)
 	bool	pro1000 = false;	// true for Real3D Pro-1000
+
+	// Level of detail (DescendCullingNode): the viewport's LOD blend table, 128 x 4 x {delete size, blend factor},
+	// and the culling node attributes its children inherit
+	const float *m_lodBlendTable = nullptr;
+	float	m_modelScale = 1.0f;
+	bool	m_disableCulling = false;
 	int		offset;			// offset to subtract for words 3 and higher of culling nodes
 	GLfloat	vertexFactor;	// fixed-point conversion factor for vertices
 	

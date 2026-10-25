@@ -162,10 +162,12 @@
 #include "Shaders3D.h"  // fragment and vertex shaders
 #include "Graphics/Shader.h"
 #include "Util/BitCast.h"
+#include "Graphics/New3D/R3DFloat.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 
 #ifndef M_PI
 #define M_PI 3.1415926535897932384626433832795
@@ -387,12 +389,13 @@ void CLegacy3D::UploadTextures(unsigned level, unsigned x, unsigned y, unsigned 
   }
 #endif
 
-  // Update all texture sheets
+  // Update all texture sheets: every 32x32 tile the upload touches, the last ones rounded up (rounded down, an upload
+  // smaller than a tile or off its grid left tiles undecoded)
   for (size_t texSheet = 0; texSheet < numTexSheets; texSheet++)
   {
-    for (size_t xi = x/32; xi < (x+width)/32; xi++)
+    for (size_t xi = x/32; xi < (x+width+31)/32 && xi < 64; xi++)
     {
-      for (size_t yi = y/32; yi < (y+height)/32; yi++)
+      for (size_t yi = y/32; yi < (y+height+31)/32 && yi < 64; yi++)
       {
         texSheets[texSheet].texFormat[yi][xi] = -1;
         texSheets[texSheet].texWidth[yi][xi] = -1;
@@ -472,6 +475,39 @@ void CLegacy3D::MultMatrix(UINT32 matrixOffset)
   m[CMINDEX(3, 1)] = 0.0;
   m[CMINDEX(3, 2)] = 0.0;
   m[CMINDEX(3, 3)] = 1.0;
+  glMultMatrixf(m);
+}
+
+/*
+ * ResetRotation():
+ *
+ * A culling node's reset matrix bit (as New3D's ResetMatrix): the rotation of
+ * the current matrix back to identity, its scale and position kept. Multiplies
+ * by the transpose of its normalized 3x3 part, which cancels the rotation.
+ */
+void CLegacy3D::ResetRotation()
+{
+  GLfloat m[16];
+  glGetFloatv(GL_MODELVIEW_MATRIX, m);
+
+  std::swap(m[1], m[4]);
+  std::swap(m[2], m[8]);
+  std::swap(m[6], m[9]);
+  m[3] = m[7] = m[11] = 0.0f;
+  m[12] = m[13] = m[14] = 0.0f;
+  m[15] = 1.0f;
+
+  for (int col = 0; col < 3; col++)  // the scale out, else it is applied twice
+  {
+    float s = std::sqrt(m[col*4+0]*m[col*4+0] + m[col*4+1]*m[col*4+1] + m[col*4+2]*m[col*4+2]);
+    if (s > 0.0f)
+    {
+      m[col*4+0] /= s;
+      m[col*4+1] /= s;
+      m[col*4+2] /= s;
+    }
+  }
+
   glMultMatrixf(m);
 }
 
@@ -623,7 +659,7 @@ static bool IsDynamicModel(const UINT32 *data)
  * Models are cached for each unique culling node texture offset state.
  */
 Result CLegacy3D::DrawModel(UINT32 modelAddr)
-{  
+{
   //if (modelAddr==0x7FFF00)  // Fighting Vipers (this is not polygon data!)
   //  return;
   if (modelAddr == 0x200000)  // Virtual On 2 (during boot-up, causes slow-down)
@@ -697,7 +733,28 @@ void CLegacy3D::DescendCullingNode(UINT32 addr)
     --stackDepth;
     return;
   }
-  
+
+  // As New3D: viewport nodes aren't rendered, and a node with both transparency bits set is completely invisible
+  if ((node[0x00] & 3) == 0 || (node[0x00] & 0x300) == 0x300)
+  {
+    --stackDepth;
+    return;
+  }
+
+  // The sibling first, with the parent's attributes, as New3D (it is the order translucent polygons are drawn in:
+  // after, Scud Race drew sky panels over its scenery). A culling node that has a color table (node[0] & 7 == 6) does
+  // not use its sibling word, but a point ref node (bit 28) does. Pro-1000 point light chains connect through it.
+  // The sibling is always a culling node, so do not send it to DescendNodePtr: bit 24 is a flag there, not a pointer
+  // type.
+  const UINT32 node2Ptr     = node[0x08-offset] & 0x1FFFFFF;
+  const bool colorTableNode = (node[0x00] & 0x07) == 0x06;
+  const bool pointRef       = (node[0x00] & 0x10000000) != 0;
+  if (!colorTableNode || pointRef)
+  {
+    if (node2Ptr && !(node2Ptr & 0x1000000))
+      DescendCullingNode(node2Ptr);
+  }
+
   // Set color table address, if one is specified
   if ((node[0x00] & 0x04))
   {
@@ -724,7 +781,6 @@ void CLegacy3D::DescendCullingNode(UINT32 addr)
   // The color table address uses the upper bits of these two words. Remove
   // them, or they change the pointer type and the renderer loses the subtree.
   const UINT32 node1Ptr     = node[0x07-offset] & 0x7FFFFFF;
-  const UINT32 node2Ptr     = node[0x08-offset] & 0x1FFFFFF;
 
   const UINT32 matrixOffset = node[0x03-offset]&0xFFF;
   const float x             = Util::Uint32AsFloat(node[0x04-offset]);
@@ -733,10 +789,16 @@ void CLegacy3D::DescendCullingNode(UINT32 addr)
   
   // Texture offset?
   TextureOffset oldTextureOffset = m_textureOffset; // save old offsets
+  const float oldModelScale = m_modelScale;
+  const bool oldDisableCulling = m_disableCulling;
   if (!offset)  // Step 1.5+
   {
     if ((node[0x02] & 0x8000))  // apply texture offset, else retain current ones
       m_textureOffset = TextureOffset(node[0x02]);
+    if ((node[0x01] & 1))  // model scale, the last 2 bits are control bits
+      m_modelScale = Util::Uint32AsFloat(node[0x01] & ~3);
+    if ((node[0x01] & 2))
+      m_disableCulling = true;
   }
   
   // Apply matrix and translation
@@ -745,44 +807,64 @@ void CLegacy3D::DescendCullingNode(UINT32 addr)
     glTranslatef(x,y,z);
   else if (matrixOffset)  // multiply matrix, if specified
     MultMatrix(matrixOffset);
-    
-  // Descend down first link
-  if ((node[0x00]&0x08))  // 4-element LOD table
-  {
-    const UINT32 *lodTable = TranslateCullingAddress(node1Ptr);
-    if (NULL != lodTable)
-    {
-      // Bit 24 of the child pointer tells if the table entry is a model or a
-      // culling node. Do not use node[0x03], which holds other data.
-      if (!(node1Ptr & 0x01000000))
-        DescendCullingNode(lodTable[0]&0xFFFFFF);
-      else
-        DrawModel(lodTable[0]&0xFFFFFF);
-    }
-  }
-  else
-    DescendNodePtr(node1Ptr);
+  if ((node[0x00]&0x80))  // reset matrix: the rotation back to identity, scale and position kept (Sega Rally 2's camera flashes)
+    ResetRotation();
 
-  // Proceed to second link
+  // Level of detail, as New3D but neither blending between levels nor culling outside the view: the node's blend
+  // radius over its distance (its LOD scale) picks the level, and the node is not drawn below its last level's delete
+  // size (models meant to vanish at a distance)
+  const UINT32 lodTablePointer = (node[0x03-offset] >> 12) & 0x7F;
+  const float *lod = (nullptr != m_lodBlendTable) ? &m_lodBlendTable[lodTablePointer*8] : nullptr;  // 4 x {delete size, blend factor}
+  float lodScale = std::numeric_limits<float>::max();
+  if (nullptr != lod && lodTablePointer != 0x7F && !m_disableCulling)
+  {
+    GLfloat m[16];
+    glGetFloatv(GL_MODELVIEW_MATRIX, m);
+    float blendRadius = R3DFloat::GetFloat16(UINT16(node[0x09-offset] >> 16)) * m_modelScale;
+    lodScale = std::clamp(blendRadius / std::hypot(m[12], m[13], m[14]), 0.0f, std::numeric_limits<float>::max());
+  }
+
+  // Descend down first link
+  if (nullptr == lod || lodTablePointer == 0x7F || m_disableCulling || lodScale >= lod[3*2])
+  {
+    if ((node[0x00]&0x08))  // 4-element LOD table
+    {
+      const UINT32 *lodTable = TranslateCullingAddress(node1Ptr);
+      if (NULL != lodTable)
+      {
+        // The first level its LOD scale reaches, among those marked valid (bit 24)
+        int level = 0;
+        if (nullptr != lod)
+        {
+          for (level = 0; level < 3; level++)
+          {
+            if (lodScale >= lod[level*2] && (lodTable[level] & 0x1000000))
+              break;
+          }
+        }
+
+        // Bit 24 of the child pointer tells if the table entry is a model or a
+        // culling node. Do not use node[0x03], which holds other data.
+        if (!(node1Ptr & 0x01000000))
+          DescendCullingNode(lodTable[level]&0xFFFFFF);
+        else
+          DrawModel(lodTable[level]&0xFFFFFF);
+      }
+    }
+    else
+      DescendNodePtr(node1Ptr);
+  }
+
   glPopMatrix();
 #ifdef DEBUG
   m_debugHighlightAll = oldDebugHighlightAll;
 #endif
-  // A culling node that has a color table (node[0] & 7 == 6) does not use its
-  // sibling word, but a point ref node (bit 28) does. Pro-1000 point light
-  // chains connect through it. The sibling is always a culling node, so do not
-  // send it to DescendNodePtr: bit 24 is a flag there, not a pointer type.
-  const bool colorTableNode = (node[0x00] & 0x07) == 0x06;
-  const bool pointRef       = (node[0x00] & 0x10000000) != 0;
-  if (!colorTableNode || pointRef)
-  {
-    if (node2Ptr && !(node2Ptr & 0x1000000))
-      DescendCullingNode(node2Ptr);
-  }
   --stackDepth;
-  
-  // Restore old texture offsets
+
+  // Restore old texture offsets and attributes
   m_textureOffset = oldTextureOffset;
+  m_modelScale = oldModelScale;
+  m_disableCulling = oldDisableCulling;
 }
 
 // A list of pointers. MAME assumes that these may only point to culling nodes.
@@ -797,54 +879,21 @@ void CLegacy3D::DescendPointerList(UINT32 addr)
     
   ++listDepth;
 
-  if (pro1000)
-  {
-    // Pro-1000 list entries can have flag bits in the upper byte. Stop only at
-    // the end bit, as the Pro-1000 SDK does. Do not stop at the first entry
-    // that has a flag bit, or the renderer loses the remainder of the list.
-    for (int index = 0; index < 1024; index++)   // the limit guards against a missing end bit
-    {
-      if (!(list[index] & 0x01000000))
-        DescendCullingNode(list[index] & 0x00FFFFFF);
-      if (list[index] & 0x02000000)
-        break;  // list end
-    }
-
-    --listDepth;
-    return;
-  }
-
-  // Traverse the list forward and print it out
+  // The list ends at bit 25 only, as in New3D and the Pro-1000 SDK: an entry with bit 24 set is skipped (Fighting
+  // Vipers), not the end of the list. The limit guards against a missing end bit.
   int listEnd = 0;
-  while (1)
-  { 
-    if ((list[listEnd] & 0x02000000)) // end of list (?)
-      break;    
-    if ((list[listEnd] == 0) || (((list[listEnd])>>24) != 0))
-    {
-      //printf("ATTENTION: Unknown list termination: %08X.\n", list[listEnd]);
-      listEnd--;  // back up to last valid list element
-      break;
-    }
+  while (listEnd < 0x3FFF && !(list[listEnd] & 0x02000000))
     ++listEnd;
-  }
 
-  // Traverse the list backward and descend into each pointer
-  while (listEnd >= 0)
+  // Traverse the list backward and descend into each pointer, the order this engine has always drawn in. New3D's,
+  // forward, removes the sky panels Scud Race draws over its scenery here, but hides the cars of Sega Rally 2
+  for (; listEnd >= 0; --listEnd)
   {
     UINT32 nodeAddr = list[listEnd]&0x00FFFFFF;  // clear upper 8 bits to ensure this is processed as a culling node
-    if (!(list[listEnd]&0x01000000))//Fighting Vipers
-    {
-      if ((nodeAddr != 0) && (nodeAddr != 0x800800))
-      {
-        DescendCullingNode(nodeAddr);
-      }
-      //else
-      //  printf("Strange pointers encountered\n");
-    }
-    --listEnd;
+    if (!(list[listEnd]&0x01000000) && (nodeAddr != 0) && (nodeAddr != 0x800800))
+      DescendCullingNode(nodeAddr);
   }
-  
+
   --listDepth;
 }
 
@@ -859,26 +908,173 @@ void CLegacy3D::DescendNodePtr(UINT32 nodeAddr)
   if ((nodeAddr&0x00FFFFFF) == 0)
     return;
 
-  switch ((nodeAddr>>24)&0xFF)  // pointer type encoded in upper 8 bits
+  switch ((nodeAddr>>24)&0x5)   // pointer type encoded in upper 8 bits; the others are flags (as New3D)
   {
   case 0x00:  // culling node
     DescendCullingNode(nodeAddr&0xFFFFFF);
     break;
-  case 0x01:  // model (perhaps bit 1 is a flag in this case?)
-  case 0x03:
+  case 0x01:  // model
     DrawModel(nodeAddr&0xFFFFFF);
     break;
   case 0x04:  // pointer list
     DescendPointerList(nodeAddr&0xFFFFFF);
     break;
   default:
-    //printf("ATTENTION: Unknown pointer format: %08X\n\n", nodeAddr);
     break;
   }
 }
 
+// gluPerspective with the far plane at infinity, as New3D: the Real3D has none (the sky of Emergency Call Ambulance
+// lies beyond the 1e5 used before). The depth buffer's precision depends on the near plane, hardly on the far one.
+static void PerspectiveInfiniteFar(GLfloat fovYDegrees, GLfloat aspect, GLfloat zNear)
+{
+  const GLfloat f = 1.0f / std::tan(fovYDegrees * (float)(M_PI / 360.0));
+  const GLfloat epsilon = 2.4e-7f;  // keeps points at infinity inside the clip volume
+  const GLfloat m[16] =
+  {
+    f / aspect, 0.0f, 0.0f,                       0.0f,
+    0.0f,       f,    0.0f,                       0.0f,
+    0.0f,       0.0f, epsilon - 1.0f,            -1.0f,
+    0.0f,       0.0f, (epsilon - 2.0f) * zNear,   0.0f
+  };
+  glMultMatrixf(m);
+}
+
+// A viewport's OpenGL rectangle. True if the wide screen hack expands it to the whole display (then its aspect ratio
+// is the display's, not the viewport's)
+bool CLegacy3D::ViewportRect(const UINT32 *vpnode, bool wideScreen, GLint *x, GLint *y, GLint *width, GLint *height) const
+{
+  int vpX       = (vpnode[0x1A]&0xFFFF)>>4;   // viewport X (12.4 fixed point)
+  int vpY       = (vpnode[0x1A]>>20)&0xFFF;   // viewport Y (12.4)
+  int vpWidth   = (vpnode[0x14]&0xFFFF)>>2;   // width (14.2)
+  int vpHeight  = (vpnode[0x14]>>18)&0x3FFF;  // height (14.2)
+
+  *y      = yOffs + (GLint) ((float)(screenHeight-(vpY+vpHeight))*yRatio);
+  *height = (GLint) ((float)vpHeight*yRatio);
+  if (wideScreen && (vpX==0) && (vpWidth>=screenWidth-1) && (vpY==0) && (vpHeight >= screenHeight-1))  // only expand viewports that occupy whole screen
+  {
+    // Wide screen hack only modifies X axis and not the Y FOV
+    *x     = 0;
+    *width = totalXRes;
+    return true;
+  }
+  *x     = xOffs + (GLint) ((float)vpX*xRatio);
+  *width = (GLint) ((float)vpWidth*xRatio);
+  return false;
+}
+
+/*
+ * DrawScrollFog():
+ *
+ * The Real3D's scroll fog, as New3D: the fog colour, with the scroll fog value
+ * as its alpha, over the viewport before its 3D, blended with the tilemap
+ * layers already drawn beneath (the sky of Daytona USA 2, backgrounds of Sega
+ * Rally 2 and Emergency Call Ambulance). The viewport is the one with the
+ * highest scroll fog value in the lowest priority layer that has one; fogging
+ * must be enabled (a fog density, start or scroll attenuation) by a viewport
+ * with the same fog colour. Spotlight on fog is not drawn.
+ */
+void CLegacy3D::DrawScrollFog(bool wideScreen)
+{
+  struct FogViewport
+  {
+    const UINT32 *node;
+    int priority;
+    float scrollFog;
+    UINT32 colour;
+    bool fog;
+  };
+  FogViewport viewports[64];
+  int count = 0;
+
+  for (UINT32 addr = 0x800000; count < 64; )
+  {
+    const UINT32 *vpnode = TranslateCullingAddress(addr);
+    if (nullptr == vpnode || vpnode[0x01] == 0)
+      break;
+    float density = std::abs(Util::Uint32AsFloat(vpnode[0x23]));
+    if (!(density < 99999.f))  // fog density values higher than 9999 are ignored by the h/w, as are NaNs
+      density = 0.0f;
+    float start = (float) (INT16) (vpnode[0x25]&0xFFFF) * (float)(1.0/255.0);
+    viewports[count].node      = vpnode;
+    viewports[count].priority  = (vpnode[0x00] >> 3) & 3;
+    viewports[count].scrollFog = (float) (vpnode[0x20]&0xFF) * (float)(1.0/255.0);
+    viewports[count].colour    = vpnode[0x22] & 0xFFFFFF;
+    viewports[count].fog       = density > 0.0f || start > 0.0f || (vpnode[0x24]&0xFF) != 0;
+    count++;
+    if (vpnode[0x01] == 0x01000000)
+      break;
+    addr = vpnode[0x01];
+  }
+
+  const FogViewport *chosen = nullptr;
+  for (int pri = 0; pri < 4 && !chosen; pri++)
+  {
+    for (int i = 0; i < count; i++)
+    {
+      if (viewports[i].priority == pri && viewports[i].scrollFog > 0.0f && (!chosen || viewports[i].scrollFog > chosen->scrollFog))
+        chosen = &viewports[i];
+    }
+  }
+  if (!chosen)
+    return;
+
+  bool enabled = false;
+  for (int i = 0; i < count && !enabled; i++)
+    enabled = viewports[i].colour == chosen->colour && viewports[i].fog;
+  if (!enabled)
+    return;
+
+  GLint x, y, width, height;
+  ViewportRect(chosen->node, wideScreen, &x, &y, &width, &height);
+  float ambient = (float) ((chosen->node[0x25]>>16)&0xFF) * (float)(1.0/255.0);
+  glViewport(x, y, width, height);
+  glUseProgram(0);
+  glMatrixMode(GL_PROJECTION);
+  glPushMatrix();
+  glLoadIdentity();
+  glMatrixMode(GL_MODELVIEW);
+  glPushMatrix();
+  glLoadIdentity();
+  glDisable(GL_DEPTH_TEST);
+  glDepthMask(GL_FALSE);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  glColor4f((float) ((chosen->colour>>16)&0xFF) * (float)(1.0/255.0) * ambient,
+            (float) ((chosen->colour>>8)&0xFF) * (float)(1.0/255.0) * ambient,
+            (float) (chosen->colour&0xFF) * (float)(1.0/255.0) * ambient,
+            chosen->scrollFog);
+  glBegin(GL_TRIANGLE_STRIP);
+  glVertex2f(-1.0f, -1.0f);
+  glVertex2f( 1.0f, -1.0f);
+  glVertex2f(-1.0f,  1.0f);
+  glVertex2f( 1.0f,  1.0f);
+  glEnd();
+  glDisable(GL_BLEND);
+  glDepthMask(GL_TRUE);
+  glMatrixMode(GL_PROJECTION);
+  glPopMatrix();
+  glMatrixMode(GL_MODELVIEW);
+  glPopMatrix();
+}
+
 // Draws viewports of the given priority
 void CLegacy3D::RenderViewport(UINT32 addr, int pri, bool wideScreen)
+{
+  // The viewports in their list's order, as New3D: those of a priority layer share the depth buffer, so the order is
+  // the drawing order (the reverse order hid Daytona USA 2's city behind its sky)
+  for (int count = 0; count < 256 && addr != 0x01000000; count++)
+  {
+    const UINT32 *vpnode = TranslateCullingAddress(addr);
+    if (nullptr == vpnode || vpnode[0x01] == 0)  // memory probably hasn't been set up yet, abort
+      return;
+    RenderViewportNode(vpnode, pri, wideScreen);
+    addr = vpnode[0x01];  // next viewport
+  }
+}
+
+// Draws a viewport if it has the given priority
+void CLegacy3D::RenderViewportNode(const UINT32 *vpnode, int pri, bool wideScreen)
 {
   static constexpr GLfloat color[8][3] = {
     { 0.0, 0.0, 0.0 },    // off
@@ -891,24 +1087,11 @@ void CLegacy3D::RenderViewport(UINT32 addr, int pri, bool wideScreen)
     { 1.0, 1.0, 1.0 }     // white
   };
 
-  // Translate address and obtain pointer
-  const UINT32 *vpnode = TranslateCullingAddress(addr);
-  if (nullptr == vpnode)
-    return;
-
-  // Recursively process next viewport
-  UINT32 nextAddr = vpnode[0x01]; // next viewport
   UINT32 nodeAddr = vpnode[0x02]; // scene database node pointer
 
-  if (nextAddr == 0)  // memory probably hasn't been set up yet, abort
+  // Skip disabled viewports, as New3D
+  if ((vpnode[0] & 0x20) != 0)
     return;
-
-  if (nextAddr != 0x01000000)
-    RenderViewport(nextAddr, pri, wideScreen);
-
-  // Skip disabled viewports
-  //if ((vpnode[0] & 0x20) != 0)
-  //  return;
 
   // If the priority doesn't match, do not process
   int curPri = (vpnode[0x00] >> 3) & 3; // viewport priority
@@ -930,23 +1113,10 @@ void CLegacy3D::RenderViewport(UINT32 addr, int pri, bool wideScreen)
   // Set up viewport and projection (TO-DO: near and far clipping)
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
-  if (wideScreen && (vpX==0) && (vpWidth>=screenWidth-1) && (vpY==0) && (vpHeight >= screenHeight-1))  // only expand viewports that occupy whole screen
-  {
-    // Wide screen hack only modifies X axis and not the Y FOV
-    viewportX      = 0;
-    viewportY      = yOffs + (GLint) ((float)(screenHeight-(vpY+vpHeight))*yRatio);
-    viewportWidth  = totalXRes;
-    viewportHeight = (GLint) ((float)vpHeight*yRatio);
-    gluPerspective(fovYDegrees,(GLfloat)viewportWidth/(GLfloat)viewportHeight,0.1f,1e5);  // use actual full screen ratio to get proper X FOV
-  }
+  if (ViewportRect(vpnode, wideScreen, &viewportX, &viewportY, &viewportWidth, &viewportHeight))
+    PerspectiveInfiniteFar(fovYDegrees,(GLfloat)viewportWidth/(GLfloat)viewportHeight,0.1f);  // use actual full screen ratio to get proper X FOV
   else
-  {
-    viewportX      = xOffs + (GLint) ((float)vpX*xRatio);
-    viewportY      = yOffs + (GLint) ((float)(screenHeight-(vpY+vpHeight))*yRatio);
-    viewportWidth  = (GLint) ((float)vpWidth*xRatio);
-    viewportHeight = (GLint) ((float)vpHeight*yRatio);
-    gluPerspective(fovYDegrees,(GLdouble)vpWidth/(GLdouble)vpHeight,0.1,1e5);        // use viewport coordinate ratio
-  }
+    PerspectiveInfiniteFar(fovYDegrees,(GLfloat)vpWidth/(GLfloat)vpHeight,0.1f);              // use viewport coordinate ratio
   
   // Lighting (note that sun vector points toward sun -- away from vertex)
   lightingParams[0] = Util::Uint32AsFloat(vpnode[0x05]);             // sun X
@@ -999,6 +1169,11 @@ void CLegacy3D::RenderViewport(UINT32 addr, int pri, bool wideScreen)
   // Clear texture offsets before proceeding
   m_textureOffset = TextureOffset();
 
+  // The viewport's LOD blend table, and no node attribute inherited yet
+  m_lodBlendTable = (const float *) TranslateCullingAddress(vpnode[0x17] & 0xFFFFFF);
+  m_modelScale = 1.0f;
+  m_disableCulling = false;
+
   // Set up coordinate system and base matrix
   UINT32 matrixBase = vpnode[0x16] & 0xFFFFFF;
   UINT32 envIdx = vpnode[0x15] & 0xFFF;   // environment-to-channel matrix index
@@ -1023,7 +1198,9 @@ void CLegacy3D::RenderViewport(UINT32 addr, int pri, bool wideScreen)
       m13 *= m13;
 
       if ((m21>1.05f) || (m21<0.95f) || (m32>1.05f) || (m32<0.95f) || (m13>1.05f) || (m13<0.95f))
+      {
         return;
+      }
     }
     else
     {
@@ -1074,13 +1251,16 @@ void CLegacy3D::RenderFrame(void)
       return;
   }
   
+  // The scroll fog layer, before any 3D
+  DrawScrollFog(wideScreen);
+
   // Z buffering (Z buffer is cleared by display list viewport nodes)
   glDepthFunc(GL_LESS);
   glEnable(GL_DEPTH_TEST);
 
   // Stencil buffering
   glStencilFunc(GL_EQUAL, 0, 0xFF);       // stencil test passes if stencil buffer value is 0
-  glStencilOp(GL_KEEP, GL_INCR, GL_INCR); // if the stencil test passes, increment value in stencil buffer
+  glStencilOp(GL_KEEP, GL_KEEP, GL_INCR); // if the stencil and depth tests pass, increment value in stencil buffer
   glStencilMask(0xFF);
   glDisable(GL_STENCIL_TEST);             // enabled only for select models
 

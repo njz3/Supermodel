@@ -255,7 +255,11 @@ void CLegacy3D::DrawDisplayList(ModelCache *Cache, POLY_STATE state)
     glDisable(GL_BLEND);
   }
   bool stencilEnabled = false;
+  bool stencilShadow = false;
   glDisable(GL_STENCIL_TEST);
+  glStencilFunc(GL_EQUAL, 0, 0x7F);
+  glStencilOp(GL_KEEP, GL_KEEP, GL_INCR);
+  glStencilMask(0x7F);
   
   // Draw if there are items in the list
   const DisplayList *D = Cache->ListHead[state];
@@ -290,6 +294,25 @@ void CLegacy3D::DrawDisplayList(ModelCache *Cache, POLY_STATE state)
           glDisable(GL_STENCIL_TEST);
         stencilEnabled = Model.useStencil;
       }
+      if (Model.useStencil && stencilShadow != Model.stencilShadow)
+      {
+        // Shadows and layered polygons on separate bits: a shadow drawn first must not keep the layered polygons
+        // of what it lies under from being drawn (the cars of Sega Rally 2), nor the reverse. Each shadowed pixel
+        // is darkened once
+        if (Model.stencilShadow)
+        {
+          glStencilFunc(GL_NOTEQUAL, 0x80, 0x80);       // passes if the shadow bit is clear
+          glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);    // then sets it, where the shadow is drawn
+          glStencilMask(0x80);
+        }
+        else
+        {
+          glStencilFunc(GL_EQUAL, 0, 0x7F);             // passes if no layered polygon was drawn there
+          glStencilOp(GL_KEEP, GL_KEEP, GL_INCR);       // counts it where drawn, not where hidden (as New3D)
+          glStencilMask(0x7F);
+        }
+        stencilShadow = Model.stencilShadow;
+      }
       if (Model.frontFace == -GL_CW)
       {
         // No backface culling (all normals have lost their Z component)
@@ -311,6 +334,11 @@ void CLegacy3D::DrawDisplayList(ModelCache *Cache, POLY_STATE state)
     }
     D = D->next;
   }
+
+  // The whole stencil buffer writable again, for its clearing
+  glStencilFunc(GL_EQUAL, 0, 0xFF);
+  glStencilOp(GL_KEEP, GL_KEEP, GL_INCR);
+  glStencilMask(0xFF);
 }
 
 // Appends an instance of a model or viewport to the display list, copying over the required state information
@@ -356,6 +384,7 @@ Result CLegacy3D::AppendDisplayList(ModelCache *Cache, bool isViewport, const st
 
       // Misc. parameters
       Cache->List[lm].Data.Model.useStencil = Model->useStencil;
+      Cache->List[lm].Data.Model.stencilShadow = Model->stencilShadow;
       
       // Copy modelview matrix
       glGetFloatv(GL_MODELVIEW_MATRIX, Cache->List[lm].Data.Model.modelViewMatrix);
@@ -695,13 +724,17 @@ void CLegacy3D::InsertVertex(ModelCache *Cache, const Vertex *V, const Poly *P, 
     }
   }
 
-  // Translator map probably affects shading. Used extensively in LA 
-  // Machineguns. Here, we disable it to fix that game, otherwise polygon
-  // colors and modulation make everything too dark.
-  // TODO: search for translator map by looking for 128*4 byte block xfers? May
-  // be in VROM, though...
+  // Translator map, as New3D: the polygon colour's components are then 4 bits,
+  // 0 to 16, times 16 (not clamped), and they colour the texture: the cars of
+  // Daytona USA 2 and Scud Race, one grey texture in many colours (without the
+  // factor, the colours were too dark, so modulation used to be disabled).
   if ((P->header[4] & 0x80))
-    modulate = false;
+  {
+    r *= 16.0f;
+    g *= 16.0f;
+    b *= 16.0f;
+    modulate = true;
+  }
   
   // Untextured polygons always use polygon color. Make sure we pass it to
   // shader!
@@ -942,7 +975,7 @@ struct VBORef *CLegacy3D::BeginModel(ModelCache *Cache)
 }
 
 // Uploads all vertices from the local vertex buffer to the VBO, sets up the VBO reference, updates the LUT
-void CLegacy3D::EndModel(ModelCache *Cache, struct VBORef *Model, int lutIdx, UINT16 textureOffsetState, bool useStencil)
+void CLegacy3D::EndModel(ModelCache *Cache, struct VBORef *Model, int lutIdx, UINT16 textureOffsetState, bool useStencil, bool stencilShadow)
 {
   int m = Cache->numModels++;
 
@@ -963,11 +996,13 @@ void CLegacy3D::EndModel(ModelCache *Cache, struct VBORef *Model, int lutIdx, UI
   // Record LUT index in the model VBORef
   Model->lutIdx = lutIdx;
   
-  // Texture offset of this model state
+  // Texture offset and color table of this model state
   Model->textureOffsetState = textureOffsetState;
+  Model->colorTableAddr = m_colorTableAddr;
   
   // Should we use stencil?
   Model->useStencil = useStencil;
+  Model->stencilShadow = stencilShadow;
   
   // Update the LUT and link up to any existing model that already exists here
   if (Cache->lut[lutIdx] >= 0)  // another texture offset state already cached
@@ -1002,6 +1037,7 @@ struct VBORef *CLegacy3D::CacheModel(ModelCache *Cache, int lutIdx, UINT16 textu
   // vertex bit, it reads this array before a polygon writes it.
   Vertex    Prev[4] = {};  // previous vertices
   bool      useStencil = true;
+  bool      allShadows = true;  // all polygons probably shadows
   bool      done = false;
   while (!done)
   {    
@@ -1065,6 +1101,7 @@ struct VBORef *CLegacy3D::CacheModel(ModelCache *Cache, int lutIdx, UINT16 textu
     int isLightDisabled = P.header[6] & 0x00010000;
     bool isProbablyShadow = isLightDisabled && isTranslucent && !texEnable;
     useStencil &= (isLayered || isProbablyShadow);
+    allShadows &= isProbablyShadow;
     
     // Decode the texture
     if (texEnable)
@@ -1140,7 +1177,7 @@ struct VBORef *CLegacy3D::CacheModel(ModelCache *Cache, int lutIdx, UINT16 textu
   }
   
   // Finish model and enter it into the LUT
-  EndModel(Cache, Model, lutIdx, textureOffsetState, useStencil);
+  EndModel(Cache, Model, lutIdx, textureOffsetState, useStencil, useStencil && allShadows);
   return Model;
 }
 
@@ -1161,10 +1198,13 @@ struct VBORef *CLegacy3D::LookUpModel(ModelCache *Cache, int lutIdx, UINT16 text
   if (m < 0)
     return NULL;
   
-  // Has the specified texture offset been cached?
+  // Has the specified texture offset been cached? In the dynamic cache, with the
+  // same color table too: models using color tables are dynamic because each
+  // instance may use its own table (the cars of Daytona USA 2 and Scud Race
+  // all took the colors of the first one drawn)
   for (struct VBORef *Model = &(Cache->Models[m]); Model != NULL; Model = Model->nextTextureOffsetState)
   {
-    if (Model->textureOffsetState == textureOffsetState)
+    if (Model->textureOffsetState == textureOffsetState && (!Cache->dynamic || Model->colorTableAddr == m_colorTableAddr))
       return Model;
   }
   
