@@ -2,17 +2,26 @@
 
 FBO::FBO() :
 	m_frameBufferID(0),
-	m_textureID(0)
+	m_textureID(0),
+	m_depthStencilID(0)
 {
 }
 
-bool FBO::Create(int width, int height)
+bool FBO::Create(int width, int height, bool depthStencil)
 {
 	CreateTexture(width, height);
 
 	glGenFramebuffers(1, &m_frameBufferID);
 	glBindFramebuffer(GL_FRAMEBUFFER, m_frameBufferID);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_textureID, 0);
+
+	if (depthStencil) {
+		glGenRenderbuffers(1, &m_depthStencilID);
+		glBindRenderbuffer(GL_RENDERBUFFER, m_depthStencilID);
+		glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
+		glBindRenderbuffer(GL_RENDERBUFFER, 0);
+		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, m_depthStencilID);
+	}
 	
 	auto frameBufferStatus = glCheckFramebufferStatus(GL_FRAMEBUFFER);
 
@@ -32,8 +41,13 @@ void FBO::Destroy()
 		glDeleteTextures(1, &m_textureID);
 	}
 
+	if (m_depthStencilID) {
+		glDeleteRenderbuffers(1, &m_depthStencilID);
+	}
+
 	m_frameBufferID = 0;
 	m_textureID = 0;
+	m_depthStencilID = 0;
 }
 
 void FBO::BindTexture()

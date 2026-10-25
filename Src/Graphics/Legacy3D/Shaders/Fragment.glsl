@@ -168,8 +168,9 @@ void main(void)
 				discard;
 		}
 		
-		// If contour texture and not discarded, force alpha to 1.0 because will later be modified by polygon translucency
-		if (fsTexFormat < 0.5)		// contour (T1RGB5) texture
+		// Texture alpha only where the polygon enables it (as New3D, see texParams.y). A contour (T1RGB5) texel not
+		// discarded is opaque. Alpha will later be modified by polygon translucency
+		if (fsTexFormat < 0.5 || fsTexParams.y < 0.5)
 			fragColor.a = 1.0;
 	}
 

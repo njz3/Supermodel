@@ -16,7 +16,9 @@
 class SuperAA
 {
 public:
-	SuperAA(int aaValue, CRTcolor CRTcolors, bool forceTarget = false);	// forceTarget: render into the FBO even at 1x (agent mode reads it)
+	// forceTarget: render into the FBO even at 1x (agent mode reads it). depthStencil: the FBO has depth and stencil
+	// buffers, for a 3D renderer that draws straight into it (Legacy3D; New3D draws into its own)
+	SuperAA(int aaValue, CRTcolor CRTcolors, bool forceTarget = false, bool depthStencil = false);
 	~SuperAA();
 
 	void Init(int width, int height);		// width & height are real window dimensions (with a presentation, the image's frame buffer)
@@ -35,6 +37,7 @@ private:
 	const int m_aa;
 	const CRTcolor m_crtcolors;
 	const bool m_forceTarget;
+	const bool m_depthStencil;
 	GLuint m_vao;
 	int m_width;
 	int m_height;

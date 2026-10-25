@@ -147,7 +147,7 @@ namespace Legacy3D {
 #define VBO_VERTEX_OFFSET_TEXTURE_W       18  // sub-texture parameters, width of texture in texels
 #define VBO_VERTEX_OFFSET_TEXTURE_H       19  // "" height of texture in texels
 #define VBO_VERTEX_OFFSET_TEXPARAMS_EN    20  // texture parameter: ==1 texturing enabled, ==0 disabled (per-polygon)
-#define VBO_VERTEX_OFFSET_TEXPARAMS_TRANS 21  // texture parameter: >=0 use transparency bit, <0 no transparency (per-polygon)
+#define VBO_VERTEX_OFFSET_TEXPARAMS_TRANS 21  // texture parameter: >=0 contour processing (texture alpha used), <0 texture alpha ignored (per-polygon)
 #define VBO_VERTEX_OFFSET_TEXPARAMS_UWRAP 22  // texture parameters: U wrap mode: ==1 mirrored repeat, ==0 normal repeat
 #define VBO_VERTEX_OFFSET_TEXPARAMS_VWRAP 23  // "" V wrap mode ""
 #define VBO_VERTEX_OFFSET_TEXFORMAT       24  // texture format 0-7 (also ==0 indicates contour texture - see also texParams.trans)
@@ -225,6 +225,49 @@ static void PrintMatrix(GLfloat m[4*4])
  alpha polygons. Therefore, it may be necessary in the future to decouple them.
 ******************************************************************************/   
     
+// Stencil uses: none, layered polygons, and shadows
+enum class StencilMode
+{
+  Off,
+  Layered,
+  Shadow
+};
+
+// Shadows and layered polygons use separate bits: a shadow drawn first must not keep the layered polygons of what it
+// lies under from being drawn, nor the reverse. Each shadowed pixel is darkened once
+static void SetStencilMode(StencilMode mode)
+{
+  switch (mode)
+  {
+  case StencilMode::Off:
+    glDisable(GL_STENCIL_TEST);
+    break;
+  case StencilMode::Layered:
+    glEnable(GL_STENCIL_TEST);
+    glStencilFunc(GL_EQUAL, 0, 0x7F);           // passes if no layered polygon was drawn there
+    glStencilOp(GL_KEEP, GL_KEEP, GL_INCR);     // counts it where drawn, not where hidden (as New3D)
+    glStencilMask(0x7F);
+    break;
+  case StencilMode::Shadow:
+    glEnable(GL_STENCIL_TEST);
+    glStencilFunc(GL_NOTEQUAL, 0x80, 0x80);     // passes if the shadow bit is clear
+    glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);  // then sets it, where the shadow is drawn
+    glStencilMask(0x80);
+    break;
+  }
+}
+
+// Draws the display lists of both caches: each alpha state's layered polygons after its others, as New3D
+void CLegacy3D::DrawDisplayLists(void)
+{
+  static constexpr POLY_STATE order[NUM_POLY_STATES] = { POLY_STATE_NORMAL, POLY_STATE_NORMAL_LAYERED, POLY_STATE_ALPHA, POLY_STATE_ALPHA_LAYERED };
+  for (POLY_STATE state : order)
+  {
+    DrawDisplayList(&VROMCache, state);
+    DrawDisplayList(&PolyCache, state);
+  }
+}
+
 // Draws the display list
 void CLegacy3D::DrawDisplayList(ModelCache *Cache, POLY_STATE state)
 {
@@ -245,7 +288,8 @@ void CLegacy3D::DrawDisplayList(ModelCache *Cache, POLY_STATE state)
   if (fogIntensityLoc != -1) glVertexAttribPointer(fogIntensityLoc, 1, GL_FLOAT, GL_FALSE, VBO_VERTEX_SIZE*sizeof(GLfloat), (GLvoid *) (VBO_VERTEX_OFFSET_FOGINTENSITY*sizeof(GLfloat)));
   
   // Set up state
-  if (state == POLY_STATE_ALPHA)
+  const bool layered = (state == POLY_STATE_NORMAL_LAYERED || state == POLY_STATE_ALPHA_LAYERED);
+  if (state == POLY_STATE_ALPHA || state == POLY_STATE_ALPHA_LAYERED)
   {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -254,13 +298,15 @@ void CLegacy3D::DrawDisplayList(ModelCache *Cache, POLY_STATE state)
   {
     glDisable(GL_BLEND);
   }
-  bool stencilEnabled = false;
-  bool stencilShadow = false;
-  glDisable(GL_STENCIL_TEST);
-  glStencilFunc(GL_EQUAL, 0, 0x7F);
-  glStencilOp(GL_KEEP, GL_KEEP, GL_INCR);
-  glStencilMask(0x7F);
-  
+
+  // Layered polygons are decals that must win against the coplanar polygons drawn before them, as New3D: their depth
+  // is as if they were 1/512 closer (their fixed point vertices can sit slightly off their base plane). It costs a
+  // uniform and a multiply-add per vertex, nothing per pixel
+  if (layerDepthBiasLoc != -1)
+    glUniform1f(layerDepthBiasLoc, layered ? 1.0f / 512.0f : 0.0f);
+  StencilMode stencilMode = StencilMode::Off;
+  SetStencilMode(stencilMode);
+
   // Draw if there are items in the list
   const DisplayList *D = Cache->ListHead[state];
   while (D != NULL)
@@ -286,32 +332,11 @@ void CLegacy3D::DrawDisplayList(ModelCache *Cache, POLY_STATE state)
     else
     {
       const DisplayList::ModelInstance &Model = D->Data.Model;
-      if (stencilEnabled != Model.useStencil)
+      const StencilMode modelStencilMode = Model.stencilShadow ? StencilMode::Shadow : (layered ? StencilMode::Layered : StencilMode::Off);
+      if (stencilMode != modelStencilMode)
       {
-        if (Model.useStencil)
-          glEnable(GL_STENCIL_TEST);
-        else
-          glDisable(GL_STENCIL_TEST);
-        stencilEnabled = Model.useStencil;
-      }
-      if (Model.useStencil && stencilShadow != Model.stencilShadow)
-      {
-        // Shadows and layered polygons on separate bits: a shadow drawn first must not keep the layered polygons
-        // of what it lies under from being drawn (the cars of Sega Rally 2), nor the reverse. Each shadowed pixel
-        // is darkened once
-        if (Model.stencilShadow)
-        {
-          glStencilFunc(GL_NOTEQUAL, 0x80, 0x80);       // passes if the shadow bit is clear
-          glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);    // then sets it, where the shadow is drawn
-          glStencilMask(0x80);
-        }
-        else
-        {
-          glStencilFunc(GL_EQUAL, 0, 0x7F);             // passes if no layered polygon was drawn there
-          glStencilOp(GL_KEEP, GL_KEEP, GL_INCR);       // counts it where drawn, not where hidden (as New3D)
-          glStencilMask(0x7F);
-        }
-        stencilShadow = Model.stencilShadow;
+        SetStencilMode(modelStencilMode);
+        stencilMode = modelStencilMode;
       }
       if (Model.frontFace == -GL_CW)
       {
@@ -344,13 +369,13 @@ void CLegacy3D::DrawDisplayList(ModelCache *Cache, POLY_STATE state)
 // Appends an instance of a model or viewport to the display list, copying over the required state information
 Result CLegacy3D::AppendDisplayList(ModelCache *Cache, bool isViewport, const struct VBORef *Model)
 {
-  if ((Cache->listSize+2) > Cache->maxListSize) // a model may have 2 states (viewports are added to both display lists)
+  if ((Cache->listSize+NUM_POLY_STATES) > Cache->maxListSize) // a model may have all states (viewports are added to all display lists)
     return Result::FAIL;
     //return ErrorLog("Display list is full.");
-  
+
   // Insert states into the display list
   size_t lm = 0;
-  for (size_t i = 0; i < 2; i++)
+  for (size_t i = 0; i < NUM_POLY_STATES; i++)
   {
     if (isViewport)
     {
@@ -383,7 +408,6 @@ Result CLegacy3D::AppendDisplayList(ModelCache *Cache, bool isViewport, const st
       Cache->List[lm].Data.Model.numVerts = Model->numVerts[i];
 
       // Misc. parameters
-      Cache->List[lm].Data.Model.useStencil = Model->useStencil;
       Cache->List[lm].Data.Model.stencilShadow = Model->stencilShadow;
       
       // Copy modelview matrix
@@ -463,7 +487,7 @@ Result CLegacy3D::AppendDisplayList(ModelCache *Cache, bool isViewport, const st
 void CLegacy3D::ClearDisplayList(ModelCache *Cache)
 {
   Cache->listSize = 0;
-  for (size_t i = 0; i < 2; i++)
+  for (size_t i = 0; i < NUM_POLY_STATES; i++)
   {
     Cache->ListHead[i] = NULL;
     Cache->ListTail[i] = NULL;
@@ -475,7 +499,7 @@ void CLegacy3D::ClearDisplayList(ModelCache *Cache)
  Model Caching
  
  Note that as vertices are inserted into the appropriate local vertex buffer
- (sorted by polygon state -- alpha and normal), the VBO index is advanced to 
+ (sorted by polygon state -- alpha and normal, layered or not), the VBO index is advanced to 
  reserve space and does not correspond to the actual position of each vertex.
  Vertices are copied in batches sorted by state when the model is complete.
 ******************************************************************************/
@@ -777,13 +801,12 @@ void CLegacy3D::InsertVertex(ModelCache *Cache, const Vertex *V, const Poly *P, 
    * cause pixels to be discarded entirely on Model 3 (no modification of the
    * depth buffer). Strictly speaking, only T1RGB5 format textures are
    * "contour textures" (in Real3D lingo), we enable contour processing for
-   * alpha blended texture formats as well in order to discard fully
-   * transparent pixels.
+   * textures with alpha enabled (header word 6 bits 0-2) as well in order to
+   * discard fully transparent pixels. Without either, as New3D, texture alpha
+   * is ignored.
    */
   GLfloat contourProcessing = -1.0f;
-  if ((P->header[6]&0x80000000) || (texFormat==7) ||  // contour processing enabled or RGBA4 texture
-    ((texFormat==1) && (P->header[6]&2)) ||     // A4L4 interleaved (these formats are not being interpreted correctly, see Scud Race clock tower)
-    ((texFormat==3) && (P->header[6]&4)))     // A4L4 interleaved
+  if ((P->header[6]&0x80000000) || (P->header[6]&7))  // contour processing or texture alpha enabled
     contourProcessing = 1.0f;
 
 #ifdef DEBUG
@@ -961,38 +984,39 @@ struct VBORef *CLegacy3D::BeginModel(ModelCache *Cache)
   struct VBORef *Model = &(Cache->Models[m]);
   
   // Reset to the beginning of the local vertex buffer
-  for (size_t i = 0; i < 2; i++)
+  for (size_t i = 0; i < NUM_POLY_STATES; i++)
     Cache->curVertIdx[i] = 0;
-  
+
   // Clear the VBO reference to 0 and clear texture references
   Model->Clear();
-  
-  // Record starting index of first opaque polygon in VBO (alpha poly index will be re-set in EndModel())
+
+  // Record starting index of first opaque polygon in VBO (the other states' indices will be set in EndModel())
   Model->index[POLY_STATE_NORMAL] = Cache->vboCurOffset/(VBO_VERTEX_SIZE*sizeof(GLfloat));
-  Model->index[POLY_STATE_ALPHA] = Model->index[POLY_STATE_NORMAL];
-  
+
   return Model;
 }
 
 // Uploads all vertices from the local vertex buffer to the VBO, sets up the VBO reference, updates the LUT
-void CLegacy3D::EndModel(ModelCache *Cache, struct VBORef *Model, int lutIdx, UINT16 textureOffsetState, bool useStencil, bool stencilShadow)
+void CLegacy3D::EndModel(ModelCache *Cache, struct VBORef *Model, int lutIdx, UINT16 textureOffsetState, bool stencilShadow)
 {
   int m = Cache->numModels++;
 
   // Record the number of vertices, completing the VBORef
-  for (size_t i = 0; i < 2; i++)
+  for (size_t i = 0; i < NUM_POLY_STATES; i++)
     Model->numVerts[i] = Cache->curVertIdx[i];
 
-  // First alpha polygon immediately follows the normal polygons
-  Model->index[POLY_STATE_ALPHA] = Model->index[POLY_STATE_NORMAL] + Model->numVerts[POLY_STATE_NORMAL];
+  // Each state's first polygon immediately follows the previous state's polygons
+  for (size_t i = 1; i < NUM_POLY_STATES; i++)
+    Model->index[i] = Model->index[i-1] + Model->numVerts[i-1];
 
   // Upload from local vertex buffer to real VBO
   glBindBuffer(GL_ARRAY_BUFFER, Cache->vboID);
-  if (Model->numVerts[POLY_STATE_NORMAL] > 0)
-    glBufferSubData(GL_ARRAY_BUFFER, Model->index[POLY_STATE_NORMAL]*VBO_VERTEX_SIZE*sizeof(GLfloat), Cache->curVertIdx[POLY_STATE_NORMAL]*VBO_VERTEX_SIZE*sizeof(GLfloat), Cache->verts[POLY_STATE_NORMAL]);
-  if (Model->numVerts[POLY_STATE_ALPHA] > 0)
-    glBufferSubData(GL_ARRAY_BUFFER, Model->index[POLY_STATE_ALPHA]*VBO_VERTEX_SIZE*sizeof(GLfloat), Cache->curVertIdx[POLY_STATE_ALPHA]*VBO_VERTEX_SIZE*sizeof(GLfloat), Cache->verts[POLY_STATE_ALPHA]);
-    
+  for (size_t i = 0; i < NUM_POLY_STATES; i++)
+  {
+    if (Model->numVerts[i] > 0)
+      glBufferSubData(GL_ARRAY_BUFFER, Model->index[i]*VBO_VERTEX_SIZE*sizeof(GLfloat), Cache->curVertIdx[i]*VBO_VERTEX_SIZE*sizeof(GLfloat), Cache->verts[i]);
+  }
+
   // Record LUT index in the model VBORef
   Model->lutIdx = lutIdx;
   
@@ -1000,8 +1024,7 @@ void CLegacy3D::EndModel(ModelCache *Cache, struct VBORef *Model, int lutIdx, UI
   Model->textureOffsetState = textureOffsetState;
   Model->colorTableAddr = m_colorTableAddr;
   
-  // Should we use stencil?
-  Model->useStencil = useStencil;
+  // Should we use the shadows' stencil?
   Model->stencilShadow = stencilShadow;
   
   // Update the LUT and link up to any existing model that already exists here
@@ -1036,7 +1059,6 @@ struct VBORef *CLegacy3D::CacheModel(ModelCache *Cache, int lutIdx, UINT16 textu
   // Clear the shared vertices. If the first polygon of a model has a shared
   // vertex bit, it reads this array before a polygon writes it.
   Vertex    Prev[4] = {};  // previous vertices
-  bool      useStencil = true;
   bool      allShadows = true;  // all polygons probably shadows
   bool      done = false;
   while (!done)
@@ -1067,41 +1089,30 @@ struct VBORef *CLegacy3D::CacheModel(ModelCache *Cache, int lutIdx, UINT16 textu
     int texBaseY = GetTextureBaseY(&P);    
     GLfloat uvScale   = (P.header[1]&0x40)?1.0f:(1.0f/8.0f);
     
-    // Determine whether this is an alpha polygon (TODO: when testing textures, test if texturing enabled? Might not matter)
+    // Determine whether this is an alpha polygon: translucent, or with texture alpha enabled (header word 6 bits 0-2,
+    // as New3D, whatever the texture format: an RGBA4 texture without them is opaque)
     int isTranslucent = (P.header[6] & 0x00800000) == 0;
-    if (isTranslucent ||
-      (texFormat==7) ||   // RGBA4 texture
-      (texFormat==4))     // A4L4 texture
+    bool textureAlpha = texEnable && (P.header[6] & 7) != 0;
+    if (isTranslucent || textureAlpha)
       P.state = POLY_STATE_ALPHA;
     else
       P.state = POLY_STATE_NORMAL;
-    if (texFormat==1)             // A4L4 interleaved
-    {
-      if ((P.header[6]&2))
-        P.state = POLY_STATE_ALPHA;
-      else
-        P.state = POLY_STATE_NORMAL;
-    }
-    if (texFormat==3)           // A4L4 interleaved
-    {
-      if ((P.header[6]&4))
-        P.state = POLY_STATE_ALPHA;
-      else
-        P.state = POLY_STATE_NORMAL;
-    } 
       
-    // Layered polygons are implemented with a stencil buffer. Here, we also
-    // include a hack to detect likely shadow polygons. When not implemented as
-    // layered polygons, games use translucent polygons (which on the actual
-    // hardware are implemented with stipple) without texturing or lighting.
-    // Usually they are also black with the annoying exception of Spikeout.
+    // Layered polygons are implemented with a stencil buffer and a depth bias,
+    // in their own states, polygon by polygon (a model can mix layered and
+    // other polygons). Here, we also include a hack to detect likely
+    // shadow polygons. When not implemented as layered polygons, games use
+    // translucent polygons (which on the actual hardware are implemented with
+    // stipple) without texturing or lighting. Usually they are also black with
+    // the annoying exception of Spikeout.
     // TODO: If this hack is too permissive and breaks anything, we should make
     // it a config option.
     int isLayered = P.header[6] & 0x8;
     int isLightDisabled = P.header[6] & 0x00010000;
     bool isProbablyShadow = isLightDisabled && isTranslucent && !texEnable;
-    useStencil &= (isLayered || isProbablyShadow);
     allShadows &= isProbablyShadow;
+    if (isLayered)
+      P.state = (P.state == POLY_STATE_ALPHA) ? POLY_STATE_ALPHA_LAYERED : POLY_STATE_NORMAL_LAYERED;
     
     // Decode the texture
     if (texEnable)
@@ -1177,7 +1188,7 @@ struct VBORef *CLegacy3D::CacheModel(ModelCache *Cache, int lutIdx, UINT16 textu
   }
   
   // Finish model and enter it into the LUT
-  EndModel(Cache, Model, lutIdx, textureOffsetState, useStencil, useStencil && allShadows);
+  EndModel(Cache, Model, lutIdx, textureOffsetState, allShadows);
   return Model;
 }
 
@@ -1215,7 +1226,7 @@ struct VBORef *CLegacy3D::LookUpModel(ModelCache *Cache, int lutIdx, UINT16 text
 void CLegacy3D::ClearModelCache(ModelCache *Cache)
 {
   Cache->vboCurOffset = 0;
-  for (size_t i = 0; i < 2; i++)
+  for (size_t i = 0; i < NUM_POLY_STATES; i++)
     Cache->curVertIdx[i] = 0;
   for (size_t i = 0; i < Cache->numModels; i++)
     Cache->lut[Cache->Models[i].lutIdx] = -1;
@@ -1276,7 +1287,7 @@ Result CLegacy3D::CreateModelCache(ModelCache *Cache, unsigned vboMaxVerts,
   Cache->vboCurOffset = 0;
   
   // Attempt to allocate space for local VBO
-  for (size_t i = 0; i < 2; i++)
+  for (size_t i = 0; i < NUM_POLY_STATES; i++)
   {
     Cache->verts[i] = new(std::nothrow) GLfloat[localMaxVerts*VBO_VERTEX_SIZE];
     Cache->curVertIdx[i] = 0;
@@ -1298,7 +1309,10 @@ Result CLegacy3D::CreateModelCache(ModelCache *Cache, unsigned vboMaxVerts,
   Cache->maxListSize = displayListSize;
   
   // Check if memory allocation succeeded
-  if ((Cache->verts[0]==NULL) || (Cache->verts[1]==NULL) || (Cache->Models==NULL) || (Cache->lut==NULL) || (Cache->List==NULL))
+  bool localVertsAllocated = true;
+  for (size_t i = 0; i < NUM_POLY_STATES; i++)
+    localVertsAllocated &= (Cache->verts[i] != NULL);
+  if (!localVertsAllocated || (Cache->Models==NULL) || (Cache->lut==NULL) || (Cache->List==NULL))
   {
     DestroyModelCache(Cache);
     return ErrorLog("Insufficient memory for model cache.");
@@ -1316,7 +1330,7 @@ void CLegacy3D::DestroyModelCache(ModelCache *Cache)
 {
   glDeleteBuffers(1, &(Cache->vboID));
 
-  for (size_t i = 0; i < 2; i++)
+  for (size_t i = 0; i < NUM_POLY_STATES; i++)
   {
     delete [] Cache->verts[i];
   }

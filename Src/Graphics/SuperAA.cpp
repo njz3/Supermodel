@@ -2,10 +2,11 @@
 #include <algorithm>
 #include <string>
 
-SuperAA::SuperAA(int aaValue, CRTcolor CRTcolors, bool forceTarget) :
+SuperAA::SuperAA(int aaValue, CRTcolor CRTcolors, bool forceTarget, bool depthStencil) :
 	m_aa(aaValue),
 	m_crtcolors(CRTcolors),
 	m_forceTarget(forceTarget),
+	m_depthStencil(depthStencil),
 	m_vao(0),
 	m_width(0),
 	m_height(0),
@@ -300,7 +301,7 @@ void SuperAA::Init(int width, int height)
 	if (UsesTarget()) {
 		CreateShader();
 		m_fbo.Destroy();
-		m_fbo.Create(width * m_aa, height * m_aa);
+		m_fbo.Create(width * m_aa, height * m_aa, m_depthStencil);
 		if (m_present && m_forceTarget) {
 			m_windowFbo.Create(m_windowWidth, m_windowHeight);
 		}

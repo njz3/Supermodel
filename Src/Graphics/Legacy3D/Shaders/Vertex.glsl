@@ -34,6 +34,7 @@ uniform vec3	lighting[2];		// lighting state (lighting[0] = sun direction, light
 uniform vec4	spotEllipse;		// spotlight ellipse position: .x=X position (normalized device coordinates), .y=Y position, .z=half-width, .w=half-height)
 uniform vec2	spotRange;			// spotlight Z range: .x=start (viewspace coordinates), .y=limit
 uniform vec3	spotColor;			// spotlight RGB color
+uniform float	layerDepthBias;		// layered polygons: depth as if 1+layerDepthBias times closer
 
 // Custom vertex attributes
 attribute vec4	subTexture;		// .x=texture X, .y=texture Y, .z=texture width, .w=texture height (all in texels)
@@ -88,6 +89,7 @@ void main(void)
 	
 	// Transform vertex
 	gl_Position = projectionMatrix * modelViewMatrix * gl_Vertex;
+	gl_Position.z += projectionMatrix[3][2] * layerDepthBias;	// the near plane term, 1+layerDepthBias times
 	viewVertex = vec3(modelViewMatrix * gl_Vertex);	
 	
 	/*

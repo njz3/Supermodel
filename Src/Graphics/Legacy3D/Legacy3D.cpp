@@ -373,6 +373,9 @@ void CLegacy3D::DecodeTexture(int format, int x, int y, int width, int height)
   texSheet->texFormat[y/32][x/32] = format;
   texSheet->texWidth[y/32][x/32] = width;
   texSheet->texHeight[y/32][x/32] = height;
+  for (int yi = y/32; yi <= (y+height-1)/32; yi++)
+    for (int xi = x/32; xi <= (x+width-1)/32; xi++)
+      texSheet->texOwner[yi][xi] = (INT16) ((y/32)*64 + x/32);
 }
 
 // Signals that new textures have been uploaded. Flushes model caches. Be careful not to exceed bounds!
@@ -400,6 +403,15 @@ void CLegacy3D::UploadTextures(unsigned level, unsigned x, unsigned y, unsigned 
         texSheets[texSheet].texFormat[yi][xi] = -1;
         texSheets[texSheet].texWidth[yi][xi] = -1;
         texSheets[texSheet].texHeight[yi][xi] = -1;
+
+        // The texture decoded over this tile is checked at its first tile only: invalidate that one too (an upload
+        // into its other tiles left the old decode in use)
+        int owner = texSheets[texSheet].texOwner[yi][xi];
+        if (owner >= 0)
+        {
+          texSheets[texSheet].texFormat[owner/64][owner%64] = -1;
+          texSheets[texSheet].texOwner[yi][xi] = -1;
+        }
       }
     }
   }
@@ -627,24 +639,24 @@ static bool IsDynamicModel(const UINT32 *data)
   if (data == NULL)
     return false;
   static constexpr unsigned sharedVerts[16] = { 0,1,1,2,1,2,2,3,1,2,2,3,2,3,3,4 };
-  // VROM models are only dynamic if they reference polygon RAM via color palette indices
+  // VROM models are only dynamic if they reference polygon RAM via color palette indices. All polygons up to the
+  // last one, as New3D: stopping at a header whose word 6 is 0 could miss a color table reference further on and
+  // cache the model with the colors of its first instance
   bool done = false;
-  do
+  for (int count = 0; count < 0x10000 && !done; count++)  // the limit guards against a missing last polygon flag
   {
     // Check if polygon has color palette reference, if so polygon is dynamic and can return here
     if ((data[1]&2) == 0)
       return true;
-    if (data[6] == 0)
-      break;
     // Get number of vertices
     unsigned numVerts = (data[0]&0x40 ? 4 : 3);
     // Deduct number of reused verts
-    numVerts -= sharedVerts[data[0]&0xf];
+    unsigned shared = sharedVerts[data[0]&0xf];
+    numVerts = shared < numVerts ? numVerts - shared : 0;
     done = (data[1] & 4) > 0;
     // Skip header and vertices to next polygon
     data += 7 + numVerts * 4;
   }
-  while (!done);
   return false;
 }
 
@@ -693,10 +705,7 @@ Result CLegacy3D::DrawModel(UINT32 modelAddr)
     if (NULL == ModelRef)
     {
       // Model could not be cached. Render what we have so far and try again.
-      DrawDisplayList(&VROMCache, POLY_STATE_NORMAL);
-      DrawDisplayList(&PolyCache, POLY_STATE_NORMAL);
-      DrawDisplayList(&VROMCache, POLY_STATE_ALPHA);
-      DrawDisplayList(&PolyCache, POLY_STATE_ALPHA);
+      DrawDisplayLists();
       ClearModelCache(&VROMCache);
       ClearModelCache(&PolyCache);
       
@@ -885,12 +894,12 @@ void CLegacy3D::DescendPointerList(UINT32 addr)
   while (listEnd < 0x3FFF && !(list[listEnd] & 0x02000000))
     ++listEnd;
 
-  // Traverse the list backward and descend into each pointer, the order this engine has always drawn in. New3D's,
-  // forward, removes the sky panels Scud Race draws over its scenery here, but hides the cars of Sega Rally 2
-  for (; listEnd >= 0; --listEnd)
+  // Traverse the list forward and descend into each pointer, as New3D: it is the order translucent polygons are
+  // drawn in (with a depth buffer, Scud Race's sky panels and Sega Rally 2's cars are right this way)
+  for (int i = 0; i <= listEnd; i++)
   {
-    UINT32 nodeAddr = list[listEnd]&0x00FFFFFF;  // clear upper 8 bits to ensure this is processed as a culling node
-    if (!(list[listEnd]&0x01000000) && (nodeAddr != 0) && (nodeAddr != 0x800800))
+    UINT32 nodeAddr = list[i]&0x00FFFFFF;  // clear upper 8 bits to ensure this is processed as a culling node
+    if (!(list[i]&0x01000000) && (nodeAddr != 0) && (nodeAddr != 0x800800))
       DescendCullingNode(nodeAddr);
   }
 
@@ -1255,7 +1264,8 @@ void CLegacy3D::RenderFrame(void)
   DrawScrollFog(wideScreen);
 
   // Z buffering (Z buffer is cleared by display list viewport nodes)
-  glDepthFunc(GL_LESS);
+  // Of two polygons at the same depth, the one drawn last wins, as New3D (GEQUAL with its reversed depth)
+  glDepthFunc(GL_LEQUAL);
   glEnable(GL_DEPTH_TEST);
 
   // Stencil buffering
@@ -1307,10 +1317,7 @@ void CLegacy3D::RenderFrame(void)
     ClearDisplayList(&PolyCache);
     ClearDisplayList(&VROMCache);
     RenderViewport(0x800000,pri,wideScreen);
-    DrawDisplayList(&VROMCache, POLY_STATE_NORMAL);
-    DrawDisplayList(&PolyCache, POLY_STATE_NORMAL);
-    DrawDisplayList(&VROMCache, POLY_STATE_ALPHA);
-    DrawDisplayList(&PolyCache, POLY_STATE_ALPHA);
+    DrawDisplayLists();
   }
   glFrontFace(GL_CW);         // restore front face
   glDisable(GL_STENCIL_TEST); // make sure this is turned off
@@ -1532,6 +1539,7 @@ Result CLegacy3D::SetupGLObjects()
         memset(texSheets[sheetNum].texWidth, 0xFF, sizeof(texSheets[sheetNum].texWidth));
         memset(texSheets[sheetNum].texHeight, 0xFF, sizeof(texSheets[sheetNum].texHeight));
         memset(texSheets[sheetNum].texFormat, 0xFF, sizeof(texSheets[sheetNum].texFormat));
+        memset(texSheets[sheetNum].texOwner, 0xFF, sizeof(texSheets[sheetNum].texOwner));
     }
 
     // Assign Model3 texture formats to texture sheets (cannot just use default mapping as may have ended up with fewer
@@ -1552,6 +1560,7 @@ Result CLegacy3D::SetupGLObjects()
     spotEllipseLoc = glGetUniformLocation(shaderProgram, "spotEllipse");
     spotRangeLoc = glGetUniformLocation(shaderProgram, "spotRange");
     spotColorLoc = glGetUniformLocation(shaderProgram, "spotColor");
+    layerDepthBiasLoc = glGetUniformLocation(shaderProgram, "layerDepthBias");
 
     // Get locations of custom vertex attributes
     subTextureLoc = glGetAttribLocation(shaderProgram, "subTexture");
@@ -1644,7 +1653,7 @@ CLegacy3D::CLegacy3D(const Util::Config::Node &config)
   texSheets = NULL;
   
   // Clear model cache pointers so we can safely destroy them if init fails
-  for (int i = 0; i < 2; i++)
+  for (int i = 0; i < NUM_POLY_STATES; i++)
   {
     VROMCache.verts[i] = NULL;
     PolyCache.verts[i] = NULL;

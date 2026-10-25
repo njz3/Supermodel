@@ -1296,7 +1296,9 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
   uint64_t nextTime = 0;
 
   // Initialize the renderers
-  SuperAA* superAA = new SuperAA(aaValue, CRTcolors, Agent::Enabled());  // the agent reads the frames from its target
+  // The agent reads the frames from its target. Legacy3D draws straight into it: without depth and stencil buffers
+  // there, the last polygon drawn won (cars inside out, a livery under the hood it lies on)
+  SuperAA* superAA = new SuperAA(aaValue, CRTcolors, Agent::Enabled(), !s_runtime_config["New3DEngine"].ValueAs<bool>());
   IRender2D *Render2D = nullptr;
 #ifndef SUPERMODEL_OSX
   IRender3D *Render3D = s_runtime_config["New3DEngine"].ValueAs<bool>() ? ((IRender3D *) new New3D::CNew3D(s_runtime_config, Emu->GetGame().name)) : ((IRender3D *) new Legacy3D::CLegacy3D(s_runtime_config));

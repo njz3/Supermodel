@@ -41,11 +41,15 @@ namespace Legacy3D {
  Internal Definitions and Data Structures
 ******************************************************************************/
 
-// Model caches sort models by alpha (translucency) state
+// Model caches sort models by alpha (translucency) state, and layered polygons (decals) apart: they are drawn after
+// the others of their alpha state
 enum POLY_STATE
 {
 	POLY_STATE_NORMAL = 0,
-	POLY_STATE_ALPHA
+	POLY_STATE_ALPHA,
+	POLY_STATE_NORMAL_LAYERED,
+	POLY_STATE_ALPHA_LAYERED,
+	NUM_POLY_STATES
 };
 
 struct Vertex
@@ -68,28 +72,26 @@ struct Poly
 /*
  * VBORef:
  *
- * Reference to model polygons stored in a VBO. Each reference has two sets of
- * vertices: normal and alpha. Copies of the model with different texture
- * offsets applied are searchable via the linked list of texture offset states.
+ * Reference to model polygons stored in a VBO. Each reference has a set of
+ * vertices per polygon state: normal and alpha, layered or not. Copies of the
+ * model with different texture offsets applied are searchable via the linked
+ * list of texture offset states.
  *
- * Technically, a model may contain a mix of layered and non-layered polygons
- * but we can't support that level of granularity in the current engine. The 
- * useStencil flag is set only when all polygons in a model are layered, and
- * also may be set when we detect that a polygon is likely to be used as a
- * shadow. On the actual hardware, these are not stenciled but are most likely
- * implemented with stipple masks. We cheat here to make shadows look nicer.
+ * The stencilShadow flag is set when we detect that all polygons of a model
+ * are likely to be used as a shadow. On the actual hardware, these are not
+ * stenciled but are most likely implemented with stipple masks. We cheat here
+ * to make shadows look nicer.
  */
 
 struct VBORef
 {
-	unsigned index[2];		// index of model polygons in VBO
-	unsigned numVerts[2]; // number of vertices
+	unsigned index[NUM_POLY_STATES];    // index of model polygons in VBO
+	unsigned numVerts[NUM_POLY_STATES]; // number of vertices
 	unsigned lutIdx;      // LUT index associated with this model (for fast LUT clearing)
-	
+
 	VBORef *nextTextureOffsetState; // linked list of models with different texture offset states
 	uint16_t textureOffsetState;    // texture offset data for this model
 	UINT32 colorTableAddr;          // color table its colors were read from (dynamic models)
-	bool useStencil;                // whether to draw with stencil mask ("layered" polygons)
 	bool stencilShadow;             // all its polygons are probably shadows: its own stencil bit, not the layered ones'
 
 	CTextureRefs texRefs; // unique texture references contained in this model
@@ -107,9 +109,8 @@ struct VBORef
 		textureOffsetState = 0;
 		colorTableAddr = 0;
 		nextTextureOffsetState = NULL;
-		useStencil = false;
 		stencilShadow = false;
-		for (int i = 0; i < 2; i++)
+		for (int i = 0; i < NUM_POLY_STATES; i++)
 		{
 			index[i] = 0;
 			numVerts[i] = 0;
@@ -140,7 +141,6 @@ struct DisplayList
 		unsigned	index;					      // index in VBO
 		unsigned	numVerts;				      // number of vertices
 		GLint		  frontFace;				    // GL_CW (default), GL_CCW, or -GL_CW to indicate no culling
-		bool      useStencil;           // draw with stencil testing
 		bool      stencilShadow;        // with the shadows' stencil bit
 	};
 
@@ -150,7 +150,7 @@ struct DisplayList
 	  ModelInstance     Model;
 	  ViewportInstance  Viewport;
 	} Data;
-	DisplayList	*next;  // next display list item with the same state (alpha or non-alpha)
+	DisplayList	*next;  // next display list item with the same polygon state
 };
 
 /*
@@ -179,8 +179,8 @@ struct ModelCache
 	
 	// Local vertex buffers (enough for a single model)
 	unsigned	maxVertIdx;		// size of each local vertex buffer (in vertices)
-	unsigned	curVertIdx[2];	// current vertex index (in vertices)
-	GLfloat		*verts[2];
+	unsigned	curVertIdx[NUM_POLY_STATES];	// current vertex index (in vertices)
+	GLfloat		*verts[NUM_POLY_STATES];
 	
 	// Array of cached models
 	unsigned	maxModels;	// maximum number of models
@@ -202,8 +202,8 @@ struct ModelCache
 	unsigned	maxListSize;	// maximum number of display list items
 	unsigned	listSize;		// number of items in display list
 	DisplayList	*List;			// holds all display list items
-	DisplayList	*ListHead[2];	// heads of linked lists for each state
-	DisplayList	*ListTail[2];	// current tail node for each state
+	DisplayList	*ListHead[NUM_POLY_STATES];	// heads of linked lists for each state
+	DisplayList	*ListTail[NUM_POLY_STATES];	// current tail node for each state
 };
 
 struct TexSheet
@@ -225,6 +225,10 @@ struct TexSheet
 	int	 texWidth[2048/32][2048/32];
 	int	 texHeight[2048/32][2048/32];
 	INT8 texFormat[2048/32][2048/32];
+
+	// The tile at which the texture covering each tile was last decoded (y*64+x, -1 if none): an upload into any of
+	// its tiles must invalidate it, as only that tile is checked
+	INT16 texOwner[2048/32][2048/32];
 };
 
 /******************************************************************************
@@ -406,6 +410,7 @@ private:
 	
 	// Model caching and display list management
 	void 			DrawDisplayList(ModelCache *Cache, POLY_STATE state);
+	void			DrawDisplayLists(void);
 	Result 			AppendDisplayList(ModelCache *Cache, bool isViewport, const struct VBORef *Model);
 	void 			ClearDisplayList(ModelCache *Cache);
 	int				GetTextureBaseX(const Poly *P) const;
@@ -413,7 +418,7 @@ private:
 	Result 			InsertPolygon(ModelCache *cache, const Poly *p);
 	void 			InsertVertex(ModelCache *cache, const Vertex *v, const Poly *p, float normFlip);
 	struct VBORef	*BeginModel(ModelCache *cache);
-	void			EndModel(ModelCache *cache, struct VBORef *Model, int lutIdx, UINT16 textureOffsetState, bool useStencil, bool stencilShadow);
+	void			EndModel(ModelCache *cache, struct VBORef *Model, int lutIdx, UINT16 textureOffsetState, bool stencilShadow);
 	struct VBORef	*CacheModel(ModelCache *cache, int lutIdx, UINT16 textureOffsetState, const UINT32 *data);
 	struct VBORef	*LookUpModel(ModelCache *cache, int lutIdx, UINT16 textureOffsetState);
 	void 			ClearModelCache(ModelCache *cache);
@@ -506,11 +511,12 @@ private:
 	  int y;          // y offset (wraps within 2048x1023 texel bank)
 	  int switchBank; // 0: use bank from polygon header, 1024: swap banks
 	  uint16_t state; // x, y, and bank states compromise a unique key
+	  // X in bits 7-12 and Y in bits 0-4, as New3D: with 7 bits each, other bits set there would move the texture
 	  TextureOffset(uint32_t data)
-	    : x(32 * ((data >> 7) & 0x7F)),
-	      y(32 * (data & 0x7F)),
+	    : x(32 * ((data >> 7) & 0x3F)),
+	      y(32 * (data & 0x1F)),
 	      switchBank((data & 0x4000) >> 4),
-	      state(data & 0x7FFF)
+	      state(data & 0x5F9F)
 	  {}
 	  TextureOffset()
 	    : x(0),
@@ -549,6 +555,7 @@ private:
 	GLint	spotEllipseLoc;			// uniform
 	GLint	spotRangeLoc;			// uniform
 	GLint	spotColorLoc;			// uniform
+	GLint	layerDepthBiasLoc;		// uniform
 	GLint	subTextureLoc;			// attribute
 	GLint	texParamsLoc;			// attribute
 	GLint	texFormatLoc;			// attribute
