@@ -3098,12 +3098,22 @@ int main(int argc, char **argv)
     }
   }
 
-  // Initialize outputs
+  // Initialize outputs. If they cannot start (the network outputs' TCP port taken by another program, often another
+  // Supermodel), the game runs without them, once the user has been told: a message box until OK is clicked, a
+  // warning in the log only in agent mode, which another program drives
   if (Outputs != NULL && !Outputs->Initialize())
   {
-    ErrorLog("Unable to initialize outputs.\n");
-    exitCode = 1;
-    goto Exit;
+    std::string outputs = s_runtime_config["Outputs"].ValueAs<std::string>();
+    std::string message = outputs == "net"
+      ? Util::Format() << "The network outputs could not start: TCP port " << s_runtime_config["OutputsTCPPort"].ValueAs<unsigned>()
+        << " is already in use, perhaps by another Supermodel or another program.\n\n"
+           "The game will run without network outputs (lamps, force feedback and other outputs sent over the network)."
+      : Util::Format() << "The outputs (" << outputs << ") could not start.\n\nThe game will run without outputs.";
+    ErrorLog("Unable to initialize outputs: running without them.");
+    if (!Agent::Enabled())
+      SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_WARNING, "Supermodel: outputs unavailable", message.c_str(), s_window);
+    delete Outputs;
+    Outputs = NULL;
   }
 
   // Network server: for the net board, and for the programs that connect to

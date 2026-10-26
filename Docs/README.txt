@@ -1968,7 +1968,9 @@ All settings are case sensitive.
 
     Description:    When using 'net' option for 'Outputs', this setting determines the
                     TCP port to use for network messages. Can only be set in 'Global'
-                    section.
+                    section.  If the port is already in use (by another
+                    Supermodel, for instance), a message says so and the game
+                    runs without network outputs once OK is clicked.
 
     ----------------
 
