@@ -188,7 +188,7 @@ void CTileGen::SetCPUClock(unsigned hz)
 	m_busClock = (hz + 1000000) / 2000000;	// 16 * hz / 32 MHz
 	if (m_busClock == 0)
 		m_busClock = 1;
-	m_busWriteGap = (63 * m_busClock + 5) / 10;	// 6.3 clocks
+	m_busWriteGap = (63 * m_busClock + 2) / 5;	// 12.6 clocks
 }
 
 void CTileGen::BeginBusLine(UINT64 cpuCycle)
@@ -223,9 +223,10 @@ int CTileGen::BusAccessCycles(UINT64 cpuCycle, bool write, bool tileRAM)
 		}
 	}
 
-	// The chip takes one write every ~6.3 clocks; a read takes 4 clocks
+	// Palette RAM takes one write every ~6.3 pixels (12.6 clocks); tile RAM, outside the fetch slots, one access (4
+	// clocks), as does a read
 	const UINT64 end = start + 4 * clk;
-	m_busFree = start + (write ? m_busWriteGap : 4 * clk);
+	m_busFree = start + (write && !tileRAM ? m_busWriteGap : 4 * clk);
 
 	const UINT64 waitUntil = write ? start : end;
 	return waitUntil > now ? (int)((waitUntil - now + 15) / 16) : 0;

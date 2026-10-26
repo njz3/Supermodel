@@ -475,18 +475,31 @@ dessinée ligne par ligne. À une écriture tous les ~6,3 pixels (12,6 cycles de
 leur texte. Pas en cause : la limite d'un créneau par paire de tuiles pendant les lignes actives (la lever ne suffit
 pas), les accès 64 ou 16 bits (toutes ces écritures sont en 32 bits).
 
-**Changé** (`TileGen.cpp/.h`) : l'écart minimal entre deux écritures est de **6,3 cycles de la RAM (~3,15 pixels)**
-au lieu de 12,6. Les 8 192 écritures tiennent dans le blanking ; l'écran est complet (849 pixels de texte dans le
-bandeau du haut, autant que sans le modèle). Hypothèse : une confusion d'unités dans le modèle (« ~6,3 pixels » pour
-6,3 cycles) ; la source de la mesure n'est pas connue ici.
+**Changé** (`TileGen.cpp/.h`), en deux temps :
+- d'abord (`8d4bbb5`) l'écart entre deux écritures divisé par deux, 6,3 cycles au lieu de 12,6, pour la palette comme
+  pour les tuiles : l'écran est complet, mais gm_matthew, qui a mesuré le matériel, est formel : c'est bien ~6,3
+  pixels ;
+- puis, d'après ses précisions, **l'écart mesuré pour la seule RAM de palette** (12,6 cycles, comme upstream) et
+  **un accès de 4 cycles pour une écriture en RAM de tuiles**, la limite d'un créneau par paire de tuiles pendant
+  les lignes actives gardée. Sa mesure porte sur la palette : la neige d'une mise à jour de toute la palette sur
+  Daytona 2, des points espacés de 6 à 7 pixels ; la palette (deux SRAM de 8 bits, 16 bits de large ; le tilegen
+  ignore les 16 bits du haut des écritures du PowerPC) est lue deux fois par pixel affiché, une fois par couche,
+  et une écriture ne passe qu'entre ces lectures. La RAM de tuiles (SGRAM de 32 bits), à la même horloge de 32 MHz,
+  n'est lue que par paquets, et pas du tout pendant le blanking. Reste à confirmer avec gm_matthew que la limite de
+  6,3 pixels vient bien de la RAM de palette et non du chemin d'écriture de la puce (qui vaudrait alors pour les
+  deux).
 
-**Le doute sur la palette** : `0d1dd3d` dit corriger « les versions de Scud à la palette cassée » (la palette n'est
-envoyée qu'en vblank, d'après un fil du forum Supermodel, injoignable le 26 octobre). Ce cas n'a **pas été
-reproduit** : l'attract des six versions (scud, scudau, scuddx, scuddxo, scudplus, scudplusa ; les TWIN passées en
-LINK ID SINGLE par le menu de test) est identique avec et sans le modèle ; le menu de test de scudau a un fond blanc
-dans toutes les builds, quel que soit l'écart (ce n'est donc pas ce cas). **À vérifier** quand on saura quelle
-version et quel écran : qu'à 6,3 cycles la palette reste juste. Sinon, chercher plutôt du côté du moment où le jeu
-commence son travail (l'IRQ2 à la ligne 383 est une hypothèse de Supermodel, reprise de System 24).
+**Vérifié le 26 octobre**, avec la palette à 12,6 cycles et les tuiles à 4 cycles :
+- **scud, GAME ASSIGNMENTS** : complet (849 pixels de texte dans le bandeau du haut, autant que sans le modèle) ;
+- **scuddx, le HUD au rolling start** en début de partie (le cas de palette cassée indiqué par le propriétaire) :
+  sans le modèle (`d6706f9`), blocs gris et couleurs fausses à la place du compte à rebours, de la vitesse et de la
+  position ; avec le modèle d'upstream, à 6,3 cycles et avec la séparation, juste et identique (partie lancée en
+  mode agent : pièce, START, menus) ;
+- **la petite voiture de l'attract en link** (deux bornes au moins ; environ 2 min 15 après le début de l'attract,
+  elle arrive en bas à droite et pousse le logo SEGA vers la gauche, à plusieurs reprises pendant une dizaine de
+  secondes) : identique avec le modèle d'upstream, à 6,3 cycles et avec la séparation ; deux instances reliées en
+  anneau sur 127.0.0.1 (MASTER et SLAVE, `-net`, en temps réel ; le lien rate parfois, il faut relancer). L'état sans
+  le modèle n'a pas pu être vu : `d6706f9` ne se relie pas dans ce montage.
 
 **Les sorties réseau** (`Main.cpp`, `Docs/README.txt`) : si elles ne démarrent pas (le port TCP déjà pris, souvent
 par un autre Supermodel), Supermodel ne s'arrête plus en silence : une boîte d'avertissement l'explique et attend OK,
