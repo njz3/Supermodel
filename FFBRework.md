@@ -460,6 +460,39 @@ sm2-emu (`m2ffb` / `m2ffb_rx` chez lui).
 Le Mans en TWIN-NORMAL avec une EPR-18261 (les octets de Scud, Daytona 2 ou Sega Rally 2 ne sont pas ceux d'une
 EPR-18261). Aucun essai moteur sans le propriétaire à la borne.
 
+### 2.15 Le temps d'accès au tilegen et l'écran GAME ASSIGNMENTS de Scud ; les sorties réseau (26 octobre)
+
+**Le symptôme** (propriétaire, release `ace06bc`) : dans Scud Race, menu de test > GAME ASSIGNMENTS, le haut de
+l'écran manque : le titre, LINK ID et CAR NUMBER, et CABINET TYPE coupé à mi-hauteur. Complet avec `d6706f9`.
+
+**La cause, prouvée** : le commit d'upstream `0d1dd3d` (fusionné par `ace06bc`), le temps d'accès du PowerPC à la
+RAM du tilegen (findings de gm_matthew) ; la même build sans lui donne l'écran complet. Mesuré (trace temporaire,
+retirée) : cet écran réécrit **8 192 mots de 32 bits à chaque image**, les tables de noms entières des 4 couches.
+Supermodel lève l'IRQ2 au début de la ligne 383 : il reste 41 lignes de blanking avant que la couche 2D soit
+dessinée ligne par ligne. À une écriture tous les ~6,3 pixels (12,6 cycles de la RAM à 32 MHz), seules 4 165
+écritures tiennent dans le blanking ; les 4 146 autres tombent sur les lignes 0 à ~76, que le balayage dessine avant
+leur texte. Pas en cause : la limite d'un créneau par paire de tuiles pendant les lignes actives (la lever ne suffit
+pas), les accès 64 ou 16 bits (toutes ces écritures sont en 32 bits).
+
+**Changé** (`TileGen.cpp/.h`) : l'écart minimal entre deux écritures est de **6,3 cycles de la RAM (~3,15 pixels)**
+au lieu de 12,6. Les 8 192 écritures tiennent dans le blanking ; l'écran est complet (849 pixels de texte dans le
+bandeau du haut, autant que sans le modèle). Hypothèse : une confusion d'unités dans le modèle (« ~6,3 pixels » pour
+6,3 cycles) ; la source de la mesure n'est pas connue ici.
+
+**Le doute sur la palette** : `0d1dd3d` dit corriger « les versions de Scud à la palette cassée » (la palette n'est
+envoyée qu'en vblank, d'après un fil du forum Supermodel, injoignable le 26 octobre). Ce cas n'a **pas été
+reproduit** : l'attract des six versions (scud, scudau, scuddx, scuddxo, scudplus, scudplusa ; les TWIN passées en
+LINK ID SINGLE par le menu de test) est identique avec et sans le modèle ; le menu de test de scudau a un fond blanc
+dans toutes les builds, quel que soit l'écart (ce n'est donc pas ce cas). **À vérifier** quand on saura quelle
+version et quel écran : qu'à 6,3 cycles la palette reste juste. Sinon, chercher plutôt du côté du moment où le jeu
+commence son travail (l'IRQ2 à la ligne 383 est une hypothèse de Supermodel, reprise de System 24).
+
+**Les sorties réseau** (`Main.cpp`, `Docs/README.txt`) : si elles ne démarrent pas (le port TCP déjà pris, souvent
+par un autre Supermodel), Supermodel ne s'arrête plus en silence : une boîte d'avertissement l'explique et attend OK,
+puis le jeu tourne sans sorties ; en mode agent, l'avertissement va seulement au journal. Vérifié le port 8000 tenu
+par un autre programme : le jeu démarre en mode agent ; en mode normal, la boîte « Supermodel: outputs unavailable »
+attend.
+
 ## 3. Les essais
 
 ### 3.1 Le banc

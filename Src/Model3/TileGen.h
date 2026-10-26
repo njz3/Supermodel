@@ -257,7 +257,12 @@ public:
 	 *
 	 * The tile generator RAM (Samsung KM4132G271A) runs at 32 MHz, twice the 16 MHz pixel clock. An access takes 4
 	 * clocks (row, column, wait, data). The tile generator chip accepts one write to tile RAM or palette RAM every
-	 * ~6.3 pixels. On each active line it generates 512 pixels (496 visible) as 32 tile pairs of 32 clocks: 28
+	 * ~6.3 clocks (~3.15 pixels). Taken first as ~6.3 pixels (12.6 clocks): then Scud Race's test screens, which
+	 * rewrite the four layers' name tables (8192 words) in each vertical blanking, ran over into the display and
+	 * lost their top lines (GAME ASSIGNMENTS: its title, LINK ID and CAR NUMBER); at 6.3 clocks they fit, as without
+	 * the timing. Whether the palette fix below still holds at this rate is not checked: no broken palette was seen
+	 * without the timing either (attract mode of the six versions). On each active line it generates 512 pixels (496
+	 * visible) as 32 tile pairs of 32 clocks: 28
 	 * clocks fetch the next tile pair (16 pixels) of layers A and B, leaving one 4-clock slot for the PowerPC, so
 	 * tile RAM is slowed further to one access per 16 pixels. The remaining 144 pixels of the line (horizontal
 	 * blanking) are free. Some games rely on this: Scud Race queues its palette uploads at the rate it can write
@@ -352,7 +357,7 @@ private:
 
 	// Tile and palette RAM bus timing, in 1/16 PowerPC cycles (exact for 66, 100 and 166 MHz)
 	UINT64	m_busClock = 50;		// one VRAM clock
-	UINT64	m_busWriteGap = 630;	// minimum time between writes (~6.3 pixels = 12.6 clocks)
+	UINT64	m_busWriteGap = 315;	// minimum time between writes (~6.3 clocks = ~3.15 pixels)
 	UINT64	m_busFree = 0;			// when the next access can start
 	UINT64	m_busLineStart = 0;		// start of the active line
 	bool	m_busFetching = false;	// in the active part of the frame
