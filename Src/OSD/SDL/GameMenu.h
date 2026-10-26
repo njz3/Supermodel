@@ -26,7 +26,9 @@
  * setting and its companions, applied from the next frame on, and saving them
  * in the settings file in use or in the game's own file. Its Game page: the
  * game's description and its notes from Config/GameNotes.txt (region change
- * codes, special modes, cabinet setup). The game is paused while it is open.
+ * codes, special modes, cabinet setup). Its Outputs page: what the game sends
+ * on the outputs, with the values sent so far. The game is paused while it is
+ * open.
  */
 
 #ifndef INCLUDED_GAMEMENU_H
@@ -44,6 +46,7 @@ namespace Util
 }
 
 struct Game;
+class COutputs;
 
 namespace GameMenu
 {
@@ -57,12 +60,19 @@ namespace GameMenu
   enum class Page
   {
     Display,
-    Game
+    Game,
+    Outputs
   };
 
   // The game the Game page describes, and the file of the notes (read each time the menu opens: see GameNotes.txt
   // for its format)
   void SetGame(const Game &game, const std::string &notesFile);
+  // The outputs the Outputs page shows the values of (nullptr: none configured)
+  void SetOutputs(COutputs *outputs);
+  // The outputs table, as linuxloader shows it: what the game sends on the outputs (the network's and the Windows
+  // messages' names), with the values sent so far if outputs is given. inGame: the in-game menu's Outputs page, else
+  // the front-end's Misc tab, where no game runs
+  void DrawOutputsTable(const Util::Config::Node &config, const Game &game, COutputs *outputs, bool inGame);
 
   bool Open(SDL_Window *window);  // false if it cannot be shown
   void SelectPage(Page page);     // shown from the next frame

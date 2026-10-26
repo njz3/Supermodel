@@ -30,6 +30,7 @@
 
 #include "GameMenu.h"
 #include "Game.h"
+#include "OSD/Outputs.h"
 #include "Graphics/AspectRatio.h"
 #include "Util/NewConfig.h"
 #include "../Pkgs/imgui/imgui.h"
@@ -69,6 +70,10 @@ namespace GameMenu
     std::vector<std::string> s_noteNames;                     // the game's ROM set, then its parent's
     std::string s_notesFile;
     std::vector<Note> s_notes;
+
+    // The Outputs page
+    Game s_game;
+    COutputs *s_outputs = nullptr;
   }
 
   static std::string Trim(const std::string &s)
@@ -173,6 +178,12 @@ namespace GameMenu
     s_noteNames = { game.name, game.parent };
     s_notesFile = notesFile;
     s_notes.clear();
+    s_game = game;
+  }
+
+  void SetOutputs(COutputs *outputs)
+  {
+    s_outputs = outputs;
   }
 
   bool Open(SDL_Window *window)
@@ -276,6 +287,170 @@ namespace GameMenu
 
   static void DrawDisplayPage(Util::Config::Node &config);
 
+  // --- What the game sends on the outputs (CModel3::WriteInputs, CBillBoard, CNetOutputs), as linuxloader shows it
+
+  namespace
+  {
+    struct OutputLine
+    {
+      std::string name, type, meaning, value;
+    };
+
+    // The lamps each game lights on its lamp port (CModel3::WriteInputs, register 0x14), bit 0 first, as seen in its
+    // attract mode and in a race with each view button pressed in turn; nullptr: that bit never lit. A lamp's use is
+    // given only where it is known (the start lamp blinks with "press start", Daytona USA 2's VR buttons light their
+    // own); the others say where they lit. The games not listed were not checked: no lamp is shown for them
+    struct GameLamps
+    {
+      const char *game;   // the ROM set, or its clones' parent
+      const char *bits[8];
+    };
+
+    const char kStart[] = "Start button lamp";
+    const char kInAttract[] = "Lamp, lit in the attract mode";
+    const char kInRace[] = "Lamp, lit in the race";
+    const GameLamps kGameLamps[] =
+    {
+      { "daytona2", { nullptr, nullptr, kStart, "VR1 view button lamp", "VR2 view button lamp", "VR3 view button lamp", "VR4 view button lamp", kInAttract } },
+      { "dayto2pe", { nullptr, nullptr, kStart, "VR1 view button lamp", "VR2 view button lamp", "VR3 view button lamp", "VR4 view button lamp", kInAttract } },
+      { "scud",     { nullptr, nullptr, kStart, nullptr, nullptr, kInRace, nullptr, kInAttract } },
+      { "srally2",  { nullptr, nullptr, kStart, kInRace, nullptr, nullptr, nullptr, kInAttract } },
+      { "lemans24", { nullptr, nullptr, kStart, nullptr, nullptr, nullptr, nullptr, kInAttract } },
+      { "dirtdvls", { nullptr, nullptr, kStart, kInRace, nullptr, nullptr, nullptr, nullptr } },
+      { "eca",      { nullptr, nullptr, kStart, kInRace, kInRace, kInRace, kInRace, "Lamp" } },
+      { "harley",   { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, "Lamp, lit in the attract mode and the race" } },
+    };
+
+    // The lamp port's bits sent as outputs of their own
+    const EOutputs kLampOutputs[8] = { OutputUnknown, OutputUnknown, OutputLampStart, OutputLampView1, OutputLampView2,
+                                       OutputLampView3, OutputLampView4, OutputLampLeader };
+  }
+
+  static const GameLamps *FindGameLamps(const Game &game)
+  {
+    for (const GameLamps &lamps : kGameLamps)
+    {
+      if (game.name == lamps.game || game.parent == lamps.game)
+        return &lamps;
+    }
+    return nullptr;
+  }
+
+  void DrawOutputsTable(const Util::Config::Node &config, const Game &game, COutputs *outputs, bool inGame)
+  {
+    ImGui::TextUnformatted("What this game sends");
+    if (game.name.empty())
+    {
+      ImGui::TextDisabled("Select a game in the list to see its outputs.");
+      return;
+    }
+    const bool network = config["Outputs"].ValueAsDefault<std::string>("none") == "net";
+    auto value = [outputs](EOutputs output)
+    {
+      if (outputs == nullptr || !outputs->HasValue(output))
+        return std::string("-");
+      char text[8];
+      snprintf(text, sizeof(text), output == OutputM3ffb ? "%02X" : "%u", unsigned(outputs->GetValue(output)));
+      return std::string(text);
+    };
+
+    std::vector<OutputLine> lines;
+    lines.push_back({ "mame_start", "text", "The game's name, the first line a client gets", outputs ? game.name : "-" });
+    lines.push_back({ "tcp", "number", "The TCP port, in the UDP broadcast announce",
+                      outputs && network ? std::to_string(config["OutputsTCPPort"].ValueAsDefault<unsigned>(8000)) : "-" });
+    lines.push_back({ "pause", "0 or 1", "1 while the emulation is paused", value(OutputPause) });
+
+    // The cabinet's lamps, those this game lights
+    if (const GameLamps *lamps = FindGameLamps(game))
+    {
+      lines.push_back({ "RawLamps", "byte, 0 to 255", "The lamp port, one bit per lamp (the lines below)", value(OutputRawLamps) });
+      for (int bit = 2; bit < 8; bit++)
+      {
+        if (lamps->bits[bit])
+          lines.push_back({ COutputs::GetOutputName(kLampOutputs[bit]), "0 or 1",
+                            std::string(lamps->bits[bit]) + " (bit " + std::to_string(bit) + ")", value(kLampOutputs[bit]) });
+      }
+    }
+
+    // The drive board's commands, for a game that has one
+    const char *board = nullptr;
+    switch (game.driveboard_type)
+    {
+    case Game::DRIVE_BOARD_WHEEL:     board = "The force feedback board's commands"; break;
+    case Game::DRIVE_BOARD_JOYSTICK:  board = "The joystick board's commands"; break;
+    case Game::DRIVE_BOARD_SKI:       board = "The ski board's commands"; break;
+    case Game::DRIVE_BOARD_BILLBOARD: board = "The bill board's commands"; break;
+    default: break;
+    }
+    if (board)
+    {
+      lines.push_back({ "RawDrive", "byte, 0 to 255", std::string(board) + ", one line each, up to 4 per frame", value(OutputRawDrive) });
+      lines.push_back({ "m3ffb", "hex, 00 to FF", "The same byte in hexadecimal (BackForceFeeder's raw mode)", value(OutputM3ffb) });
+    }
+
+    // The fighting games' bill board: the win counters above the cabinet, 7-segment digits (bits hgfedcba, 0 lights)
+    if (game.driveboard_type == Game::DRIVE_BOARD_BILLBOARD)
+    {
+      lines.push_back({ "BillDigit1", "byte, 0 to 255", "Player 1's first digit (segments, 0 lights)", value(OutputBill1) });
+      lines.push_back({ "BillDigit2", "byte, 0 to 255", "Player 1's second digit (segments, 0 lights)", value(OutputBill2) });
+      lines.push_back({ "BillDigit3", "byte, 0 to 255", "Player 2's first digit (segments, 0 lights)", value(OutputBill3) });
+      lines.push_back({ "BillDigit4", "byte, 0 to 255", "Player 2's second digit (segments, 0 lights)", value(OutputBill4) });
+      lines.push_back({ "BillDigit5", "byte, 0 to 255", "Its lamps: bit 0 player 1, bit 1 player 2 (0 lights)", value(OutputBill5) });
+    }
+
+    lines.push_back({ "mame_stop", "1", "When the game exits", "-" });
+
+    const float height = ImGui::GetTextLineHeightWithSpacing() * 10.5f;
+    const ImGuiTableFlags flags = ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter |
+                                  ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_Resizable;
+    if (ImGui::BeginTable("##outputs", 4, flags, ImVec2(0.0f, height)))
+    {
+      ImGui::TableSetupScrollFreeze(0, 1);  // the header stays
+      ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed);
+      ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthFixed);
+      ImGui::TableSetupColumn("Meaning", ImGuiTableColumnFlags_WidthStretch);
+      ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthFixed);
+      ImGui::TableHeadersRow();
+      for (const OutputLine &line : lines)
+      {
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextUnformatted(line.name.c_str());
+        ImGui::TableSetColumnIndex(1);
+        ImGui::TextUnformatted(line.type.c_str());
+        ImGui::TableSetColumnIndex(2);
+        ImGui::TextUnformatted(line.meaning.c_str());
+        ImGui::SetItemTooltip("%s", line.meaning.c_str());  // whole, when the column cuts it
+        ImGui::TableSetColumnIndex(3);
+        ImGui::TextUnformatted(line.value.c_str());
+      }
+      ImGui::EndTable();
+    }
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextDisabled("Each line goes as \"name = value\" on the TCP port, at each change (m3ffb in hexadecimal, the others "
+                        "in decimal); a client that connects gets every known value first. Value: the last sent.");
+    if (!inGame)
+      ImGui::TextDisabled("The values show in the in-game menu (Tab), on its Outputs page, while the game runs.");
+    else if (outputs == nullptr)
+      ImGui::TextDisabled("The values show while the outputs are on (Misc > Outputs in the launcher, or -outputs=net, "
+                          "from the next start).");
+    ImGui::PopTextWrapPos();
+  }
+
+  static void DrawOutputsPage(const Util::Config::Node &config)
+  {
+    const std::string mode = config["Outputs"].ValueAsDefault<std::string>("none");
+    if (mode == "net")
+      ImGui::Text("Network outputs on: TCP port %u, UDP announce port %u", config["OutputsTCPPort"].ValueAsDefault<unsigned>(8000),
+                  config["OutputsUDPBroadcastPort"].ValueAsDefault<unsigned>(8001));
+    else if (mode == "win")
+      ImGui::TextUnformatted("Outputs on, as Windows messages");
+    else
+      ImGui::TextUnformatted("Outputs off");
+    ImGui::Spacing();
+    DrawOutputsTable(config, s_game, s_outputs, true);
+  }
+
   static void DrawGamePage()
   {
     if (ImGui::BeginTable("Description", 2, ImGuiTableFlags_SizingFixedFit))
@@ -359,6 +534,7 @@ namespace GameMenu
 
     bool selectDisplay = s_selectPage && s_page == Page::Display;
     bool selectGame = s_selectPage && s_page == Page::Game;
+    bool selectOutputs = s_selectPage && s_page == Page::Outputs;
     s_selectPage = false;
     if (ImGui::BeginTabBar("Pages"))
     {
@@ -370,6 +546,11 @@ namespace GameMenu
       if (ImGui::BeginTabItem("Game", nullptr, selectGame ? ImGuiTabItemFlags_SetSelected : 0))
       {
         DrawGamePage();
+        ImGui::EndTabItem();
+      }
+      if (ImGui::BeginTabItem("Outputs", nullptr, selectOutputs ? ImGuiTabItemFlags_SetSelected : 0))
+      {
+        DrawOutputsPage(config);
         ImGui::EndTabItem();
       }
       ImGui::EndTabBar();

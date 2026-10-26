@@ -297,6 +297,12 @@ change the region, special modes, cabinet setup (see 'Game-Specific Comments and
 Tips').  The file is plain text, read each time the menu opens, and its format
 is explained at its top; Page Up and Page Down scroll long notes.
 
+Its 'Outputs' page lists what the game sends on the outputs (-outputs=net or
+win): each name, its type, its meaning and the last value sent, such as the
+cabinet lamps the game lights and its drive board's command bytes.  The same
+list, without values, is under the Outputs settings in the Misc tab of the
+configuration window (Supermodel started without arguments).
+
 By default, Supermodel limits the frame rate to 60 frames per second.  This has
 no impact on performance except when the frame rate exceeds 60 FPS on fast
 systems.  Frame rate limiting can be disabled with the '-no-throttle' option.

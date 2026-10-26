@@ -1289,6 +1289,7 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
   Outputs = Agent::WrapOutputs(Outputs);
   if (Outputs != nullptr)
     Emu->AttachOutputs(Outputs);
+  GameMenu::SetOutputs(Outputs);  // the values its Outputs page shows
 
   // Frame timing
   s_perfCounterFrequency = SDL_GetPerformanceFrequency();

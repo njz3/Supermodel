@@ -26,6 +26,7 @@
 #include "OSD/ConfigFile.h"
 #include "Main.h"
 #include "Gui.h"
+#include "GameMenu.h"
 
 #ifdef _WIN32
     #include "../Src/OSD/Windows/DirectInputSystem.h"
@@ -1058,6 +1059,8 @@ static void GUI(const ImGuiIO& io, Util::Config::Node& config, const std::map<st
             UpdateTempValues(config, "Misc", true);
             CreateControls(config, "Misc");
             UpdateTempValues(config, "Misc", false);
+            ImGui::Spacing();
+            GameMenu::DrawOutputsTable(config, GetGame(games, selectedGameIndex), nullptr, false);
             ImGui::EndTabItem();
             inputs = nullptr;
         }
