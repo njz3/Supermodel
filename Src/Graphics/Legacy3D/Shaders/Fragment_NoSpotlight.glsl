@@ -162,15 +162,16 @@ void main(void)
 		 * When the alpha value is 0.0 (or close), pixels are discarded 
 		 * entirely.
 		 */
-		if (fsTexParams.y > 0.5)	// contour processing enabled
+		if (fsTexParams.y > 0.5)	// alpha test (contour processing): texels below 32/255 alpha are discarded, as New3D
 		{
-			if (fragColor.a < 0.01)	// discard anything with alpha == 0
+			if (fragColor.a < 32.0/255.0)
 				discard;
 		}
-		
-		// Texture alpha only where the polygon enables it (as New3D, see texParams.y). A contour (T1RGB5) texel not
-		// discarded is opaque. Alpha will later be modified by polygon translucency
-		if (fsTexFormat < 0.5 || fsTexParams.y < 0.5)
+
+		// Texture alpha only where the polygon enables it (alpha test or texture alpha, as New3D, see texParams.y),
+		// filtered: the edges of contour textures blend, as New3D. Alpha will later be modified by polygon
+		// translucency
+		if (fsTexParams.y < -0.5)
 			fragColor.a = 1.0;
 	}
 
@@ -188,6 +189,13 @@ void main(void)
 	
 	// Translucency (modulates existing alpha channel for RGBA4 texels)
 	fragColor.a *= fsTransLevel;
+	// Pixels below 1/32 alpha, the smallest translucency level, are discarded as New3D: they would take the
+	// pixel's single translucent blend (see DrawDisplayList())
+	if (fragColor.a < 1.0/32.0)
+		discard;
+
+	// Colour at most 1 before the fog, as New3D (light intensity can exceed 1)
+	fragColor.rgb = min(fragColor.rgb, vec3(1.0));
 
 	// Apply fog
 	fragColor.rgb = mix(fragColor.rgb, gl_Fog.color.rgb, fsFogFactor);

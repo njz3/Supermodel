@@ -58,6 +58,7 @@ struct Vertex
 	GLfloat	n[3];	      // normal X, Y, Z
 	GLfloat	u,v;	      // texture U, V coordinates (in texels, relative to selected texture)
 	GLfloat intensity;  // shading intensity (if using per-vertex fixed shading)
+	GLfloat fixedShade; // fixed shading value as New3D: -1 to 1 (0 to 1 with specular)
 };
 
 struct Poly
@@ -76,11 +77,6 @@ struct Poly
  * vertices per polygon state: normal and alpha, layered or not. Copies of the
  * model with different texture offsets applied are searchable via the linked
  * list of texture offset states.
- *
- * The stencilShadow flag is set when we detect that all polygons of a model
- * are likely to be used as a shadow. On the actual hardware, these are not
- * stenciled but are most likely implemented with stipple masks. We cheat here
- * to make shadows look nicer.
  */
 
 struct VBORef
@@ -92,7 +88,6 @@ struct VBORef
 	VBORef *nextTextureOffsetState; // linked list of models with different texture offset states
 	uint16_t textureOffsetState;    // texture offset data for this model
 	UINT32 colorTableAddr;          // color table its colors were read from (dynamic models)
-	bool stencilShadow;             // all its polygons are probably shadows: its own stencil bit, not the layered ones'
 
 	CTextureRefs texRefs; // unique texture references contained in this model
 	
@@ -109,7 +104,6 @@ struct VBORef
 		textureOffsetState = 0;
 		colorTableAddr = 0;
 		nextTextureOffsetState = NULL;
-		stencilShadow = false;
 		for (int i = 0; i < NUM_POLY_STATES; i++)
 		{
 			index[i] = 0;
@@ -141,7 +135,6 @@ struct DisplayList
 		unsigned	index;					      // index in VBO
 		unsigned	numVerts;				      // number of vertices
 		GLint		  frontFace;				    // GL_CW (default), GL_CCW, or -GL_CW to indicate no culling
-		bool      stencilShadow;        // with the shadows' stencil bit
 	};
 
   bool isViewport;    // if true, this is a viewport node
@@ -418,7 +411,7 @@ private:
 	Result 			InsertPolygon(ModelCache *cache, const Poly *p);
 	void 			InsertVertex(ModelCache *cache, const Vertex *v, const Poly *p, float normFlip);
 	struct VBORef	*BeginModel(ModelCache *cache);
-	void			EndModel(ModelCache *cache, struct VBORef *Model, int lutIdx, UINT16 textureOffsetState, bool stencilShadow);
+	void			EndModel(ModelCache *cache, struct VBORef *Model, int lutIdx, UINT16 textureOffsetState);
 	struct VBORef	*CacheModel(ModelCache *cache, int lutIdx, UINT16 textureOffsetState, const UINT32 *data);
 	struct VBORef	*LookUpModel(ModelCache *cache, int lutIdx, UINT16 textureOffsetState);
 	void 			ClearModelCache(ModelCache *cache);
@@ -469,6 +462,7 @@ private:
 	
 	// Stepping
 	bool	step10;			// Model 3 Step 1.0 or Pro-1000 (Step 1.0 formats)
+	bool	step15 = false;	// Model 3 Step 1.5 (luminous polygons brighter, see the vertex shader)
 	bool	pro1000 = false;	// true for Real3D Pro-1000
 
 	// Level of detail (DescendCullingNode): the viewport's LOD blend table, 128 x 4 x {delete size, blend factor},
@@ -556,6 +550,8 @@ private:
 	GLint	spotRangeLoc;			// uniform
 	GLint	spotColorLoc;			// uniform
 	GLint	layerDepthBiasLoc;		// uniform
+	GLint	intensityClampLoc;		// uniform
+	GLint	step15LuminousLoc;		// uniform
 	GLint	subTextureLoc;			// attribute
 	GLint	texParamsLoc;			// attribute
 	GLint	texFormatLoc;			// attribute

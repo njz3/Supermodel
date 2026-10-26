@@ -1131,7 +1131,7 @@ void CLegacy3D::RenderViewportNode(const UINT32 *vpnode, int pri, bool wideScree
   lightingParams[0] = Util::Uint32AsFloat(vpnode[0x05]);             // sun X
   lightingParams[1] = Util::Uint32AsFloat(vpnode[0x06]);             // sun Y
   lightingParams[2] = Util::Uint32AsFloat(vpnode[0x04]);             // sun Z
-  lightingParams[3] = Util::Uint32AsFloat(vpnode[0x07]);             // sun intensity
+  lightingParams[3] = std::max(0.0f, std::min(Util::Uint32AsFloat(vpnode[0x07]), 1.0f)); // sun intensity (0 to 1, as New3D)
   lightingParams[4] = (float) ((vpnode[0x24]>>8)&0xFF) * (float)(1.0/255.0); // ambient intensity
   lightingParams[5] = 0.0;  // reserved
      
@@ -1276,6 +1276,10 @@ void CLegacy3D::RenderFrame(void)
 
   // Bind Real3D shader program and texture maps
   glUseProgram(shaderProgram);
+
+  // Lighting as New3D: the light intensity is clamped to 1 on Step 1.0 only, Step 1.5's luminous polygons are brighter
+  if (intensityClampLoc != -1) glUniform1i(intensityClampLoc, step10);
+  if (step15LuminousLoc != -1) glUniform1i(step15LuminousLoc, step15);
   for (unsigned mapNum = 0; mapNum < numTexMaps; mapNum++)
   {
     // Map Model3 format to texture unit and texture unit to texture sheet number
@@ -1371,6 +1375,7 @@ void CLegacy3D::SetStepping(Game::Stepping stepping)
   // The Pro-1000 uses the Step 1.0 formats
   pro1000 = Game::IsPro1000Stepping(stepping);
   step10 = stepping == Game::Stepping::MODEL3_1_0 || pro1000;
+  step15 = stepping == Game::Stepping::MODEL3_1_5;
 
   if (!step10)
   {
@@ -1561,6 +1566,8 @@ Result CLegacy3D::SetupGLObjects()
     spotRangeLoc = glGetUniformLocation(shaderProgram, "spotRange");
     spotColorLoc = glGetUniformLocation(shaderProgram, "spotColor");
     layerDepthBiasLoc = glGetUniformLocation(shaderProgram, "layerDepthBias");
+    intensityClampLoc = glGetUniformLocation(shaderProgram, "intensityClamp");
+    step15LuminousLoc = glGetUniformLocation(shaderProgram, "step15Luminous");
 
     // Get locations of custom vertex attributes
     subTextureLoc = glGetAttribLocation(shaderProgram, "subTexture");

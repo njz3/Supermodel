@@ -138,7 +138,7 @@ namespace Legacy3D {
 #define VBO_VERTEX_OFFSET_TRANSLUCENCE    9   // translucence level (0.0 fully transparent, 1.0 opaque)
 #define VBO_VERTEX_OFFSET_LIGHTENABLE     10  // lighting enabled (0.0 luminous, 1.0 light enabled)
 #define VBO_VERTEX_OFFSET_SPECULAR        11  // specular coefficient (0.0 if disabled)
-#define VBO_VERTEX_OFFSET_SHININESS       12  // shininess (specular power)
+#define VBO_VERTEX_OFFSET_SHININESS       12  // shininess (specular power; 0: flat shaded, <0: no specular)
 #define VBO_VERTEX_OFFSET_FOGINTENSITY    13  // fog intensity (0.0 no fog applied, 1.0 all fog applied)
 #define VBO_VERTEX_OFFSET_U               14  // texture U coordinate (in texels, relative to sub-texture)
 #define VBO_VERTEX_OFFSET_V               15  // texture V coordinate
@@ -147,7 +147,7 @@ namespace Legacy3D {
 #define VBO_VERTEX_OFFSET_TEXTURE_W       18  // sub-texture parameters, width of texture in texels
 #define VBO_VERTEX_OFFSET_TEXTURE_H       19  // "" height of texture in texels
 #define VBO_VERTEX_OFFSET_TEXPARAMS_EN    20  // texture parameter: ==1 texturing enabled, ==0 disabled (per-polygon)
-#define VBO_VERTEX_OFFSET_TEXPARAMS_TRANS 21  // texture parameter: >=0 contour processing (texture alpha used), <0 texture alpha ignored (per-polygon)
+#define VBO_VERTEX_OFFSET_TEXPARAMS_TRANS 21  // texture parameter: 1 alpha test, 0 texture alpha, -1 texture alpha ignored (per-polygon)
 #define VBO_VERTEX_OFFSET_TEXPARAMS_UWRAP 22  // texture parameters: U wrap mode: ==1 mirrored repeat, ==0 normal repeat
 #define VBO_VERTEX_OFFSET_TEXPARAMS_VWRAP 23  // "" V wrap mode ""
 #define VBO_VERTEX_OFFSET_TEXFORMAT       24  // texture format 0-7 (also ==0 indicates contour texture - see also texParams.trans)
@@ -225,38 +225,6 @@ static void PrintMatrix(GLfloat m[4*4])
  alpha polygons. Therefore, it may be necessary in the future to decouple them.
 ******************************************************************************/   
     
-// Stencil uses: none, layered polygons, and shadows
-enum class StencilMode
-{
-  Off,
-  Layered,
-  Shadow
-};
-
-// Shadows and layered polygons use separate bits: a shadow drawn first must not keep the layered polygons of what it
-// lies under from being drawn, nor the reverse. Each shadowed pixel is darkened once
-static void SetStencilMode(StencilMode mode)
-{
-  switch (mode)
-  {
-  case StencilMode::Off:
-    glDisable(GL_STENCIL_TEST);
-    break;
-  case StencilMode::Layered:
-    glEnable(GL_STENCIL_TEST);
-    glStencilFunc(GL_EQUAL, 0, 0x7F);           // passes if no layered polygon was drawn there
-    glStencilOp(GL_KEEP, GL_KEEP, GL_INCR);     // counts it where drawn, not where hidden (as New3D)
-    glStencilMask(0x7F);
-    break;
-  case StencilMode::Shadow:
-    glEnable(GL_STENCIL_TEST);
-    glStencilFunc(GL_NOTEQUAL, 0x80, 0x80);     // passes if the shadow bit is clear
-    glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);  // then sets it, where the shadow is drawn
-    glStencilMask(0x80);
-    break;
-  }
-}
-
 // Draws the display lists of both caches: each alpha state's layered polygons after its others, as New3D
 void CLegacy3D::DrawDisplayLists(void)
 {
@@ -289,7 +257,8 @@ void CLegacy3D::DrawDisplayList(ModelCache *Cache, POLY_STATE state)
   
   // Set up state
   const bool layered = (state == POLY_STATE_NORMAL_LAYERED || state == POLY_STATE_ALPHA_LAYERED);
-  if (state == POLY_STATE_ALPHA || state == POLY_STATE_ALPHA_LAYERED)
+  const bool alpha = (state == POLY_STATE_ALPHA || state == POLY_STATE_ALPHA_LAYERED);
+  if (alpha)
   {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -304,8 +273,21 @@ void CLegacy3D::DrawDisplayList(ModelCache *Cache, POLY_STATE state)
   // uniform and a multiply-add per vertex, nothing per pixel
   if (layerDepthBiasLoc != -1)
     glUniform1f(layerDepthBiasLoc, layered ? 1.0f / 512.0f : 0.0f);
-  StencilMode stencilMode = StencilMode::Off;
-  SetStencilMode(stencilMode);
+
+  // Stencil: bit 0 where a layered polygon was drawn (only the first one is, as New3D: counted where drawn, not where
+  // hidden), bit 7 where a translucent polygon was blended. Real3D's translucency is a stipple pattern, so overlapping
+  // translucent polygons do not pile up (New3D keeps the nearest one in its translucency layers): here each pixel is
+  // blended once, by the first one drawn there (overlapping shadows darken once). Free, unlike sorting or a pass more
+  const GLuint stencilBits = (layered ? 0x01 : 0) | (alpha ? 0x80 : 0);
+  if (stencilBits != 0)
+  {
+    glEnable(GL_STENCIL_TEST);
+    glStencilFunc(GL_EQUAL, 0, stencilBits);  // passes where none of them was drawn
+    glStencilOp(GL_KEEP, GL_KEEP, GL_INVERT); // then sets them
+    glStencilMask(stencilBits);
+  }
+  else
+    glDisable(GL_STENCIL_TEST);
 
   // Draw if there are items in the list
   const DisplayList *D = Cache->ListHead[state];
@@ -332,12 +314,6 @@ void CLegacy3D::DrawDisplayList(ModelCache *Cache, POLY_STATE state)
     else
     {
       const DisplayList::ModelInstance &Model = D->Data.Model;
-      const StencilMode modelStencilMode = Model.stencilShadow ? StencilMode::Shadow : (layered ? StencilMode::Layered : StencilMode::Off);
-      if (stencilMode != modelStencilMode)
-      {
-        SetStencilMode(modelStencilMode);
-        stencilMode = modelStencilMode;
-      }
       if (Model.frontFace == -GL_CW)
       {
         // No backface culling (all normals have lost their Z component)
@@ -407,9 +383,7 @@ Result CLegacy3D::AppendDisplayList(ModelCache *Cache, bool isViewport, const st
       Cache->List[lm].Data.Model.index = Model->index[i];
       Cache->List[lm].Data.Model.numVerts = Model->numVerts[i];
 
-      // Misc. parameters
-      Cache->List[lm].Data.Model.stencilShadow = Model->stencilShadow;
-      
+
       // Copy modelview matrix
       glGetFloatv(GL_MODELVIEW_MATRIX, Cache->List[lm].Data.Model.modelViewMatrix);
       
@@ -673,9 +647,9 @@ void CLegacy3D::InsertVertex(ModelCache *Cache, const Vertex *V, const Poly *P, 
       // Vertex normals absent: fixed or flat shading only
       if (fixedShading)
       {
-        // LA Machineguns Vegas street pulsating color effect requires modulation
-        intensity = V->intensity;
-        lightEnable = 0;  // this breaks Yosemite level of LA Machineguns but fixes Scud castle
+        // As New3D: the vertex's fixed shade is its sun factor, with the
+        // ambient light (LA Machineguns Vegas street pulsating color effect
+        // requires modulation)
         modulate = true;
       }
       else
@@ -749,8 +723,7 @@ void CLegacy3D::InsertVertex(ModelCache *Cache, const Vertex *V, const Poly *P, 
   }
 
   // Translator map, as New3D: the polygon colour's components are then 4 bits,
-  // 0 to 16, times 16 (not clamped), and they colour the texture: the cars of
-  // Daytona USA 2 and Scud Race, one grey texture in many colours (without the
+  // 0 to 16, times 16 (not clamped), and they colour the texture (without the
   // factor, the colours were too dark, so modulation used to be disabled).
   if ((P->header[4] & 0x80))
   {
@@ -778,10 +751,19 @@ void CLegacy3D::InsertVertex(ModelCache *Cache, const Vertex *V, const Poly *P, 
   g *= intensity;
   b *= intensity;
     
-  // Specular shininess
+  // Specular shininess, as New3D (Model 3): smooth shaded polygons N.L to the power 8, 16, 32 or 64 times a
+  // multiplier (the exponents 2 to 16 used before spread the highlight over whole cars, the Gulf car of Scud Race
+  // silver instead of blue); flat shaded ones (shininess 0) the reflection's Z
+  static constexpr float specularExponent[4] = { 8.0f, 16.0f, 32.0f, 64.0f };
+  static constexpr float specularMultiplier[4] = { 1.6f, 1.6f, 2.4f, 3.2f };
   GLfloat specularCoefficient = (GLfloat) ((P->header[0]>>26) & 0x3F) * (1.0f/63.0f);
   int shinyBits = (P->header[6] >> 5) & 3;
-  float shininess = std::exp2f(1.0f + shinyBits);
+  float shininess = 0.0f;
+  if (smoothShading)
+  {
+    shininess = specularExponent[shinyBits];
+    specularCoefficient *= specularMultiplier[shinyBits];
+  }
   if (!(P->header[0]&0x80)) //|| (shininess == 0)) // bit 0x80 seems to enable specular lighting
   {
     specularCoefficient = 0.; // disable
@@ -800,14 +782,16 @@ void CLegacy3D::InsertVertex(ModelCache *Cache, const Vertex *V, const Poly *P, 
    * Contour processing. Any alpha value sufficiently close to 0 seems to
    * cause pixels to be discarded entirely on Model 3 (no modification of the
    * depth buffer). Strictly speaking, only T1RGB5 format textures are
-   * "contour textures" (in Real3D lingo), we enable contour processing for
-   * textures with alpha enabled (header word 6 bits 0-2) as well in order to
-   * discard fully transparent pixels. Without either, as New3D, texture alpha
-   * is ignored.
+   * "contour textures" (in Real3D lingo). As New3D, contour processing (the
+   * alpha test) discards texels below 32/255 alpha and keeps the filtered alpha
+   * of the others, texture alpha alone (header word 6 bits 0-2) keeps it too,
+   * and without either, texture alpha is ignored.
    */
   GLfloat contourProcessing = -1.0f;
-  if ((P->header[6]&0x80000000) || (P->header[6]&7))  // contour processing or texture alpha enabled
+  if ((P->header[6]&0x80000000))  // alpha test
     contourProcessing = 1.0f;
+  else if ((P->header[6]&7))      // texture alpha
+    contourProcessing = 0.0f;
 
 #ifdef DEBUG
   if (m_debugHighlightPolyHeaderIdx >= 0 || m_debugHighlightAll)
@@ -838,14 +822,16 @@ void CLegacy3D::InsertVertex(ModelCache *Cache, const Vertex *V, const Poly *P, 
   Cache->verts[s][baseIdx + VBO_VERTEX_OFFSET_G] = g;
   Cache->verts[s][baseIdx + VBO_VERTEX_OFFSET_B] = b;
   Cache->verts[s][baseIdx + VBO_VERTEX_OFFSET_TRANSLUCENCE] = translucence;
-  Cache->verts[s][baseIdx + VBO_VERTEX_OFFSET_LIGHTENABLE] = lightEnable ? 1.0f : 0.0f;
+  // Lit (1, fixed shaded: 2) or luminous (0, fixed shaded: -1), the fixed shade then in the normal's X
+  const bool fixedShade = fixedShading && !smoothShading;
+  Cache->verts[s][baseIdx + VBO_VERTEX_OFFSET_LIGHTENABLE] = lightEnable ? (fixedShade ? 2.0f : 1.0f) : (fixedShade ? -1.0f : 0.0f);
   Cache->verts[s][baseIdx + VBO_VERTEX_OFFSET_SPECULAR] = specularCoefficient;
   Cache->verts[s][baseIdx + VBO_VERTEX_OFFSET_SHININESS] = (GLfloat) shininess;
   Cache->verts[s][baseIdx + VBO_VERTEX_OFFSET_FOGINTENSITY] = fogIntensity;
   
-  Cache->verts[s][baseIdx + VBO_VERTEX_OFFSET_NX] = fixedShading ? 0.f : nx*normFlip;
-  Cache->verts[s][baseIdx + VBO_VERTEX_OFFSET_NY] = fixedShading ? 0.f : ny*normFlip;
-  Cache->verts[s][baseIdx + VBO_VERTEX_OFFSET_NZ] = fixedShading ? 0.f : nz*normFlip; 
+  Cache->verts[s][baseIdx + VBO_VERTEX_OFFSET_NX] = fixedShade ? V->fixedShade : nx*normFlip;
+  Cache->verts[s][baseIdx + VBO_VERTEX_OFFSET_NY] = fixedShade ? 0.f : ny*normFlip;
+  Cache->verts[s][baseIdx + VBO_VERTEX_OFFSET_NZ] = fixedShade ? 0.f : nz*normFlip;
   
   Cache->verts[s][baseIdx + VBO_VERTEX_OFFSET_U] = V->u;
   Cache->verts[s][baseIdx + VBO_VERTEX_OFFSET_V] = V->v;
@@ -997,7 +983,7 @@ struct VBORef *CLegacy3D::BeginModel(ModelCache *Cache)
 }
 
 // Uploads all vertices from the local vertex buffer to the VBO, sets up the VBO reference, updates the LUT
-void CLegacy3D::EndModel(ModelCache *Cache, struct VBORef *Model, int lutIdx, UINT16 textureOffsetState, bool stencilShadow)
+void CLegacy3D::EndModel(ModelCache *Cache, struct VBORef *Model, int lutIdx, UINT16 textureOffsetState)
 {
   int m = Cache->numModels++;
 
@@ -1023,9 +1009,6 @@ void CLegacy3D::EndModel(ModelCache *Cache, struct VBORef *Model, int lutIdx, UI
   // Texture offset and color table of this model state
   Model->textureOffsetState = textureOffsetState;
   Model->colorTableAddr = m_colorTableAddr;
-  
-  // Should we use the shadows' stencil?
-  Model->stencilShadow = stencilShadow;
   
   // Update the LUT and link up to any existing model that already exists here
   if (Cache->lut[lutIdx] >= 0)  // another texture offset state already cached
@@ -1059,7 +1042,6 @@ struct VBORef *CLegacy3D::CacheModel(ModelCache *Cache, int lutIdx, UINT16 textu
   // Clear the shared vertices. If the first polygon of a model has a shared
   // vertex bit, it reads this array before a polygon writes it.
   Vertex    Prev[4] = {};  // previous vertices
-  bool      allShadows = true;  // all polygons probably shadows
   bool      done = false;
   while (!done)
   {    
@@ -1100,17 +1082,10 @@ struct VBORef *CLegacy3D::CacheModel(ModelCache *Cache, int lutIdx, UINT16 textu
       
     // Layered polygons are implemented with a stencil buffer and a depth bias,
     // in their own states, polygon by polygon (a model can mix layered and
-    // other polygons). Here, we also include a hack to detect likely
-    // shadow polygons. When not implemented as layered polygons, games use
-    // translucent polygons (which on the actual hardware are implemented with
-    // stipple) without texturing or lighting. Usually they are also black with
-    // the annoying exception of Spikeout.
-    // TODO: If this hack is too permissive and breaks anything, we should make
-    // it a config option.
+    // other polygons). Translucent ones, which on the actual hardware are
+    // implemented with stipple (shadows: black, untextured, unlit), blend each
+    // pixel once (see DrawDisplayList())
     int isLayered = P.header[6] & 0x8;
-    int isLightDisabled = P.header[6] & 0x00010000;
-    bool isProbablyShadow = isLightDisabled && isTranslucent && !texEnable;
-    allShadows &= isProbablyShadow;
     if (isLayered)
       P.state = (P.state == POLY_STATE_ALPHA) ? POLY_STATE_ALPHA_LAYERED : POLY_STATE_NORMAL_LAYERED;
     
@@ -1160,6 +1135,8 @@ struct VBORef *CLegacy3D::CacheModel(ModelCache *Cache, int lutIdx, UINT16 textu
       P.Vert[j].u = (GLfloat) ((UINT16)(it>>16)) * uvScale;
       P.Vert[j].v = (GLfloat) ((UINT16)(it&0xFFFF)) * uvScale;
       P.Vert[j].intensity = GLfloat((ix + 128) & 0xFF) / 255.0f; // signed (-0.5 -> black, +0.5 -> white)
+      // Fixed shade, as New3D: a signed byte, unsigned when specular is enabled
+      P.Vert[j].fixedShade = (P.header[0] & 0x80) ? (GLfloat)(ix & 0xFF) * (1.0f/255.0f) : (2.0f * (GLfloat)(INT8)(ix & 0xFF) + 1.0f) * (1.0f/255.0f);
       //P.Vert[j].intensity_7u = GLfloat(ix & 0x7F) / 127.0f;
       //if ((P.header[1] & 0x20) && j == 0)
       //if (!(P.header[1] & 0x20) && !(P.header[1] & 0x08) && !(P.header[6] & 0x10000))
@@ -1188,7 +1165,7 @@ struct VBORef *CLegacy3D::CacheModel(ModelCache *Cache, int lutIdx, UINT16 textu
   }
   
   // Finish model and enter it into the LUT
-  EndModel(Cache, Model, lutIdx, textureOffsetState, allShadows);
+  EndModel(Cache, Model, lutIdx, textureOffsetState);
   return Model;
 }
 

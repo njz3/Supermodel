@@ -34,6 +34,8 @@ uniform vec3	lighting[2];		// lighting state (lighting[0] = sun direction, light
 uniform vec4	spotEllipse;		// spotlight ellipse position: .x=X position (normalized device coordinates), .y=Y position, .z=half-width, .w=half-height)
 uniform vec2	spotRange;			// spotlight Z range: .x=start (viewspace coordinates), .y=limit
 uniform vec3	spotColor;			// spotlight RGB color
+uniform bool	intensityClamp;		// light intensity at most 1 (Step 1.0; Step 1.5 on drives it beyond, as New3D)
+uniform bool	step15Luminous;		// Step 1.5: luminous polygons brighter, as New3D
 uniform float	layerDepthBias;		// layered polygons: depth as if 1+layerDepthBias times closer
 
 // Custom vertex attributes
@@ -42,7 +44,7 @@ attribute vec4	texParams;		// .x=texture enable (if 1, else 0), .y=use transpare
 attribute float	texFormat;		// T1RGB5 contour texture (if > 0)
 attribute float texMap;         // texture map number
 attribute float	transLevel;		// translucence level, 0.0 (transparent) to 1.0 (opaque). if less than 1.0, replace alpha value
-attribute float	lightEnable;	// lighting enabled (1.0) or luminous (0.0), drawn at full intensity
+attribute float	lightEnable;	// lit (1.0; 2.0 fixed shaded: the shade in the normal's X), luminous (0.0; -1.0 fixed shaded)
 attribute float	specular;		  // specular coefficient (0.0 if disabled)
 attribute float	shininess;		// specular shininess
 attribute float	fogIntensity;	// fog intensity (1.0, full fog effect, 0.0, no fog) 
@@ -128,11 +130,12 @@ void main(void)
 		// Real3D -> OpenGL view space convention (TO-DO: do this outside of shader)
 		sunVector = lighting[0]*vec3(1.0,-1.0,-1.0);
 		
-		// Compute diffuse factor for sunlight
-		sunFactor = max(dot(sunVector,viewNormal),0.0);
+		// Compute diffuse factor for sunlight (fixed shaded polygons: their shade, as New3D)
+		sunFactor = (lightEnable > 1.5) ? max(gl_Normal.x,0.0) : max(dot(sunVector,viewNormal),0.0);
 		
 		// Total light intensity: sum of all components
-		fsLightIntensity *= min(1.0,(sunFactor*lighting[1].x+lighting[1].y));
+		float intensity = sunFactor*lighting[1].x+lighting[1].y;
+		fsLightIntensity *= intensityClamp ? min(1.0,intensity) : intensity;
 		
 		/*
 		 * Specular Lighting
@@ -145,33 +148,12 @@ void main(void)
 		 * the intensity of the specular term? Always applied with full 
 		 * intensity here but this is unlikely to be correct.
 		 */
-  		if (shininess >= 0.0)
+  		if (shininess >= 0.0 && lightEnable < 1.5)	// fixed shaded polygons have no normal
   		{
-  			// Standard specular lighting equation
-        if (sunFactor > 0.0)
-        {
-          vec3 V = normalize(-viewVertex);
-  			  vec3 H = normalize(sunVector+V);	// halfway vector
-  			  fsSpecularTerm = specular*pow(max(dot(viewNormal,H),0.0),shininess);
-  			  
-  			  // Phong formula
-  			  // vec3 R = normalize(2.0*dot(sunVector,viewNormal)*viewNormal - sunVector);
-  			  // vec3 V = normalize(-viewVertex);
-  			  // fsSpecularTerm = lighting[1].x * specular * pow(max(dot(R,V),0.0),4.);
-  			  
-  			  //
-  			  // This looks decent in Scud Race attract mode. It is directionally
-  			  // correct (highlights appear in the right places under the same
-  			  // conditions as the actual game). In game play, it no longer works.
-  			  // This is loosely based on the Model 2 formula, which is:
-  			  //
-  			  //    s = 2*dot(light, normal)*normal.z - light.z
-  			  //
-  			  // float dot1 = dot(sunVector, viewNormal);
-  			  // float s = dot1*viewNormal.z;
-  			  // fsSpecularTerm =specular * pow(max(s, 0.0), 2.);
-  			  //
-        }
+  			// As New3D (Model 3): smooth shaded polygons N.L to the power shininess (its multiplier is in specular),
+  			// flat shaded ones the reflection's Z (the view vector taken as Z), both times the sun intensity
+  			float s = (shininess > 0.0) ? pow(sunFactor,shininess) : max(reflect(-sunVector,viewNormal).z,0.0);
+  			fsSpecularTerm = specular*lighting[1].x*s;
 
   			/*
   			vec3 V = normalize(-viewVertex);
@@ -192,6 +174,11 @@ void main(void)
   			//float s = max(2.0,64.0-shininess);
   			//fsSpecularTerm = pow(max(dot(R,V),0.0),s);
   		}
+	}
+	else if (step15Luminous)
+	{
+		// Step 1.5 luminous polygons, as New3D: times 1 + fixed shade + ambient if fixed shaded, else 1.5
+		fsLightIntensity *= (lightEnable < -0.5) ? 1.0+gl_Normal.x+lighting[1].y : 1.5;
 	}
 	
 	// Fog
