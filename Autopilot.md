@@ -55,7 +55,7 @@ voitures de Sega Rally 2, et son état de course corrigé (Telemetry.md §4).
 ### 3.1 Les commandes
 
 Depuis `autopilot/supermodel/` de BFF, `SUPERMODEL_EXE` pointant sur un Supermodel de la branche
-`dev/driveboard-ffb-fixes` (mode agent), `D=pkg/autopilot_data`, `R` le dossier des ROM, `RUN` un
+`dev/ffbedition` (mode agent ; `dev/driveboard-ffb-fixes` avant le 26 octobre), `D=pkg/autopilot_data`, `R` le dossier des ROM, `RUN` un
 dossier d'exécution (`$D/rundirs/m3rl` : `InputSystem = sdl`, NVRAM des jeux) :
 
 ```

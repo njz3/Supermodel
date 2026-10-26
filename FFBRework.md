@@ -10,13 +10,14 @@ conversation.
   `emulateurs/git_Supermodel_njz3_master`. **On travaille ici**, pas dans
   `git_supermodel_trzy_master`, le clone d'upstream qui garde la modification locale de
   `GrabMouse` du propriétaire.
-- **Branche** : `dev/driveboard-ffb-fixes` (renommée le 14 octobre, avant `driveboard-ffb-fixes`),
+- **Branche** : `dev/ffbedition` (renommée le 26 octobre, avant `dev/driveboard-ffb-fixes`, elle-même
+  renommée le 14 octobre, avant `driveboard-ffb-fixes`),
   partie d'upstream `7da4f9a` (13 octobre 2026), upstream `aa8ec00` fusionné le 14 octobre. Le
   `master` du fork a été aligné sur upstream le 13 (`587da80..7da4f9a`). Le remote `upstream`
   pointe sur `https://github.com/trzy/Supermodel.git`.
 - **État** : §2.1 à §2.8 (`BackgroundInput`, le mode agent ; le 15 octobre, ressort, gain et
   `FD` des cartes servo, effets DirectInput sans redémarrage, GPU des portables, `smagent.py`),
-  le banc et ce fichier sont committés et poussés sur `origin/dev/driveboard-ffb-fixes`. Les
+  le banc et ce fichier sont committés et poussés sur `origin/dev/ffbedition`. Les
   branches `pr/*` n'ont pas encore les changements de §2.8. Version d'essai pour la borne, faite
   avant ces commits avec le même code : `pkg/supermodel-0.3a-20261014-git-7999a82-ffbac-windows.zip`.
   §2.9 (16 octobre : effets dans les sauvegardes d'état, amortisseur, frein d'EPR-18261) : compilé dans
