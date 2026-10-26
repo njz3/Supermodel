@@ -219,15 +219,16 @@
 #include <cstdlib>
 #include <cstring>
 #include "Supermodel.h"
-#include "DriveBoard/BillBoard.h"
+#include "BillBoard.h"
 #include "DriveBoard/JoystickBoard.h"
 #include "DriveBoard/SkiBoard.h"
 #include "DriveBoard/WheelBoard.h"
 #include "Game.h"
 #include "ROMSet.h"
 #include "OSD/FileSystemPath.h"
-#include "Network/NetBoard.h"
-#include "Network/SimNetBoard.h"
+#include "Model3/NetBoard.h"
+#include "Model3/SimNetBoard.h"
+#include "SDLIncludes.h"
 #include "OSD/Audio.h"
 #include "OSD/Video.h"
 #include "Util/Format.h"
@@ -482,11 +483,8 @@ UINT8 CModel3::ReadInputs(unsigned reg)
 
     data = 0xFF;
 
-    if (DriveBoard->IsAttached() && DriveBoard->GetType() != Game::DRIVE_BOARD_BILLBOARD)
-    {
-      // If driveboard is set as billboard, don't read BillBoard reg (no inputs)
+    if (DriveBoard->IsAttached())
       data = DriveBoard->Read();
-    }
 
     // A real drive board's reply, sent back by the outputs' client (BackForceFeeder: m3ffb_rx), in place of the
     // emulated board's while that client is connected
@@ -672,9 +670,11 @@ void CModel3::WriteInputs(unsigned reg, UINT8 data)
     inputBank = data;
     break;
 
-  case 0x10:  // Drive board
+  case 0x10:  // Drive board or billboard
     if (DriveBoard->IsAttached())
       DriveBoard->Write(data);
+    if (BillBoard->IsAttached())
+      BillBoard->Write(data);
     if (NULL != Outputs) // TODO - check gameInputs
     {
       Outputs->SetValue(OutputRawDrive, data);
@@ -1024,6 +1024,7 @@ UINT8 CModel3::Read8(UINT32 addr)
     if (addr < 0xF1120000)
     {
       // Tile generator accesses its RAM as little endian, no adjustment needed here
+      ppc_add_cycles(TileGen.BusAccessCycles(ppc_total_cycles(), false, addr < 0xF1100000));
       return TileGen.ReadRAM8(addr & 0x1FFFFF);
     }
     break;
@@ -1151,6 +1152,7 @@ UINT16 CModel3::Read16(UINT32 addr)
     if (addr < 0xF1120000)
     {
       // Tile generator accesses its RAM as little endian, no adjustment needed here
+      ppc_add_cycles(TileGen.BusAccessCycles(ppc_total_cycles(), false, addr < 0xF1100000));
       data = TileGen.ReadRAM16(addr&0x1FFFFF);
       return FLIPENDIAN16(data);
     }
@@ -1305,6 +1307,7 @@ UINT32 CModel3::Read32(UINT32 addr)
     // Tile generator accesses its RAM as little endian, must flip for big endian PowerPC
     if (addr < 0xF1120000)
     {
+      ppc_add_cycles(TileGen.BusAccessCycles(ppc_total_cycles(), false, addr < 0xF1100000));
       data = TileGen.ReadRAM32(addr&0x1FFFFF);
       return FLIPENDIAN32(data);
     }
@@ -1422,6 +1425,7 @@ void CModel3::Write8(UINT32 addr, UINT8 data)
       {
         SoundBoard.WriteMIDIPort(data);
         IRQ.Deassert(0x40);
+        midiAckCycle = ppc_total_cycles();
       }
       else if ((addr & 0xF) == 4) // MIDI control port
       {
@@ -1462,6 +1466,7 @@ void CModel3::Write8(UINT32 addr, UINT8 data)
     if (addr < 0xF1120000)
     {
       // Tile generator accesses its RAM as little endian, no adjustment needed here
+      ppc_add_cycles(TileGen.BusAccessCycles(ppc_total_cycles(), true, addr < 0xF1100000));
       TileGen.WriteRAM8(addr&0x1FFFFF, data);
       break;
     }
@@ -1577,6 +1582,7 @@ void CModel3::Write16(UINT32 addr, UINT16 data)
     if (addr < 0xF1120000)
     {
       // Tile generator accesses its RAM as little endian, no adjustment needed here
+      ppc_add_cycles(TileGen.BusAccessCycles(ppc_total_cycles(), true, addr < 0xF1100000));
       TileGen.WriteRAM16(addr&0x1FFFFF, FLIPENDIAN16(data));
     }
     goto Unknown16;
@@ -1769,6 +1775,7 @@ void CModel3::Write32(UINT32 addr, UINT32 data)
     {
       // Tile generator accesses its RAM as little endian, must flip for big endian PowerPC
       data = FLIPENDIAN32(data);
+      ppc_add_cycles(TileGen.BusAccessCycles(ppc_total_cycles(), true, addr < 0xF1100000));
       TileGen.WriteRAM32(addr&0x1FFFFF,data);
       break;
     }
@@ -1859,6 +1866,11 @@ void CModel3::Write64(UINT32 addr, UINT64 data)
  Emulation and Interface Functions
 ******************************************************************************/
 
+bool CModel3::SupportsSaveStates(void) const
+{
+  return true;
+}
+
 void CModel3::SaveState(CBlockFile *SaveState)
 {
   // Write Model 3 state
@@ -1887,6 +1899,7 @@ void CModel3::SaveState(CBlockFile *SaveState)
   GPU.SaveState(SaveState);
   SoundBoard.SaveState(SaveState);  // also saves DSB state
   DriveBoard->SaveState(SaveState);
+  BillBoard->SaveState(SaveState);
   m_cryptoDevice.SaveState(SaveState);
   m_jtag.SaveState(SaveState);
 }
@@ -1926,6 +1939,7 @@ void CModel3::LoadState(CBlockFile *SaveState)
   ppc_load_state(SaveState);
   SoundBoard.LoadState(SaveState);
   DriveBoard->LoadState(SaveState);
+  BillBoard->LoadState(SaveState);
   m_cryptoDevice.LoadState(SaveState);
   m_jtag.LoadState(SaveState);
 }
@@ -1971,10 +1985,11 @@ void CModel3::RunFrame(void)
     if (!StartThreads())
       goto ThreadError;
 
-    // Wake threads for PPC main board (if multi-threading GPU), sound board (if sync'd) and drive board (if attached) so they can process a frame
+    // Wake threads for PPC main board (if multi-threading GPU), sound board (if sync'd), drive board and billboard (if attached) so they can process a frame
     if ((m_gpuMultiThreaded       && !ppcBrdThreadSync->Post()) ||
         (syncSndBrdThread         && !sndBrdThreadSync->Post()) ||
-        (DriveBoard->IsAttached()  && !drvBrdThreadSync->Post()))
+        (DriveBoard->IsAttached()  && !drvBrdThreadSync->Post()) ||
+        (BillBoard->IsAttached()   && !bilBrdThreadSync->Post()))
       goto ThreadError;
 
     // If not multi-threading GPU, then run PPC main board for a frame and sync GPUs now in this thread
@@ -1991,10 +2006,11 @@ void CModel3::RunFrame(void)
     if (!notifyLock->Lock())
       goto ThreadError;
 
-    // Wait for PPC main board, sound board and drive board threads to finish their work (if they are running and haven't finished already)
+    // Wait for PPC main board, sound board, drive board and billboard threads to finish their work (if they are running and haven't finished already)
     while ((m_gpuMultiThreaded      && !ppcBrdThreadDone) ||
            (syncSndBrdThread        && !sndBrdThreadDone) ||
-           (DriveBoard->IsAttached() && !drvBrdThreadDone))
+           (DriveBoard->IsAttached() && !drvBrdThreadDone) ||
+           (BillBoard->IsAttached()  && !bilBrdThreadDone))
     {
       if (!notifySync->Wait(notifyLock))
         goto ThreadError;
@@ -2002,6 +2018,7 @@ void CModel3::RunFrame(void)
     ppcBrdThreadDone = false;
     sndBrdThreadDone = false;
     drvBrdThreadDone = false;
+    bilBrdThreadDone = false;
 
     // Leave notify wait critical section
     if (!notifyLock->Unlock())
@@ -2023,6 +2040,8 @@ void CModel3::RunFrame(void)
     RunSoundBoardFrame();
     if (DriveBoard->IsAttached())
       RunDriveBoardFrame();
+    if (BillBoard->IsAttached())
+      RunBillBoardFrame();
     if (NetBoard->IsRunning())
       RunNetBoardFrame();
   }
@@ -2074,6 +2093,10 @@ void CModel3::RunMainBoardFrame(void)
 	 */ 
 	unsigned ppcCycles		= GetCPUClockFrequencyInHz(m_game, m_config);
 	unsigned frameCycles	= (unsigned)((float)ppcCycles / 57.524160f);
+
+	// Tile and palette RAM bus timing: nothing is fetched during vertical blanking
+	TileGen.SetCPUClock(ppcCycles);
+	TileGen.BeginBusBlanking();
 	unsigned lineCycles     = frameCycles / 424;
     unsigned vBlankCycles   = lineCycles * 40;
 
@@ -2122,6 +2145,21 @@ void CModel3::RunMainBoardFrame(void)
 			if ((IRQ.ReadIRQEnable() & 0x40) == 0)
 				break;
 
+            // PowerPC cycles to allow after a MIDI byte is written before IRQ 0x40 can be asserted again
+            static const UINT64 MIDI_IRQ_MIN_CYCLES = 1000;
+
+			// On the sound board the MIDI interrupt only comes back once the previous byte has been sent, long after
+			// the PowerPC acknowledged it by writing that byte. Games return from the interrupt by polling until IRQ
+			// 0x40 is clear (Scud Race at 1DB0), so asserting it again before the handler has got there leaves the
+			// PowerPC spinning forever. Give it time to finish the handler first.
+			const UINT64 sinceAck = ppc_total_cycles() - midiAckCycle;
+			if (sinceAck < MIDI_IRQ_MIN_CYCLES)
+			{
+				const unsigned wait = (unsigned)(MIDI_IRQ_MIN_CYCLES - sinceAck);
+				ppc_execute(wait);
+				vBlankCycles -= std::min(wait, vBlankCycles);
+			}
+
 			// Process MIDI interrupt
 			IRQ.Assert(0x40);
 			ppc_execute(1000); // give PowerPC time to acknowledge IR
@@ -2157,6 +2195,7 @@ void CModel3::RunMainBoardFrame(void)
         }
 
         TileGen.DrawLine(i);
+        TileGen.BeginBusLine(ppc_total_cycles());
         ppc_execute(lineCycles);
     }
 
@@ -2212,6 +2251,13 @@ void CModel3::RunDriveBoardFrame(void)
   timings.drvTicks = CThread::GetTicks() - start;
 }
 
+void CModel3::RunBillBoardFrame(void)
+{
+  UINT32 start = CThread::GetTicks();
+  BillBoard->RunFrame();
+  timings.billTicks = CThread::GetTicks() - start;
+}
+
 void CModel3::RunNetBoardFrame(void)
 {
   NetBoard->RunFrame();
@@ -2242,6 +2288,12 @@ bool CModel3::StartThreads(void)
   {
     drvBrdThreadSync = CThread::CreateSemaphore(0);
     if (drvBrdThreadSync == NULL)
+      goto ThreadError;
+  }
+  if (BillBoard->IsAttached())
+  {
+    bilBrdThreadSync = CThread::CreateSemaphore(0);
+    if (bilBrdThreadSync == NULL)
       goto ThreadError;
   }
   notifyLock = CThread::CreateMutex();
@@ -2279,6 +2331,14 @@ bool CModel3::StartThreads(void)
       goto ThreadError;
   }
 
+  // Create billboard thread, if billboard is attached
+  if (BillBoard->IsAttached())
+  {
+    bilBrdThread = CThread::CreateThread("BillBoard", StartBillBoardThread, this);
+    if (bilBrdThread == NULL)
+      goto ThreadError;
+  }
+
   // Set audio callback if sound board thread is unsync'd
   if (!syncSndBrdThread)
   {
@@ -2306,7 +2366,7 @@ bool CModel3::PauseThreads(void)
 
   // Let threads know that they should pause and wait for all of them to do so
   pauseThreads = true;
-  while (ppcBrdThreadRunning || sndBrdThreadRunning || drvBrdThreadRunning)
+  while (ppcBrdThreadRunning || sndBrdThreadRunning || drvBrdThreadRunning || bilBrdThreadRunning)
   {
     if (!notifySync->Wait(notifyLock))
       goto ThreadError;
@@ -2361,7 +2421,7 @@ bool CModel3::StopThreads(void)
 
   // Let threads know that they should pause and wait for all of them to do so
   pauseThreads = true;
-  while (ppcBrdThreadRunning || sndBrdThreadRunning || drvBrdThreadRunning)
+  while (ppcBrdThreadRunning || sndBrdThreadRunning || drvBrdThreadRunning || bilBrdThreadRunning)
   {
     if (!notifySync->Wait(notifyLock))
       goto ThreadError;
@@ -2398,6 +2458,11 @@ bool CModel3::StopThreads(void)
     if (drvBrdThreadSync->Post())
       drvBrdThread->Wait();
   }
+  if (bilBrdThread != NULL)
+  {
+    if (bilBrdThreadSync->Post())
+      bilBrdThread->Wait();
+  }
 
   // Delete all thread and synchronization objects
   DeleteThreadObjects();
@@ -2428,6 +2493,11 @@ void CModel3::DeleteThreadObjects(void)
     delete drvBrdThread;
     drvBrdThread = NULL;
   }
+  if (bilBrdThread != NULL)
+  {
+    delete bilBrdThread;
+    bilBrdThread = NULL;
+  }
 
 
   // Delete synchronization objects
@@ -2445,6 +2515,11 @@ void CModel3::DeleteThreadObjects(void)
   {
     delete drvBrdThreadSync;
     drvBrdThreadSync = NULL;
+  }
+  if (bilBrdThreadSync != NULL)
+  {
+    delete bilBrdThreadSync;
+    bilBrdThreadSync = NULL;
   }
 
 
@@ -2472,13 +2547,14 @@ void CModel3::DeleteThreadObjects(void)
 
 void CModel3::DumpTimings(void)
 {
-  printf("PPC:%3ums%c render:%3ums%c sync:%4uK%c%3ums%c snd:%3ums%c drv:%3ums%c frame:%3ums%c\n",
+  printf("PPC:%3ums%c render:%3ums%c sync:%4uK%c%3ums%c snd:%3ums%c drv:%3ums%c bill:%3ums%c frame:%3ums%c\n",
     timings.ppcTicks, (timings.ppcTicks > timings.renderTicks ? '!' : ','),
     timings.renderTicks, (timings.renderTicks > timings.ppcTicks ? '!' : ','),
     timings.syncSize / 1024, (timings.syncSize / 1024 > 128 ? '!' : ','),
     timings.syncTicks, (timings.syncTicks > 1 ? '!' : ','),
     timings.sndTicks, (timings.sndTicks > 10 ? '!' : ','),
     timings.drvTicks, (timings.drvTicks > 10 ? '!' : ','),
+    timings.billTicks, (timings.billTicks > 10 ? '!' : ','),
     timings.frameTicks, (timings.frameTicks > 16 ? '!' : ' '));
 }
 
@@ -2513,6 +2589,13 @@ int CModel3::StartDriveBoardThread(void *data)
   // Call method on CModel3 to run drive board thread
   CModel3 *model3 = (CModel3*)data;
   return model3->RunDriveBoardThread();
+}
+
+int CModel3::StartBillBoardThread(void *data)
+{
+  // Call method on CModel3 to run billboard thread
+  CModel3 *model3 = (CModel3*)data;
+  return model3->RunBillBoardThread();
 }
 
 int CModel3::RunMainBoardThread(void)
@@ -2812,6 +2895,62 @@ ThreadError:
   return 1;
 }
 
+int CModel3::RunBillBoardThread(void)
+{
+  for (;;)
+  {
+    bool wait = true;
+    bool exit = false;
+    while (wait && !exit)
+    {
+      // Wait on billboard thread semaphore
+      if (!bilBrdThreadSync->Wait())
+        goto ThreadError;
+
+      // Enter notify critical section
+      if (!notifyLock->Lock())
+        goto ThreadError;
+
+      // Check threads are not being stopped or paused
+      if (stopThreads)
+        exit = true;
+      else if (!pauseThreads)
+      {
+        wait = false;
+        bilBrdThreadRunning = true;
+      }
+
+      // Leave notify critical section
+      if (!notifyLock->Unlock())
+        goto ThreadError;
+    }
+    if (exit)
+      return 0;
+
+    // Process a single frame for billboard
+    RunBillBoardFrame();
+
+    // Enter notify critical section
+    if (!notifyLock->Lock())
+      goto ThreadError;
+
+    // Let other threads know processing has finished
+    bilBrdThreadRunning = false;
+    bilBrdThreadDone = true;
+    if (!notifySync->SignalAll())
+      goto ThreadError;
+
+    // Leave notify critical section
+    if (!notifyLock->Unlock())
+      goto ThreadError;
+  }
+
+ThreadError:
+  ErrorLog("Threading error in RunBillBoardThread: %s\nSwitching back to single-threaded mode.\n", CThread::GetLastError());
+  m_multiThreaded = false;
+  return 1;
+}
+
 void CModel3::Reset(void)
 {
   // Clear memory (but do not modify backup RAM!)
@@ -2832,6 +2971,7 @@ void CModel3::Reset(void)
 
   // MIDI
   midiCtrlPort = 0;
+  midiAckCycle = 0;
 
   // Reset all devices
   ppc_reset();
@@ -2848,6 +2988,8 @@ void CModel3::Reset(void)
 
   if (DriveBoard->IsAttached())
     DriveBoard->Reset();
+  if (BillBoard->IsAttached())
+    BillBoard->Reset();
 
   m_cryptoDevice.Reset();
 
@@ -2859,6 +3001,7 @@ void CModel3::Reset(void)
   timings.renderTicks = 0;
   timings.sndTicks = 0;
   timings.drvTicks = 0;
+  timings.billTicks = 0;
   timings.netTicks = 0;
   NetBoard->Reset();
   timings.frameTicks = 0;
@@ -2883,28 +3026,6 @@ void CModel3::AttachRenderers(IRender2D *Render2DPtr, IRender3D *Render3DPtr, Su
   Render3DPtr->SetStepping(m_stepping);
   GPU.AttachRenderer(Render3DPtr);
   m_superAA = superAA;
-}
-
-void CModel3::AttachInputs(CInputs *InputsPtr)
-{
-  Inputs = InputsPtr;
-
-  if (DriveBoard->IsAttached())
-    DriveBoard->AttachInputs(Inputs, m_game.inputs);
-
-  DebugLog("Model 3 attached inputs\n");
-}
-
-void CModel3::AttachOutputs(COutputs *OutputsPtr)
-{
-  Outputs = OutputsPtr;
-  Outputs->SetGame(m_game);
-  Outputs->Attached();
-
-  if (DriveBoard->IsAttached())
-    DriveBoard->AttachOutputs(Outputs);
-
-  DebugLog("Model 3 attached outputs\n");
 }
 
 constexpr static int RAM_SIZE			= 0x800000;		//8MB
@@ -2992,9 +3113,9 @@ Result CModel3::Init(const Game &game, const ROMSet &rom_set)
   PCIBus.AttachDevice(16,this);
 
   if (m_config["SimulateNet"].ValueAs<bool>())
-      NetBoard = new CSimNetBoard(m_config);
+      NetBoard = new CSimNetBoard(m_config, m_server);
   else
-      NetBoard = new CNetBoard(m_config);
+      NetBoard = new CNetBoard(m_config, m_server);
 
   DebugLog("Initialized Model 3 (allocated %1.1f MB)\n", memSizeMB);
 
@@ -3125,12 +3246,6 @@ Result CModel3::Init(const Game &game, const ROMSet &rom_set)
     if (DriveBoard->Init(driveROM) != Result::OKAY)
       return Result::FAIL;
   }
-  else if (game.driveboard_type == Game::DRIVE_BOARD_BILLBOARD && rom_set.get_rom("driveboard_program").size)
-  {
-    DriveBoard = new CBillBoard(m_config);
-    if (DriveBoard->Init(driveROM) != Result::OKAY)
-      return Result::FAIL;
-  }
   else if (game.driveboard_type == Game::DRIVE_BOARD_SKI)
   {
     DriveBoard = new CSkiBoard(m_config);
@@ -3145,6 +3260,13 @@ Result CModel3::Init(const Game &game, const ROMSet &rom_set)
       return Result::FAIL;
   }
 
+  // Billboard (if present). Its program ROM is loaded into the drive board ROM region. All it does is drive
+  // the outputs, so it is only emulated when there are outputs to send them to.
+  BillBoard = new CBillBoard();
+  bool hasBillBoard = game.driveboard_type == Game::DRIVE_BOARD_BILLBOARD && rom_set.get_rom("driveboard_program").size;
+  if (BillBoard->Init(hasBillBoard && Outputs ? driveROM : nullptr) != Result::OKAY)
+    return Result::FAIL;
+
   // Security board encryption device
   m_cryptoDevice.Init(game.encryption_key, std::bind(&CModel3::ReadSecurityRAM, this, std::placeholders::_1));
 
@@ -3154,12 +3276,11 @@ Result CModel3::Init(const Game &game, const ROMSet &rom_set)
   if (DSB)
     extra_hw.insert(Util::Format() << "Digital Sound Board (Type " << (game.mpeg_board == Game::MPEG_BOARD_DSB1 ? 1 : 2) << ")");
   if (DriveBoard->IsAttached())
-  {
-    if (DriveBoard->GetType() == Game::DRIVE_BOARD_BILLBOARD)
-      extra_hw.insert("Billboard");
-    else
-      extra_hw.insert("Drive Board");
-  }
+    extra_hw.insert("Drive Board");
+  if (BillBoard->IsAttached())
+    extra_hw.insert("Billboard");
+  else if (hasBillBoard)
+    extra_hw.insert("Billboard (not emulated, outputs are off)");
   if (game.encryption_key)
     extra_hw.insert("Security Board");
   if (game.netboard_present)
@@ -3177,6 +3298,22 @@ Result CModel3::Init(const Game &game, const ROMSet &rom_set)
   std::cout << std::endl;
 
   m_game = game;
+
+  // Inputs and outputs need the game
+  if (Outputs)
+  {
+    Outputs->SetGame(m_game);
+    Outputs->Attached();
+  }
+  if (DriveBoard->IsAttached())
+  {
+    DriveBoard->AttachInputs(Inputs, m_game.inputs);
+    if (Outputs)
+      DriveBoard->AttachOutputs(Outputs);
+  }
+  if (BillBoard->IsAttached() && Outputs)
+    BillBoard->AttachOutputs(Outputs);
+
   NetBoard->GetGame(m_game);
   if (Result::OKAY != NetBoard->Init(netRAM, netBuffer))
   {
@@ -3198,28 +3335,34 @@ CDriveBoard *CModel3::GetDriveBoard(void)
   return DriveBoard;
 }
 
+CBillBoard *CModel3::GetBillBoard(void)
+{
+  return BillBoard;
+}
+
 INetBoard *CModel3::GetNetBoard(void)
 {
   return NetBoard;
 }
 
-CModel3::CModel3(Util::Config::Node &config)
+CModel3::CModel3(Util::Config::Node &config, CInputs *inputs, COutputs *outputs, std::shared_ptr<CNetServer> server)
   : m_config(config),
     m_multiThreaded(config["MultiThreaded"].ValueAs<bool>()),
     m_gpuMultiThreaded(config["GPUMultiThreaded"].ValueAs<bool>()),
+    Inputs(inputs),
+    Outputs(outputs),
     sndBrdWakeNotify(false),
     TileGen(config),
     GPU(config),
     SoundBoard(config),
     m_jtag(GPU),
-    m_superAA(nullptr)
+    m_superAA(nullptr),
+    m_server(std::move(server))
 {
   // Initialize pointers so dtor can know whether to free them
   memoryPool = NULL;
 
   // Various uninitialized pointers
-  Inputs = NULL;
-  Outputs = NULL;
   ram = NULL;
   crom = NULL;
   vrom = NULL;
@@ -3235,6 +3378,7 @@ CModel3::CModel3(Util::Config::Node &config)
 
   DSB = NULL;
   DriveBoard = NULL;
+  BillBoard = NULL;
 
   NetBoard = NULL;
   m_runNetBoard = false;
@@ -3247,6 +3391,7 @@ CModel3::CModel3(Util::Config::Node &config)
   ppcBrdThread = NULL;
   sndBrdThread = NULL;
   drvBrdThread = NULL;
+  bilBrdThread = NULL;
 
   ppcBrdThreadRunning = false;
   ppcBrdThreadDone = false;
@@ -3254,11 +3399,14 @@ CModel3::CModel3(Util::Config::Node &config)
   sndBrdThreadDone = false;
   drvBrdThreadRunning = false;
   drvBrdThreadDone = false;
+  bilBrdThreadRunning = false;
+  bilBrdThreadDone = false;
 
   syncSndBrdThread = false;
   ppcBrdThreadSync = NULL;
   sndBrdThreadSync = NULL;
   drvBrdThreadSync = NULL;
+  bilBrdThreadSync = NULL;
 
   notifyLock = NULL;
   notifySync = NULL;
@@ -3271,6 +3419,7 @@ CModel3::CModel3(Util::Config::Node &config)
   adcChannel = 0;
 
   midiCtrlPort = 0;
+  midiAckCycle = 0;
   driveROM = nullptr;
   OutputRegister[0] = OutputRegister[1] = 0;
   cromBankReg = 0;
@@ -3336,6 +3485,12 @@ CModel3::~CModel3(void)
   {
       delete DriveBoard;
       DriveBoard = NULL;
+  }
+
+  if (BillBoard != NULL)
+  {
+      delete BillBoard;
+      BillBoard = NULL;
   }
 
   if (NetBoard != NULL)

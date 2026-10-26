@@ -149,12 +149,12 @@ SRC_FILES = \
 	Src/Model3/53C810.cpp \
 	Src/Model3/PCI.cpp \
 	Src/Model3/RTC72421.cpp \
+	Src/Model3/BillBoard.cpp \
 	Src/Model3/DriveBoard/DriveBoard.cpp \
 	Src/Model3/DriveBoard/ServoProgramSim.cpp \
 	Src/Model3/DriveBoard/WheelBoard.cpp \
 	Src/Model3/DriveBoard/JoystickBoard.cpp \
 	Src/Model3/DriveBoard/SkiBoard.cpp \
-	Src/Model3/DriveBoard/BillBoard.cpp \
 	Src/Model3/DriveBoard/Z80CTC.cpp \
 	Src/Model3/MPC10x.cpp \
 	Src/Inputs/Input.cpp \
@@ -189,10 +189,11 @@ SRC_FILES = \
 	Src/OSD/SDL/TelemetryServer.cpp \
 	Src/Telemetry/Telemetry.cpp \
 	Src/Telemetry/Model3Games.cpp \
-	Src/Network/TCPReceive.cpp \
-	Src/Network/TCPSend.cpp \
-	Src/Network/NetBoard.cpp \
-	Src/Network/SimNetBoard.cpp \
+	Src/Network/NetServer.cpp \
+	Src/Network/TCPConnection.cpp \
+	Src/Model3/NetBoard.cpp \
+	Src/Model3/NetBoardLink.cpp \
+	Src/Model3/SimNetBoard.cpp \
 	$(PLATFORM_SRC_FILES)
 
 ifeq (,$(findstring -DSUPERMODEL_OSX,$(PLATFORM_CXXFLAGS)))

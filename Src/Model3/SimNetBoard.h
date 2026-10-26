@@ -24,8 +24,7 @@
 #define INCLUDED_SIMNETBOARD_H
 
 #include <cstdint>
-#include "TCPSend.h"
-#include "TCPReceive.h"
+#include "NetBoardLink.h"
 #include "INetBoard.h"
 
 enum class State
@@ -47,7 +46,7 @@ enum class GameType
 class CSimNetBoard : public INetBoard
 {
 public:
-	CSimNetBoard(const Util::Config::Node& config);
+	CSimNetBoard(const Util::Config::Node& config, std::shared_ptr<CNetServer> server);
 	~CSimNetBoard(void);
 
 	void SaveState(CBlockFile* SaveState);
@@ -113,8 +112,8 @@ private:
 	void LinkBroken(const char* reason);
 	bool Handshake(Role role, size_t indexSize, uint8_t index[2], uint8_t count[2]);
 
-	std::unique_ptr<TCPSend> nets = nullptr;
-	std::unique_ptr<TCPReceive> netr = nullptr;
+	std::shared_ptr<CNetServer> m_server;
+	std::unique_ptr<CNetBoardLink> m_link;
 
 	Game m_gameInfo;
 	GameType m_gameType = GameType::unknown;

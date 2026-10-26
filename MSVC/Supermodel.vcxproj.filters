@@ -29,9 +29,6 @@
     <Filter Include="Source Files\Model3">
       <UniqueIdentifier>{9113f873-c745-44ac-860a-dcf12d177f5b}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source Files\Telemetry">
-      <UniqueIdentifier>{cfef2462-142d-4f4f-98bc-ae3069ce8e5c}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Source Files\Pro1000">
       <UniqueIdentifier>{10297567-7bf1-47c1-89e4-d5856ff09166}</UniqueIdentifier>
     </Filter>
@@ -89,9 +86,6 @@
     </Filter>
     <Filter Include="Header Files\Model3">
       <UniqueIdentifier>{5f55bf72-6938-4887-b78c-58b29e674985}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Header Files\Telemetry">
-      <UniqueIdentifier>{4a91e9e2-90be-4d5f-9847-07b51058bca7}</UniqueIdentifier>
     </Filter>
     <Filter Include="Header Files\Pro1000">
       <UniqueIdentifier>{bd7e7ea0-3439-4858-9e18-b170acb39aa0}</UniqueIdentifier>
@@ -164,6 +158,12 @@
     </Filter>
     <Filter Include="Header Files\Pkgs\imgui">
       <UniqueIdentifier>{36e7c598-149b-4f91-af6b-8593c02c4663}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\Telemetry">
+      <UniqueIdentifier>{cfef2462-142d-4f4f-98bc-ae3069ce8e5c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\Telemetry">
+      <UniqueIdentifier>{4a91e9e2-90be-4d5f-9847-07b51058bca7}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -440,9 +440,6 @@
     <ClCompile Include="..\Src\OSD\Logger.cpp">
       <Filter>Source Files\OSD</Filter>
     </ClCompile>
-    <ClCompile Include="..\Src\OSD\WriteDirectory.cpp">
-      <Filter>Source Files\OSD</Filter>
-    </ClCompile>
     <ClCompile Include="..\Src\Graphics\New3D\R3DScrollFog.cpp">
       <Filter>Source Files\Graphics\New</Filter>
     </ClCompile>
@@ -464,8 +461,11 @@
     <ClCompile Include="..\Src\Model3\JTAG.cpp">
       <Filter>Source Files\Model3</Filter>
     </ClCompile>
-    <ClCompile Include="..\Src\Network\NetBoard.cpp">
-      <Filter>Source Files\Network</Filter>
+    <ClCompile Include="..\Src\Model3\NetBoard.cpp">
+      <Filter>Source Files\Model3</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Src\Model3\NetBoardLink.cpp">
+      <Filter>Source Files\Model3</Filter>
     </ClCompile>
     <ClCompile Include="..\Src\Debugger\DebuggerIO.cpp">
       <Filter>Source Files\Debugger</Filter>
@@ -479,14 +479,14 @@
     <ClCompile Include="..\Src\Sound\MPEG\MpegAudio.cpp">
       <Filter>Source Files\Sound\MPEG</Filter>
     </ClCompile>
-    <ClCompile Include="..\Src\Network\TCPSend.cpp">
+    <ClCompile Include="..\Src\Network\NetServer.cpp">
       <Filter>Source Files\Network</Filter>
     </ClCompile>
-    <ClCompile Include="..\Src\Network\TCPReceive.cpp">
+    <ClCompile Include="..\Src\Network\TCPConnection.cpp">
       <Filter>Source Files\Network</Filter>
     </ClCompile>
-    <ClCompile Include="..\Src\Model3\DriveBoard\BillBoard.cpp">
-      <Filter>Source Files\Model3\DriveBoard</Filter>
+    <ClCompile Include="..\Src\Model3\BillBoard.cpp">
+      <Filter>Source Files\Model3</Filter>
     </ClCompile>
     <ClCompile Include="..\Src\Model3\DriveBoard\DriveBoard.cpp">
       <Filter>Source Files\Model3\DriveBoard</Filter>
@@ -497,26 +497,11 @@
     <ClCompile Include="..\Src\Model3\DriveBoard\SkiBoard.cpp">
       <Filter>Source Files\Model3\DriveBoard</Filter>
     </ClCompile>
-    <ClCompile Include="..\Src\Model3\DriveBoard\ServoProgramSim.cpp">
-      <Filter>Source Files\Model3\DriveBoard</Filter>
-    </ClCompile>
     <ClCompile Include="..\Src\Model3\DriveBoard\WheelBoard.cpp">
       <Filter>Source Files\Model3\DriveBoard</Filter>
     </ClCompile>
-    <ClCompile Include="..\Src\Network\SimNetBoard.cpp">
-      <Filter>Source Files\Network</Filter>
-    </ClCompile>
-    <ClCompile Include="..\Src\OSD\SDL\Agent.cpp">
-      <Filter>Source Files\OSD\SDL</Filter>
-    </ClCompile>
-    <ClCompile Include="..\Src\OSD\SDL\TelemetryServer.cpp">
-      <Filter>Source Files\OSD\SDL</Filter>
-    </ClCompile>
-    <ClCompile Include="..\Src\Telemetry\Model3Games.cpp">
-      <Filter>Source Files\Telemetry</Filter>
-    </ClCompile>
-    <ClCompile Include="..\Src\Telemetry\Telemetry.cpp">
-      <Filter>Source Files\Telemetry</Filter>
+    <ClCompile Include="..\Src\Model3\SimNetBoard.cpp">
+      <Filter>Source Files\Model3</Filter>
     </ClCompile>
     <ClCompile Include="..\Src\OSD\SDL\Crosshair.cpp">
       <Filter>Source Files\OSD\SDL</Filter>
@@ -525,9 +510,6 @@
       <Filter>Source Files\Graphics</Filter>
     </ClCompile>
     <ClCompile Include="..\Src\Graphics\SuperAA.cpp">
-      <Filter>Source Files\Graphics</Filter>
-    </ClCompile>
-    <ClCompile Include="..\Src\Graphics\AspectRatio.cpp">
       <Filter>Source Files\Graphics</Filter>
     </ClCompile>
     <ClCompile Include="..\Src\Graphics\New3D\TextureBank.cpp">
@@ -548,9 +530,6 @@
     <ClCompile Include="..\Src\OSD\SDL\Gui.cpp">
       <Filter>Source Files\OSD\SDL</Filter>
     </ClCompile>
-    <ClCompile Include="..\Src\OSD\SDL\GameMenu.cpp">
-      <Filter>Source Files\OSD\SDL</Filter>
-    </ClCompile>
     <ClCompile Include="..\Src\Pkgs\imgui\imgui_impl_sdl2.cpp">
       <Filter>Source Files\Pkgs\imgui</Filter>
     </ClCompile>
@@ -562,6 +541,30 @@
     </ClCompile>
     <ClCompile Include="..\Src\Model3\DriveBoard\Z80CTC.cpp">
       <Filter>Source Files\Model3\DriveBoard</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Src\OSD\WriteDirectory.cpp">
+      <Filter>Source Files\OSD</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Src\Model3\DriveBoard\ServoProgramSim.cpp">
+      <Filter>Source Files\Model3\DriveBoard</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Src\OSD\SDL\Agent.cpp">
+      <Filter>Source Files\OSD\SDL</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Src\OSD\SDL\TelemetryServer.cpp">
+      <Filter>Source Files\OSD\SDL</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Src\Telemetry\Model3Games.cpp">
+      <Filter>Source Files\Telemetry</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Src\Telemetry\Telemetry.cpp">
+      <Filter>Source Files\Telemetry</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Src\Graphics\AspectRatio.cpp">
+      <Filter>Source Files\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Src\OSD\SDL\GameMenu.cpp">
+      <Filter>Source Files\OSD\SDL</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -862,8 +865,11 @@
     <ClInclude Include="..\Src\Model3\JTAG.h">
       <Filter>Header Files\Model3</Filter>
     </ClInclude>
-    <ClInclude Include="..\Src\Network\NetBoard.h">
-      <Filter>Header Files\Network</Filter>
+    <ClInclude Include="..\Src\Model3\NetBoard.h">
+      <Filter>Header Files\Model3</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Src\Model3\NetBoardLink.h">
+      <Filter>Header Files\Model3</Filter>
     </ClInclude>
     <ClInclude Include="..\Src\Debugger\DebuggerIO.h">
       <Filter>Header Files\Debugger</Filter>
@@ -874,8 +880,8 @@
     <ClInclude Include="..\Src\Pkgs\minimp3.h">
       <Filter>Header Files\Pkgs</Filter>
     </ClInclude>
-    <ClInclude Include="..\Src\Model3\DriveBoard\BillBoard.h">
-      <Filter>Header Files\Model3\DriveBoard</Filter>
+    <ClInclude Include="..\Src\Model3\BillBoard.h">
+      <Filter>Header Files\Model3</Filter>
     </ClInclude>
     <ClInclude Include="..\Src\Model3\DriveBoard\DriveBoard.h">
       <Filter>Header Files\Model3\DriveBoard</Filter>
@@ -886,22 +892,22 @@
     <ClInclude Include="..\Src\Model3\DriveBoard\SkiBoard.h">
       <Filter>Header Files\Model3\DriveBoard</Filter>
     </ClInclude>
-    <ClInclude Include="..\Src\Model3\DriveBoard\ServoProgramSim.h">
-      <Filter>Header Files\Model3\DriveBoard</Filter>
-    </ClInclude>
     <ClInclude Include="..\Src\Model3\DriveBoard\WheelBoard.h">
       <Filter>Header Files\Model3\DriveBoard</Filter>
     </ClInclude>
-    <ClInclude Include="..\Src\Network\INetBoard.h">
+    <ClInclude Include="..\Src\Model3\INetBoard.h">
+      <Filter>Header Files\Model3</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Src\Model3\SimNetBoard.h">
+      <Filter>Header Files\Model3</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Src\Network\NetProtocol.h">
       <Filter>Header Files\Network</Filter>
     </ClInclude>
-    <ClInclude Include="..\Src\Network\SimNetBoard.h">
+    <ClInclude Include="..\Src\Network\NetServer.h">
       <Filter>Header Files\Network</Filter>
     </ClInclude>
-    <ClInclude Include="..\Src\Network\TCPReceive.h">
-      <Filter>Header Files\Network</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Src\Network\TCPSend.h">
+    <ClInclude Include="..\Src\Network\TCPConnection.h">
       <Filter>Header Files\Network</Filter>
     </ClInclude>
     <ClInclude Include="..\Src\Graphics\IRender3D.h">
@@ -979,15 +985,6 @@
     <ClInclude Include="..\Src\Util\BitCast.h">
       <Filter>Header Files\Util</Filter>
     </ClInclude>
-    <ClInclude Include="..\Src\OSD\SDL\Agent.h">
-      <Filter>Header Files\OSD\SDL</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Src\OSD\SDL\TelemetryServer.h">
-      <Filter>Header Files\OSD\SDL</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Src\Telemetry\Telemetry.h">
-      <Filter>Header Files\Telemetry</Filter>
-    </ClInclude>
     <ClInclude Include="..\Src\OSD\SDL\Crosshair.h">
       <Filter>Header Files\OSD\SDL</Filter>
     </ClInclude>
@@ -1000,16 +997,10 @@
     <ClInclude Include="..\Src\Graphics\SuperAA.h">
       <Filter>Header Files\Graphics</Filter>
     </ClInclude>
-    <ClInclude Include="..\Src\Graphics\AspectRatio.h">
-      <Filter>Header Files\Graphics</Filter>
-    </ClInclude>
     <ClInclude Include="..\Src\Graphics\New3D\TextureBank.h">
       <Filter>Header Files\Graphics\New</Filter>
     </ClInclude>
     <ClInclude Include="..\Src\OSD\SDL\Gui.h">
-      <Filter>Header Files\OSD\SDL</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Src\OSD\SDL\GameMenu.h">
       <Filter>Header Files\OSD\SDL</Filter>
     </ClInclude>
     <ClInclude Include="..\Src\Pkgs\imgui\imconfig.h">
@@ -1039,10 +1030,28 @@
     <ClInclude Include="..\Src\Model3\DriveBoard\Z80CTC.h">
       <Filter>Header Files\Model3\DriveBoard</Filter>
     </ClInclude>
+    <ClInclude Include="..\Src\Model3\DriveBoard\ServoProgramSim.h">
+      <Filter>Header Files\Model3\DriveBoard</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Src\OSD\SDL\Agent.h">
+      <Filter>Header Files\OSD\SDL</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Src\OSD\SDL\TelemetryServer.h">
+      <Filter>Header Files\OSD\SDL</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Src\Telemetry\Telemetry.h">
+      <Filter>Header Files\Telemetry</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Src\Graphics\AspectRatio.h">
+      <Filter>Header Files\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Src\OSD\SDL\GameMenu.h">
+      <Filter>Header Files\OSD\SDL</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="..\Src\Debugger\ReadMe.txt">
       <Filter>Source Files\Debugger</Filter>
     </CustomBuild>
   </ItemGroup>
-</Project>
+</Project>

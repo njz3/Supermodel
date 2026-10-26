@@ -44,7 +44,9 @@ inline bool CSimNetBoard::IsGame(const char* gameName)
 	return (m_gameInfo.name == gameName) || (m_gameInfo.parent == gameName);
 }
 
-CSimNetBoard::CSimNetBoard(const Util::Config::Node& config) : m_config(config)
+CSimNetBoard::CSimNetBoard(const Util::Config::Node& config, std::shared_ptr<CNetServer> server)
+	: m_config(config),
+	  m_server(std::move(server))
 {
 }
 
@@ -95,8 +97,9 @@ Result CSimNetBoard::Init(uint8_t* netRAMPtr, uint8_t* netBufferPtr)
 	addr_out = m_config["AddressOut"].ValueAs<std::string>();
 
 	m_round = (CThread::GetTicks() << 8) ^ (uint32_t(port_in) << 16) ^ port_out;	// rounds differ from machine to machine
-	nets = std::make_unique<TCPSend>(addr_out, port_out);
-	netr = std::make_unique<TCPReceive>(port_in);
+	if (!m_server)
+		return ErrorLog("Net board requires the network server.");
+	m_link = std::make_unique<CNetBoardLink>(m_server, addr_out, port_out);
 
 	return Result::OKAY;
 }
@@ -311,7 +314,7 @@ void CSimNetBoard::Reset(void)
 	if (m_state == State::ready)
 	{
 		InfoLog("Network board reset by the game: the other machines are told the link is broken.");
-		nets->Send(nullptr, 0);
+		m_link->Send(nullptr, 0);
 	}
 
 	m_running = false;
@@ -346,8 +349,8 @@ void CSimNetBoard::ConnectProc(void)
 	printf("Connecting to %s:%i ..\n", addr_out.c_str(), port_out);
 	InfoLog("Network board: connecting to the next machine (%s:%u) and waiting for the previous one (port %u).", addr_out.c_str(), port_out, port_in);
 
-	// wait until TCPSend has connected to the next machine
-	while (!nets->Connect())
+	// wait until the output connection to the next machine is open
+	while (!m_link->Connect())
 	{
 		if (m_quit)
 		{
@@ -357,8 +360,8 @@ void CSimNetBoard::ConnectProc(void)
 		CThread::Sleep(100);
 	}
 
-	// wait until TCPReceive has accepted a connection from the previous machine
-	while (!netr->Connected())
+	// wait until the previous machine has linked
+	while (!m_link->Connected())
 	{
 		if (m_quit)
 		{
@@ -392,28 +395,34 @@ void CSimNetBoard::EnsureConnecting(void)
 
 bool CSimNetBoard::SendPacket(const void* data, int length)
 {
-	if (nets->Send(data, length))
+	if (m_link->Connected())
+	{
+		m_link->Send(data, length);
 		return true;
+	}
 	if (m_connected)
-		ErrorLog("Network board: the connection to the next machine (%s:%u) is lost.", addr_out.c_str(), port_out);
+		ErrorLog("Network board: the connection to the next machine (%s:%u) or from the previous one is lost.", addr_out.c_str(), port_out);
 	m_connected = false;
 	return false;
 }
 
-// A packet from the previous machine, in m_packet
+// A packet from the previous machine, in m_packet, waited for at most timeoutMS (0: not at all)
 CSimNetBoard::Received CSimNetBoard::ReceivePacket(int timeoutMS)
 {
-	m_packet = netr->Receive(timeoutMS);
-	if (!m_packet.empty())
-		return Received::packet;
-	if (!netr->Connected())
+	if (m_link->WaitForData(timeoutMS > 0 ? timeoutMS : 0) && m_link->CheckDataAvailable())
+	{
+		std::vector<uint8_t>& data = m_link->Receive();
+		m_packet.assign(data.begin(), data.end());
+		return m_packet.empty() ? Received::alert : Received::packet;
+	}
+	if (!m_link->Connected())
 	{
 		if (m_connected)
-			ErrorLog("Network board: the connection from the previous machine is lost.");
+			ErrorLog("Network board: the connection from the previous machine or to the next one is lost.");
 		m_connected = false;
 		return Received::lost;
 	}
-	return netr->TimedOut() ? Received::nothing : Received::alert;
+	return Received::nothing;
 }
 
 // The link is broken: the other machines are told (an empty packet), the game too (type 1), and the board waits for
@@ -421,18 +430,18 @@ CSimNetBoard::Received CSimNetBoard::ReceivePacket(int timeoutMS)
 void CSimNetBoard::LinkBroken(const char* reason)
 {
 	ErrorLog("Network board: link broken, %s.", reason);
-	nets->Send(nullptr, 0);
+	m_link->Send(nullptr, 0);
 	m_state = State::error;
 	if (m_gameType == GameType::one)
 		m_status1 = 0x40;			// send "link broken" message to mainboard
-	if (!nets->Connected() || !netr->Connected())
+	if (!m_link->Connected())
 		m_connected = false;
 }
 
 // What has arrived so far, dropped (stale data of a previous link)
 void CSimNetBoard::Flush(void)
 {
-	while (netr->CheckDataAvailable(0) && ReceivePacket(0) != Received::lost)
+	while (m_link->CheckDataAvailable() && ReceivePacket(0) != Received::lost)
 		;
 }
 
@@ -571,7 +580,7 @@ bool CSimNetBoard::Handshake(Role role, size_t indexSize, uint8_t index[2], uint
 
 	// slave or relay: the latest GUID from the previous machine, anything else dropped
 	std::vector<char> guidPacket;
-	while (netr->CheckDataAvailable(0))
+	while (m_link->CheckDataAvailable())
 	{
 		Received received = ReceivePacket(0);
 		if (received == Received::lost)

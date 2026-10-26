@@ -121,12 +121,11 @@ private:
 	std::string m_separatorIdAndValue = NET_OUTPUTS_DEFAULT_SEPARATOR_ID_AND_VALUE;
 	unsigned int m_maxClients = NET_OUTPUTS_MAX_CLIENTS;
 	std::atomic<bool> m_running = false;
-	std::mutex m_clientsMutex;      // m_clients and the socket set, shared by the emulation and server threads
 	std::vector<RegisteredClientTcp> m_clients;
 	bool m_driveBoardReply = true;
 	std::atomic<bool> m_replyActive = false;
 	std::atomic<UINT8> m_reply = 0;
-	TCPsocket m_replySource = nullptr;  // the client the reply comes from (server thread, m_clientsMutex held)
+	TCPsocket m_replySource = nullptr;  // the client the reply comes from (server thread, m_mutex held)
 	TCPsocket m_serverSocket{};
 	SDLNet_SocketSet m_tcpSocketSet{};
 	std::thread m_tcpServerThread;
@@ -200,7 +199,7 @@ private:
 	 * UnregisterClient(socket, sendStop):
 	 *
 	 * Unregisters a client from the emulator (the stop message sent first unless it has disconnected).
-	 * Called with m_clientsMutex held.
+	 * Called with m_mutex held.
 	 */
 	bool UnregisterClient(TCPsocket socket, bool sendStop = true);
 

@@ -28,7 +28,7 @@ CNetOutputs::CNetOutputs()
 
 CNetOutputs::~CNetOutputs()
 {
-    // Stop the server thread first: it uses the clients and the server socket.
+    // Stop the server thread first, so that no client can register while the others are removed.
     m_running.store(false);
     if (m_tcpServerThread.joinable()) {
         m_tcpServerThread.join();
@@ -73,8 +73,8 @@ void CNetOutputs::Attached()
 
 void CNetOutputs::SendOutput(EOutputs output, UINT8 prevValue, UINT8 value)
 {
-    // Loop through all registered clients and send them new output values (those that fail unregistered after).
-    std::lock_guard<std::mutex> lock(m_clientsMutex);
+    // Called with m_mutex held (COutputs::SetValue). Loop through all registered clients and send them the new
+    // value; clients that fail are removed after the loop, as removing them changes m_clients.
     std::string line = FormatOutput(output, value);
     std::vector<TCPsocket> failed;
     for (auto& client : m_clients) {
@@ -185,7 +185,7 @@ bool CNetOutputs::CreateServerThread()
     m_tcpServerThread = std::thread([this] {
         while (m_running.load()) {
             {
-                std::lock_guard<std::mutex> lock(m_clientsMutex);
+                std::lock_guard<std::recursive_mutex> lock(m_mutex);
                 TCPsocket clientSocket = SDLNet_TCP_Accept(m_serverSocket);
                 if (clientSocket) {
                     // Handle new client connection (e.g., add to list of clients, send initial state, etc.).
@@ -250,6 +250,8 @@ void CNetOutputs::DestroyTcpServerSocket()
 
 bool CNetOutputs::SendUdpBroadcastWithId()
 {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+
     // Open a UDP socket on any available port.
     UDPsocket udpSocket = SDLNet_UDP_Open(0);
     if (!udpSocket) {
@@ -287,6 +289,8 @@ bool CNetOutputs::SendUdpBroadcastWithId()
 
 bool CNetOutputs::RegisterClient(TCPsocket socket)
 {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+
     // Check that given client is not already registered.
     for (auto& client : m_clients) {
         if (client.ClientSocket == socket) {
@@ -338,7 +342,9 @@ bool CNetOutputs::SendAllDataToClient(RegisteredClientTcp& client)
 
 bool CNetOutputs::UnregisterAllClients()
 {
-    std::lock_guard<std::mutex> lock(m_clientsMutex);
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+
+    // UnregisterClient() removes the client from m_clients
     while (!m_clients.empty()) {
         UnregisterClient(m_clients.front().ClientSocket);
     }
@@ -347,6 +353,8 @@ bool CNetOutputs::UnregisterAllClients()
 
 bool CNetOutputs::UnregisterClient(TCPsocket socket, bool sendStop)
 {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+
     // The drive board's reply came from this client: back to the emulated board's
     if (socket == m_replySource) {
         if (m_replyActive.exchange(false)) {

@@ -434,7 +434,7 @@ const UINT32 *CLegacy3D::TranslateCullingAddress(UINT32 addr)
     return &cullingRAMLo[addr];
   
 #ifdef DEBUG
-  ErrorLog("TranslateCullingAddress(): invalid address: %06X", addr);
+  ErrorLog("TranslateCullingAddress(): Invalid address: %06X", addr);
 #endif
   return NULL;
 }
