@@ -146,6 +146,14 @@ public:
   virtual void LoadState(CBlockFile *SaveState);
 
   /*
+   * ResendForceFeedback(void):
+   *
+   * Plays the board's current effects again from scratch: the joystick that
+   * plays them, or their strength, changed (in-game menu). Nothing by default.
+   */
+  virtual void ResendForceFeedback(void) {}
+
+  /*
    * Init(romPtr):
    *
    * Initializes (and "attaches") the drive board. This should be called

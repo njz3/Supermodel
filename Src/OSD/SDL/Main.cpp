@@ -438,6 +438,11 @@ static Result ResizeGLScreen(unsigned *xOffsetPtr, unsigned *yOffsetPtr, unsigne
     return Result::FAIL;
   }
 
+  // A window's edges can be dragged with the mouse to resize it (see the main loop); not a window without borders
+  // (BorderlessWindow), nor the agent's
+  if (!fullScreenFlags)
+    SDL_SetWindowResizable(s_window, !s_runtime_config["BorderlessWindow"].ValueAs<bool>() && !Agent::Enabled() ? SDL_TRUE : SDL_FALSE);
+
   // Borderless full screen: the image at the desktop's resolution, whatever the resolution asked for
   if (fullScreenFlags == SDL_WINDOW_FULLSCREEN_DESKTOP)
   {
@@ -1039,7 +1044,10 @@ static void SetUpVideoLayout(bool windowChanged)
   AspectRatio::Settings settings;
   if (!AspectRatio::FromConfig(&settings, s_runtime_config))
     ErrorLog("Unknown AspectRatio '%s', ORIGINAL used instead.", s_runtime_config["AspectRatio"].ValueAs<std::string>().c_str());
-  s_presentation = settings.fit != AspectRatio::Fit::Original;
+  unsigned internalWidth = s_runtime_config["InternalWidth"].ValueAsDefault<unsigned>(0);
+  unsigned internalHeight = s_runtime_config["InternalHeight"].ValueAsDefault<unsigned>(0);
+  bool internal = internalWidth > 0 && internalHeight > 0;
+  s_presentation = settings.fit != AspectRatio::Fit::Original || internal;
   if (!s_presentation)
   {
     s_targetXOffset = xOffset;
@@ -1053,6 +1061,22 @@ static void SetUpVideoLayout(bool windowChanged)
   }
 
   s_layout = AspectRatio::Compute(settings, totalXRes, totalYRes, s_runtime_config["Stretch"].ValueAs<bool>(), s_runtime_config["WideScreen"].ValueAs<bool>(), float(496.0 / 384.0));
+
+  // The internal resolution (InternalWidth x InternalHeight): the renderers draw at it, what they draw (the image, or
+  // the frame's width with the wide screen hack) fitted into it at its shape, as a game patched to a resolution draws
+  // its whole image then cropped; the final pass scales their image into the window
+  if (internal)
+  {
+    float k = (std::min)(float(internalWidth) / s_layout.targetWidth, float(internalHeight) / s_layout.targetHeight);
+    auto scale = [k](unsigned value) { return (std::max)(1u, unsigned(std::lround(value * k))); };
+    s_layout.targetWidth = scale(s_layout.targetWidth);
+    s_layout.targetHeight = scale(s_layout.targetHeight);
+    s_layout.imageWidth = scale(s_layout.imageWidth);
+    s_layout.imageHeight = scale(s_layout.imageHeight);
+    s_layout.imageX = unsigned(std::lround(s_layout.imageX * k));
+    s_layout.imageY = unsigned(std::lround(s_layout.imageY * k));
+  }
+
   s_targetXOffset = s_layout.imageX;
   s_targetYOffset = s_layout.imageY;
   s_targetXRes = s_layout.imageWidth;
@@ -1094,7 +1118,65 @@ static Result InitRenderers(IEmulator *Emu, SuperAA *superAA, IRender2D *&Render
     return Result::FAIL;
 
   Emu->AttachRenderers(Render2D, Render3D, superAA);
+  GameMenu::SetRenderSize(s_targetXRes * aaValue, s_targetYRes * aaValue);
   return Result::OKAY;
+}
+
+/*
+ * ApplyForceFeedbackSettings():
+ *
+ * The joystick that plays the force feedback (ForceFeedbackDevice: a
+ * joystick's name; empty, AUTO or that joystick not connected, the joysticks
+ * the inputs are bound to, as the other emulators of the cabinets do), its
+ * strength (ForceFeedbackGain, %) and direction (ForceFeedbackInvert).
+ */
+static void ApplyForceFeedbackSettings(CInputs *Inputs)
+{
+  std::shared_ptr<CInputSystem> system = Inputs->GetInputSystem();
+  std::string device = Util::TrimWhiteSpace(s_runtime_config["ForceFeedbackDevice"].ValueAsDefault<std::string>(""));
+  int joyNum = CInputSystem::FFB_BOUND_JOYSTICKS;
+  if (!device.empty() && Util::ToLower(device) != "auto")
+  {
+    joyNum = system->FindJoystick(device);
+    if (joyNum < 0)
+      ErrorLog("Force feedback device '%s' not connected: the effects go to the joysticks the steering is bound to.", device.c_str());
+    else
+      InfoLog("Force feedback played by joystick %d, %s.", joyNum + 1, device.c_str());
+  }
+  float gain = std::clamp(s_runtime_config["ForceFeedbackGain"].ValueAsDefault<int>(100), 0, 300) / 100.0f;
+  system->SetForceFeedbackRouting(joyNum, gain, s_runtime_config["ForceFeedbackInvert"].ValueAsDefault<bool>(false));
+}
+
+/*
+ * ApplyWindowSettings():
+ *
+ * The in-game menu changed FullScreen, BorderlessFullScreen, Stretch,
+ * XResolution or YResolution: the window set up again with them, from a window
+ * (its size, then the screen's mode for full screen). The renderers are set up
+ * again afterwards (InitRenderers with windowChanged).
+ */
+static Result ApplyWindowSettings()
+{
+  totalXRes = xRes = s_runtime_config["XResolution"].ValueAs<unsigned>();
+  totalYRes = yRes = s_runtime_config["YResolution"].ValueAs<unsigned>();
+  Uint32 fullScreenFlags = FullScreenFlags();
+
+  SDL_SetWindowFullscreen(s_window, 0);
+  SDL_SetWindowSize(s_window, totalXRes, totalYRes);
+  int xpos = s_runtime_config["WindowXPosition"].ValueAsDefault<int>(SDL_WINDOWPOS_CENTERED);
+  int ypos = s_runtime_config["WindowYPosition"].ValueAsDefault<int>(SDL_WINDOWPOS_CENTERED);
+  SDL_SetWindowPosition(s_window, xpos, ypos);
+  if (fullScreenFlags == SDL_WINDOW_FULLSCREEN)
+  {
+    // The screen's mode closest to the resolution, at 57.5 Hz if there is one (RefreshRate)
+    SDL_DisplayMode wanted{}, closest{};
+    wanted.w = int(totalXRes);
+    wanted.h = int(totalYRes);
+    if (SDL_GetClosestDisplayMode(SDL_GetWindowDisplayIndex(s_window), &wanted, &closest) != nullptr)
+      SDL_SetWindowDisplayMode(s_window, &closest);
+    SetFullScreenRefreshRate();
+  }
+  return ResizeGLScreen(&xOffset, &yOffset, &xRes, &yRes, &totalXRes, &totalYRes, !s_runtime_config["Stretch"].ValueAs<bool>(), fullScreenFlags);
 }
 
 /******************************************************************************
@@ -1213,11 +1295,42 @@ static bool SaveMenuSettings(const std::string &game, bool forGame)
   s_settingsReadFrom = s_configFilePath;
 
   std::vector<std::pair<std::string, std::string>> values;
+  auto boolean = [](const char *key) { return std::make_pair(std::string(key), std::string(s_runtime_config[key].ValueAs<bool>() ? "true" : "false")); };
+  auto number = [](const char *key) { return std::make_pair(std::string(key), std::to_string(s_runtime_config[key].ValueAsDefault<unsigned>(0))); };
   values.emplace_back("AspectRatio", s_runtime_config["AspectRatio"].ValueAs<std::string>());
   values.emplace_back("CropPosition", s_runtime_config["CropPosition"].ValueAs<std::string>());
-  values.emplace_back("CropBarrel", s_runtime_config["CropBarrel"].ValueAs<bool>() ? "true" : "false");
+  values.push_back(boolean("CropBarrel"));
   values.emplace_back("BarrelCenter", s_runtime_config["BarrelCenter"].ValueAs<std::string>());
   values.emplace_back("BarrelRadius", s_runtime_config["BarrelRadius"].ValueAs<std::string>());
+  values.push_back(number("InternalWidth"));
+  values.push_back(number("InternalHeight"));
+  values.push_back(boolean("FullScreen"));
+  values.push_back(boolean("BorderlessFullScreen"));
+  values.push_back(boolean("Stretch"));
+  values.push_back(number("XResolution"));
+  values.push_back(number("YResolution"));
+  values.push_back(boolean("Throttle"));
+  values.push_back(boolean("VSync"));
+  values.push_back(boolean("ShowFrameRate"));
+  values.push_back(boolean("BackgroundInput"));
+  values.push_back(boolean("ForceFeedback"));
+  values.push_back(boolean("SimulateDriveBoard"));
+  values.emplace_back("ForceFeedbackDevice", s_runtime_config["ForceFeedbackDevice"].ValueAsDefault<std::string>(""));
+  values.push_back(number("ForceFeedbackGain"));
+  values.push_back(boolean("ForceFeedbackInvert"));
+  // The limits per effect of this platform's input systems
+  for (const char *key : { "DirectInputConstForceLeftMax", "DirectInputConstForceRightMax", "DirectInputSelfCenterMax",
+                           "DirectInputFrictionMax", "DirectInputDamperMax", "DirectInputVibrateMax", "XInputConstForceThreshold",
+                           "XInputConstForceMax", "XInputVibrateMax", "SDLConstForceMax", "SDLSelfCenterMax", "SDLFrictionMax",
+                           "SDLDamperMax", "SDLVibrateMax", "SDLConstForceThreshold" })
+  {
+    if (s_runtime_config.TryGet(key) != nullptr)
+      values.push_back(number(key));
+  }
+  if (s_runtime_config.TryGet("XInputStereoVibration") != nullptr)
+    values.push_back(boolean("XInputStereoVibration"));
+  for (const std::string &key : GameMenu::ChangedBindings())  // the Controls page's
+    values.emplace_back(key, s_runtime_config[key].ValueAs<std::string>());
   if (!SetINIFileValues(s_configFilePath, game, values))
   {
     ErrorLog("Unable to save the settings to '%s'.", s_configFilePath.c_str());
@@ -1263,6 +1376,8 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
   SDL_SetWindowTitle(s_window, baseTitleStr);
   s_gameTitle = baseTitleStr;
   GameMenu::SetGame(game, FileSystemPath::GetReadPath(FileSystemPath::Config, "GameNotes.txt"));
+  GameMenu::SetInputs(Inputs);
+  ApplyForceFeedbackSettings(Inputs);
   SDL_SetWindowSize(s_window, totalXRes, totalYRes);
 
   int xpos = s_runtime_config["WindowXPosition"].ValueAsDefault<int>(SDL_WINDOWPOS_CENTERED);
@@ -1387,6 +1502,26 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
     if (GameMenu::IsOpen() && !GameMenu::ProcessEvents())
       quit = true;
 
+    // A window resized with the mouse: its size kept as the resolution (the in-game menu's Save writes it), the
+    // renderers set up again for it. Dragging an edge holds the loop on Windows: done once, at the size let go at
+    if (!s_runtime_config["FullScreen"].ValueAs<bool>())
+    {
+      int width = 0, height = 0;
+      SDL_GetWindowSize(s_window, &width, &height);
+      if (width > 0 && height > 0 && (unsigned(width) != totalXRes || unsigned(height) != totalYRes))
+      {
+        s_runtime_config.Set("XResolution", unsigned(width));
+        s_runtime_config.Set("YResolution", unsigned(height));
+        delete Render2D;
+        Render2D = nullptr;
+        totalXRes = xRes = unsigned(width);
+        totalYRes = yRes = unsigned(height);
+        if (Result::OKAY != ResizeGLScreen(&xOffset, &yOffset, &xRes, &yRes, &totalXRes, &totalYRes, !s_runtime_config["Stretch"].ValueAs<bool>(), 0) ||
+            Result::OKAY != InitRenderers(Emu, superAA, Render2D, Render3D, upscaleMode, true))
+          goto QuitError;
+      }
+    }
+
     // Render if paused, otherwise run a frame
     if (paused)
     {
@@ -1424,19 +1559,47 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
     // Check UI controls
     if (GameMenu::IsOpen())
     {
-      // The in-game menu: its settings applied at once, saved on request; closed by UIMenu, Escape or its button
-      if (GameMenu::TakeChanged() && Result::OKAY != InitRenderers(Emu, superAA, Render2D, Render3D, upscaleMode, false))
+      // The in-game menu: its settings applied at once, saved on request; closed by UIMenu (unless it waits for an input
+      // to bind), Escape or its button
+      unsigned changes = GameMenu::TakeChanges();
+      if (changes & GameMenu::ChangeWindow)
+      {
+        // As the full screen toggle below: the renderers made again for the window
+        delete Render2D;
+        Render2D = nullptr;
+        if (Result::OKAY != ApplyWindowSettings() || Result::OKAY != InitRenderers(Emu, superAA, Render2D, Render3D, upscaleMode, true))
+          goto QuitError;
+      }
+      else if ((changes & GameMenu::ChangeLayout) && Result::OKAY != InitRenderers(Emu, superAA, Render2D, Render3D, upscaleMode, false))
         goto QuitError;
+      if (changes & GameMenu::ChangeSwapInterval)
+        SDL_GL_SetSwapInterval(s_runtime_config["VSync"].ValueAs<bool>() ? 1 : 0);
+      if (changes & GameMenu::ChangeInputSystem)
+        Inputs->GetInputSystem()->ApplySettings();
+      if (changes & GameMenu::ChangeForceFeedback)
+      {
+        // The effects stopped where they played, routed as now set, then the drive board's played again from scratch
+        for (const std::shared_ptr<CInput> &input : Inputs->GetGameInputs(game))
+        {
+          if (input->HasForceFeedback())
+            input->SendForceFeedbackCmd({ FFStop, 0.0f });
+        }
+        ApplyForceFeedbackSettings(Inputs);
+        CModel3 *model3 = dynamic_cast<CModel3 *>(Emu);
+        if (model3 != nullptr && model3->GetDriveBoard() != nullptr)
+          model3->GetDriveBoard()->ResendForceFeedback();
+      }
       GameMenu::Action action = GameMenu::TakeAction();
       if (action != GameMenu::Action::None)
       {
         bool saved = SaveMenuSettings(game.name, action == GameMenu::Action::SaveForGame);
         GameMenu::SetStatus((saved ? "Saved to " : "Unable to save to ") + s_configFilePath);
       }
-      if (GameMenu::CloseRequested() || Inputs->uiMenu->Pressed())
+      if (GameMenu::CloseRequested() || (Inputs->uiMenu->Pressed() && !GameMenu::IsCapturing()))
       {
         GameMenu::Close();
         Inputs->GetInputSystem()->SetPollConsumesEvents(true);
+        Inputs->GetInputSystem()->SetMouseVisibility(!s_runtime_config["FullScreen"].ValueAs<bool>());  // the display mode may have changed
         if (!pausedBeforeMenu)
         {
           paused = false;
@@ -1976,6 +2139,12 @@ Util::Config::Node DefaultConfig()
   config.Set("ForceFeedback", false, "ForceFeedback");
   // The drive board's program run by its Z80 (emulated), or its logic (simulated: EPR-18261 so far)
   config.Set("SimulateDriveBoard", false, "ForceFeedback");
+  // The joystick that plays the effects (a joystick's name; empty: the joysticks the inputs are bound to), their
+  // strength in % and the constant force inverted. Set in the in-game menu's Controls page, or with --set
+  // ForceFeedback.FFB_DEVICE, FFB_STRENGTH and FFB_INVERT (linuxloader's names); not shown by the launcher
+  config.Set<std::string>("ForceFeedbackDevice", "");
+  config.Set("ForceFeedbackGain", 100u);
+  config.Set("ForceFeedbackInvert", false);
 
   // Platform-specific/UI
   config.Set("New3DEngine", true, "Video");
@@ -2003,6 +2172,10 @@ Util::Config::Node DefaultConfig()
   config.Set("CropBarrel", false, "Video");
   config.Set("BarrelCenter", 60, "Video", 0, 100);
   config.Set("BarrelRadius", 50, "Video", 10, 300);
+  // The size the image is drawn at, then scaled into the frame; 0: the size it has in the window. Set in the in-game
+  // menu's Display page, or with --set Display.WIDTH and HEIGHT (linuxloader's names); not shown by the launcher
+  config.Set("InternalWidth", 0u);
+  config.Set("InternalHeight", 0u);
   config.Set("VSync", true, "Video");
   config.Set("Throttle", true, "Video");
   config.Set("RefreshRate", 60.0f, "Video", 0.0f, 0.0f, { 57.524f, 60.f });
@@ -2324,7 +2497,10 @@ static void Help(void)
   puts("  --set <section>.<key>=<value>");
   puts("                          Override a setting, as the cabinets' other emulators");
   puts("                          do (e.g., --set Display.ASPECT_RATIO=4:3_CROP); the key");
-  puts("                          matches whatever its case and underscores");
+  puts("                          matches whatever its case and underscores; WIDTH and");
+  puts("                          HEIGHT are the internal resolution (AUTO: the window's),");
+  puts("                          FFB_DEVICE (AUTO or a joystick's name), FFB_STRENGTH (%)");
+  puts("                          and FFB_INVERT the force feedback");
   puts("");
   puts("Core Options:");
   puts("  -ppc-frequency=<mhz>    PowerPC frequency (default varies by stepping)");
@@ -2446,7 +2622,10 @@ static void Help(void)
  * underscores (ASPECT_RATIO is AspectRatio). The section is accepted but not
  * used: the command line overrides every section here. DISPLAY_MODE (WINDOW,
  * FULLSCREEN, BORDERLESS, each also with _STRETCH) sets FullScreen,
- * BorderlessFullScreen and Stretch.
+ * BorderlessFullScreen and Stretch; WIDTH and HEIGHT (AUTO or pixels) set
+ * InternalWidth and InternalHeight, the internal resolution; FFB_DEVICE (AUTO
+ * or a joystick's name), FFB_STRENGTH and FFB_INVERT set ForceFeedbackDevice,
+ * ForceFeedbackGain and ForceFeedbackInvert.
  * An unknown key is reported and ignored, so that one command line suits all
  * the emulators.
  */
@@ -2487,6 +2666,31 @@ static bool ApplySetOption(Util::Config::Node *config, const std::string &assign
     if (kind != "window")
       config->Set("BorderlessFullScreen", kind == "borderless");
     config->Set("Stretch", stretch);
+    return true;
+  }
+
+  // linuxloader's WIDTH and HEIGHT: the size the game's image is drawn at (AUTO: the size it has in the window)
+  if (key == "width" || key == "height")
+  {
+    std::string size = Util::ToLower(Util::TrimWhiteSpace(value));
+    unsigned pixels = 0;
+    if (size != "auto" && (size.empty() || size.size() > 5 || size.find_first_not_of("0123456789") != std::string::npos || (pixels = unsigned(std::strtoul(size.c_str(), nullptr, 10))) == 0))
+    {
+      ErrorLog("'--set %s': WIDTH and HEIGHT are AUTO or a number of pixels.", assignment.c_str());
+      return false;
+    }
+    config->Set(key == "width" ? "InternalWidth" : "InternalHeight", pixels);
+    return true;
+  }
+
+  // linuxloader's force feedback names (FFB_DEVICE: AUTO or a joystick's name)
+  if (key == "ffbdevice" || key == "ffbstrength" || key == "ffbinvert")
+  {
+    std::string trimmed = Util::TrimWhiteSpace(value);
+    if (key == "ffbdevice")
+      config->Set("ForceFeedbackDevice", Util::ToLower(trimmed) == "auto" ? std::string() : trimmed);
+    else
+      config->Set(key == "ffbstrength" ? "ForceFeedbackGain" : "ForceFeedbackInvert", trimmed);
     return true;
   }
 

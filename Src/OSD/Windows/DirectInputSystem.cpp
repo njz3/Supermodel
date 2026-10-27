@@ -2203,3 +2203,10 @@ void CDirectInputSystem::UngrabMouse()
 		ActivateJoysticks();
 	}
 }
+
+void CDirectInputSystem::ApplySettings()
+{
+	// BackgroundInput changed (in-game menu): the joysticks acquired again with it
+	if (m_activated)
+		ActivateJoysticks();
+}

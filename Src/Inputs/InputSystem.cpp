@@ -1868,6 +1868,71 @@ Finish:
     return !cancelled;
 }
 
+void CInputSystem::CheckMappingReadSources(vector<CInputSource*> &sources, string &mapping, vector<CInputSource*> &badSources)
+{
+  if (m_read.readFlags & READ_KEYBOARD)
+    CheckKeySources(ANY_KEYBOARD, m_read.fullAxisOnly, sources, mapping, badSources);
+  if (m_read.readFlags & READ_MOUSE)
+  {
+    // As ReadMapping: the mouse's X and Y axes once it has been in the middle of the display
+    if (!m_read.mseCentered)
+      m_read.mseCentered = ConfigMouseCentered();
+    CheckMouseSources(ANY_MOUSE, m_read.fullAxisOnly, m_read.mseCentered, sources, mapping, badSources);
+  }
+  if (m_read.readFlags & READ_JOYSTICK)
+  {
+    // A system that does not tell its joysticks apart reads them all
+    if (m_numJoys == ANY_JOYSTICK)
+      CheckJoySources(ANY_JOYSTICK, m_read.fullAxisOnly, sources, mapping, badSources);
+    else if (m_read.joyNum >= 0 && m_read.joyNum < m_numJoys)
+      CheckJoySources(m_read.joyNum, m_read.fullAxisOnly, sources, mapping, badSources);
+  }
+}
+
+void CInputSystem::BeginMappingRead(unsigned readFlags, int joyNum, bool fullAxisOnly)
+{
+  m_read = MappingRead();
+  m_read.active = true;
+  m_read.readFlags = readFlags;
+  m_read.joyNum = joyNum;
+  m_read.fullAxisOnly = fullAxisOnly;
+
+  // The inputs active now are ignored from here on (the key or button that started the read, an axis badly calibrated)
+  CheckMappingReadSources(m_read.badSources, m_read.badMapping, m_read.sources);
+}
+
+bool CInputSystem::ContinueMappingRead(string *mapping)
+{
+  if (!m_read.active)
+    return false;
+  CheckMappingReadSources(m_read.sources, m_read.mapping, m_read.badSources);
+
+  // Some inputs activated: read once they are all released again, if they make a mapping of the kind asked for
+  if (m_read.sources.empty())
+    return false;
+  for (CInputSource *source : m_read.sources)
+  {
+    if (source->IsActive())
+      return false;
+  }
+  ESourceType type = CMultiInputSource::GetCombinedType(m_read.sources);
+  if (type != SourceInvalid && ((type == SourceFullAxis) == m_read.fullAxisOnly))
+  {
+    *mapping = m_read.mapping;
+    m_read.active = false;
+    return true;
+  }
+  m_read.mapping.clear();
+  m_read.sources.clear();
+  m_read.mseCentered = false;
+  return false;
+}
+
+void CInputSystem::EndMappingRead()
+{
+  m_read = MappingRead();
+}
+
 void CInputSystem::GrabMouse()
 {
   m_grabMouse = true;
@@ -1887,6 +1952,62 @@ bool CInputSystem::SendForceFeedbackCmd(int joyNum, int axisNum, ForceFeedbackCm
   if (!joyDetails->hasFFeedback || !joyDetails->axisHasFF[axisNum])
     return false;
   return ProcessForceFeedbackCmd(joyNum, axisNum, ffCmd);
+}
+
+void CInputSystem::SetForceFeedbackRouting(int joyNum, float gain, bool invert)
+{
+  m_ffbJoyNum = joyNum;
+  m_ffbGain = gain;
+  m_ffbInvert = invert;
+}
+
+bool CInputSystem::RouteForceFeedbackCmd(CInputSource *source, ForceFeedbackCmd ffCmd)
+{
+  if (ffCmd.id != FFStop)
+  {
+    ffCmd.force *= m_ffbGain;
+    if (m_ffbInvert && ffCmd.id == FFConstantForce)
+      ffCmd.force = -ffCmd.force;
+    ffCmd.force = std::clamp(ffCmd.force, -1.0f, 1.0f);
+  }
+  if (m_ffbJoyNum < 0)
+    return source != NULL && source->SendForceFeedbackCmd(ffCmd);
+
+  // The joystick chosen: on the axis the input is bound to (of another joystick), else on its first with force feedback
+  const JoyDetails *joyDetails = GetJoyDetails(m_ffbJoyNum);
+  if (joyDetails == NULL || !joyDetails->hasFFeedback)
+    return false;
+  int axisNum = source != NULL ? source->GetJoyAxis() : -1;
+  if (axisNum < 0 || axisNum >= NUM_JOY_AXES || !joyDetails->axisHasFF[axisNum])
+  {
+    axisNum = -1;
+    for (int i = 0; i < NUM_JOY_AXES && axisNum < 0; i++)
+    {
+      if (joyDetails->axisHasFF[i])
+        axisNum = i;
+    }
+    if (axisNum < 0)
+      return false;
+  }
+  return ProcessForceFeedbackCmd(m_ffbJoyNum, axisNum, ffCmd);
+}
+
+int CInputSystem::FindJoystick(const string &name)
+{
+  // The whole name, whatever its case and the spaces around it (as sm2-emu's FFB_DEVICE)
+  auto trim = [](const string &s)
+  {
+    size_t first = s.find_first_not_of(" \t");
+    return first == string::npos ? string() : s.substr(first, s.find_last_not_of(" \t") - first + 1);
+  };
+  string wanted = trim(name);
+  for (int joyNum = 0; joyNum < GetNumJoysticks(); joyNum++)
+  {
+    const JoyDetails *joyDetails = GetJoyDetails(joyNum);
+    if (joyDetails != NULL && EqualsIgnoreCase(wanted, trim(joyDetails->name).c_str()))
+      return joyNum;
+  }
+  return -1;
 }
 
 bool CInputSystem::DetectJoystickAxis(unsigned joyNum, unsigned &axisNum, const char *escapeMapping, const char *confirmMapping)

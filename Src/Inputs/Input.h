@@ -33,6 +33,7 @@
 #include "Types.h"
 #include "Game.h"
 #include "Util/NewConfig.h"
+#include <atomic>
 #include <memory>
 
 class CInputSystem;
@@ -77,6 +78,10 @@ private:
 	
 	// Assigned input system
 	std::shared_ptr<CInputSystem> m_system;
+
+	// The force feedback the game asked for last, per effect (the in-game menu shows it), and whether it ever did
+	std::atomic<float> m_ffbForce[NUM_FF_EFFECTS] = {};
+	std::atomic<bool> m_ffbSent{ false };
 
 	/*
 	 * Creates an input source using the current input system and assigns it to this input.
@@ -201,9 +206,16 @@ public:
 	bool Changed() const;
 
 	/*
-	 * Sends a force feedback command to the input source of this input.
+	 * Sends a force feedback command to the input source of this input, or to the joystick chosen to play the effects
+	 * (CInputSystem::SetForceFeedbackRouting).
 	 */
 	bool SendForceFeedbackCmd(ForceFeedbackCmd ffCmd);
+
+	/*
+	 * The force of an effect the game asked for last (0 when stopped), and whether it ever sent force feedback here.
+	 */
+	float GetForceFeedback(EForceFeedback effect) const;
+	bool HasForceFeedback() const;
 
 	/*
 	 * Sets a function told of every force feedback command sent to any input, whether it has a source or not (the

@@ -169,6 +169,8 @@ public:
   unsigned GetForceFeedbackStrength(void) const;
   void SetForceFeedbackStrength(unsigned strength);
 
+  void ResendForceFeedback(void);
+
 protected:
   void Disable(void);
 
@@ -254,8 +256,6 @@ private:
   void UpdateForceFeedback(void);
 
   void SendMotorPowers(void);
-
-  void ResendForceFeedback(void);
 
   void SendStopAll(void);
 

@@ -289,7 +289,35 @@ the image at its proportions, the top and bottom curved onto the edges:
 During a game, the settings menu (Tab) changes these settings, applied at once,
 and saves them in the settings file in use, or with 'Save for this game' in the
 game's own settings file (see 'The Configuration File').  The game is paused
-while the menu is open; Escape or Tab closes it.
+while the menu is open; Escape or Tab closes it.  Its pages follow those of the
+other emulators of the cabinets' front-end (linuxloader, windowsloader).
+
+Its 'Display' page also has the internal resolution: the size the image is drawn
+at, fitted at its shape, then scaled into the frame (InternalWidth and
+InternalHeight; native, the default, is the size the image has in the window).
+Smaller is lighter for a small graphics card, larger smooths the edges.  It also
+has the display mode (a window, full screen or a borderless window covering the
+screen, each with the frame keeping its shape or stretched), the window's size
+or the screen's resolution, the frame rate limit, vertical sync and the frame
+rate display.  A window can also be resized by dragging its edges: its new size
+becomes the resolution.
+
+Its 'Controls' page lists the devices found (keyboard, mouse, joysticks); 'Map'
+opens a device's page, with the game's inputs, what each is bound to on that
+device, its value now, and buttons to bind it to another input of the device
+(press it; Escape cancels) or to unbind it.  What other devices are bound to
+stays.  'Reset...' sets the device's bindings back to Supermodel's defaults.
+The page also has the BackgroundInput setting.  The bindings are saved with the
+other settings, as 'Input...' lines.
+
+Its force feedback part has the ForceFeedback and SimulateDriveBoard settings
+(from the next start), the device that plays the effects (ForceFeedbackDevice:
+automatic, the joysticks the steering is bound to, or one of the joysticks with
+force feedback, e.g., a Microsoft wheel playing them while the steering is read
+from vJoy), their strength and direction (ForceFeedbackGain,
+ForceFeedbackInvert), what the game asks now (constant force, spring, friction,
+damper, vibration) and the limits per effect of the input system in use.  These
+apply at once: the effects stop where they played and start again as set.
 
 The menu's 'Game' page describes the game running (title, ROM set, hardware,
 drive and network boards) and shows its notes from Config/GameNotes.txt: how to
@@ -972,8 +1000,11 @@ key names a setting whatever its case and underscores ('ASPECT_RATIO' is
 'AspectRatio'); the section is accepted but not used, since command line options
 override every section.  'DISPLAY_MODE' (WINDOW, WINDOW_STRETCH, FULLSCREEN,
 FULLSCREEN_STRETCH, BORDERLESS, BORDERLESS_STRETCH) sets 'FullScreen',
-'BorderlessFullScreen' and 'Stretch'.  A key that is not a Supermodel setting is
-reported and ignored.  For example:
+'BorderlessFullScreen' and 'Stretch'; 'WIDTH' and 'HEIGHT' (AUTO or a number of
+pixels) set the internal resolution, 'InternalWidth' and 'InternalHeight';
+'FFB_DEVICE' (AUTO or a joystick's name), 'FFB_STRENGTH' and 'FFB_INVERT' set
+'ForceFeedbackDevice', 'ForceFeedbackGain' and 'ForceFeedbackInvert'.  A key
+that is not a Supermodel setting is reported and ignored.  For example:
 
     supermodel scud.zip --set Display.ASPECT_RATIO=4:3_CROP --set Display.CROP_POSITION=-30
 
@@ -1693,6 +1724,19 @@ All settings are case sensitive.
 
     ----------------
 
+    Name:           InternalWidth, InternalHeight
+
+    Argument:       Integers, pixels; 0 for both (the default): native.
+
+    Description:    The internal resolution: the size the image is drawn at,
+                    fitted into it at its shape, then scaled into the frame
+                    the AspectRatio setting places in the window.  Native: the
+                    size the image has in the window, as without it.  Set in
+                    the settings menu's Display page, or with --set
+                    Display.WIDTH and Display.HEIGHT (AUTO for native).
+
+    ----------------
+
     Name:           AspectRatio
 
     Argument:       String: ORIGINAL, 4:3, 16:9, 4:3_STRETCH, 16:9_STRETCH,
@@ -1879,6 +1923,37 @@ All settings are case sensitive.
                     (the default behavior).  Equivalent to the
                     '-simulate-driveboard' and '-emulate-driveboard' command
                     line options.
+
+    ----------------
+
+    Name:           ForceFeedbackDevice
+
+    Argument:       String: a joystick's name, as the input system gives it
+                    (e.g., "vJoy Device"), whatever its case; empty or AUTO
+                    (the default) for automatic.
+
+    Description:    The joystick that plays the force feedback, alone,
+                    whatever device the steering is read from: on the axis
+                    the steering is bound to, or its first axis with force
+                    feedback.  Automatic, or that joystick not connected at
+                    the start: the joysticks the steering (or the analog
+                    joystick, the ski) is bound to.  Set in the settings
+                    menu's Controls page, or with --set
+                    ForceFeedback.FFB_DEVICE.
+
+    ----------------
+
+    Name:           ForceFeedbackGain, ForceFeedbackInvert
+
+    Argument:       Integer, 0 to 300 (percent; 100 by default); Boolean
+                    (off by default).
+
+    Description:    The strength of all the force feedback effects, in percent
+                    of what the game asks (the limits per effect, such as
+                    DirectInputSelfCenterMax, apply after it), and the
+                    constant force's direction inverted.  Set in the settings
+                    menu's Controls page, or with --set
+                    ForceFeedback.FFB_STRENGTH and FFB_INVERT.
 
     ----------------
 

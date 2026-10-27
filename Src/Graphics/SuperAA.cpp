@@ -1,5 +1,6 @@
 #include "SuperAA.h"
 #include <algorithm>
+#include <cmath>
 #include <string>
 
 SuperAA::SuperAA(int aaValue, CRTcolor CRTcolors, bool forceTarget, bool depthStencil) :
@@ -337,7 +338,10 @@ void SuperAA::Draw()
 			glUniform1i(m_locBarrelAxis, l.barrelAxis);
 			glUniform4f(m_locBarrel1, l.edge, l.center, l.start, l.scale);
 			glUniform4f(m_locBarrel2, l.length[0], l.length[1], l.angle[0], l.angle[1]);
-			glUniform1i(m_locSamples, std::max(m_aa, 2));	// the image is scaled: a few filtered samples per pixel
+			// The image is scaled: a few filtered samples per pixel, as many as the target's pixels across one (an internal
+			// resolution larger than the window, or supersampling)
+			float texelsPerPixel = l.image[3] > 0.0f ? float(l.imageHeight * m_aa) / l.image[3] : float(m_aa);
+			glUniform1i(m_locSamples, std::clamp(int(std::ceil(texelsPerPixel - 0.01f)), 2, 8));
 		}
 		else {
 			glViewport(0, 0, m_width, m_height);

@@ -263,6 +263,8 @@ public:
 	void UngrabMouse();
 
 	void SetMouseVisibility(bool visible);
+
+	void ApplySettings();
 };
 
 #endif	// INCLUDED_DIRECTINPUTSYSTEM_H

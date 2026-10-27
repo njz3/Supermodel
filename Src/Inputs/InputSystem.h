@@ -547,6 +547,25 @@ protected:
   // Whether Poll drains the SDL event queue (see SetPollConsumesEvents)
   bool m_pollConsumesEvents = true;
 
+  // A mapping read a frame at a time (BeginMappingRead)
+  struct MappingRead
+  {
+    bool active = false;
+    unsigned readFlags = 0;
+    int joyNum = 0;
+    bool fullAxisOnly = false;
+    bool mseCentered = false;
+    std::vector<CInputSource*> sources, badSources;
+    std::string mapping, badMapping;
+  } m_read;
+
+  void CheckMappingReadSources(std::vector<CInputSource*> &sources, std::string &mapping, std::vector<CInputSource*> &badSources);
+
+  // Force feedback routing (SetForceFeedbackRouting)
+  int m_ffbJoyNum = -1;
+  float m_ffbGain = 1.0f;
+  bool m_ffbInvert = false;
+
   /*
    * Constructs an input system with the given name.
    */
@@ -859,6 +878,21 @@ public:
   bool ReadMapping(char *buffer, unsigned bufSize, bool fullAxisOnly = false, unsigned readFlags = READ_ALL, const char *escapeMapping = "KEY_ESCAPE");
 
   /*
+   * ReadMapping a frame at a time, for a menu that keeps drawing (the in-game menu's Controls page): BeginMappingRead,
+   * then after each Poll ContinueMappingRead, until it returns true with the mapping; EndMappingRead stops it. Only one
+   * device is read: readFlags READ_KEYBOARD (all keyboards, as KEY_...), READ_MOUSE (all mice, as MOUSE_...) or
+   * READ_JOYSTICK (joystick joyNum, from 0, as JOYn_...). The inputs active when it begins are ignored, as by ReadMapping.
+   */
+  void BeginMappingRead(unsigned readFlags, int joyNum, bool fullAxisOnly);
+  bool ContinueMappingRead(std::string *mapping);
+  void EndMappingRead();
+
+  /*
+   * The settings the input system reads when it sets its devices up changed (BackgroundInput): they are set up again.
+   */
+  virtual void ApplySettings() {}
+
+  /*
    * Updates the current state of the input system (called by CInputs.Poll).
    */
   virtual bool Poll() = 0;
@@ -873,6 +907,26 @@ public:
   virtual void SetMouseVisibility(bool visible) = 0;
 
   virtual bool SendForceFeedbackCmd(int joyNum, int axisNum, ForceFeedbackCmd ffCmd);
+
+  /*
+   * Force feedback as the in-game menu sets it: the joystick that plays the effects (FFB_BOUND_JOYSTICKS, the default:
+   * the joysticks the inputs are bound to; else that one alone, on the axis the input is bound to or its first with
+   * force feedback), their strength (1: as the game asks) and the constant force's direction inverted.
+   */
+  static const int FFB_BOUND_JOYSTICKS = -1;
+  void SetForceFeedbackRouting(int joyNum, float gain, bool invert);
+
+  int GetForceFeedbackJoystick() const { return m_ffbJoyNum; }
+
+  /*
+   * Sends the force feedback command of an input bound to source (NULL: none) as the routing above says.
+   */
+  bool RouteForceFeedbackCmd(CInputSource *source, ForceFeedbackCmd ffCmd);
+
+  /*
+   * The joystick of the given name (whatever its case), or -1.
+   */
+  int FindJoystick(const std::string &name);
 
   bool DetectJoystickAxis(unsigned joyNum, unsigned &axisNum, const char *escapeMapping = "KEY_ESCAPE", const char *confirmMapping = "KEY_RETURN");
 
@@ -1009,6 +1063,8 @@ public:
     bool GetValueAsAnalog(int &val, int minVal, int offVal, int maxVal);
 
     bool SendForceFeedbackCmd(ForceFeedbackCmd ffCmd);
+
+    int GetJoyAxis() const { return m_axisNum; }
   };
 
   /*

@@ -1032,11 +1032,11 @@ void CWheelBoard::SendMotorPowers(void)
 
 void CWheelBoard::ResendForceFeedback(void)
 {
-  if (!m_inputs || !m_inputs->steering)
+  if (IsDisabled() || !m_inputs || !m_inputs->steering)
     return;
 
-  // A state loaded: the wheel still plays the effects of before, and a game may set its spring once (Sega Rally 2),
-  // so the state's effects are played again from scratch
+  // A state loaded, or the joystick that plays the effects changed: the wheel still plays the effects of before, and a
+  // game may set its spring once (Sega Rally 2), so the board's effects are played again from scratch
   UINT8 selfCenter = m_lastSelfCenter;
   UINT8 friction = m_lastFriction;
   UINT8 damper = m_lastDamper;

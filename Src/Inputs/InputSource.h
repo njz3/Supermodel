@@ -106,6 +106,12 @@ public:
 	 * Sends a force feedback command to the input source.
 	 */
 	virtual bool SendForceFeedbackCmd(ForceFeedbackCmd ffCmd);
+
+	/*
+	 * The joystick axis (AXIS_X...) this source reads, the first of several, or -1: where force feedback goes on another
+	 * joystick chosen to play it (CInputSystem::SetForceFeedbackRouting).
+	 */
+	virtual int GetJoyAxis() const;
 };
 
 #endif // INCLUDED_INPUTSOURCE_H

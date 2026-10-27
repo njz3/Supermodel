@@ -138,3 +138,8 @@ bool CInputSource::SendForceFeedbackCmd(ForceFeedbackCmd ffCmd)
 {
 	return false;
 }
+
+int CInputSource::GetJoyAxis() const
+{
+	return -1;
+}

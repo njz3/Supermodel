@@ -220,7 +220,23 @@ bool CInput::SendForceFeedbackCmd(ForceFeedbackCmd ffCmd)
 {
 	if (s_ffbObserver != nullptr)
 		s_ffbObserver(*this, ffCmd);
-	if (m_source == NULL)
-		return false;
-	return m_source->SendForceFeedbackCmd(ffCmd);
+	m_ffbSent = true;
+	if (ffCmd.id == FFStop)
+	{
+		for (auto &force : m_ffbForce)
+			force = 0.0f;
+	}
+	else if (ffCmd.id >= 0 && ffCmd.id < NUM_FF_EFFECTS)
+		m_ffbForce[ffCmd.id] = ffCmd.force;
+	return m_system && m_system->RouteForceFeedbackCmd(m_source, ffCmd);
+}
+
+float CInput::GetForceFeedback(EForceFeedback effect) const
+{
+	return effect >= 0 && effect < NUM_FF_EFFECTS ? m_ffbForce[effect].load() : 0.0f;
+}
+
+bool CInput::HasForceFeedback() const
+{
+	return m_ffbSent;
 }

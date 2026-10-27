@@ -173,6 +173,17 @@ bool CMultiInputSource::SendForceFeedbackCmd(ForceFeedbackCmd ffCmd)
 	return result;
 }
 
+int CMultiInputSource::GetJoyAxis() const
+{
+	for (size_t i = 0; i < m_numSrcs; i++)
+	{
+		int axisNum = m_srcArray[i]->GetJoyAxis();
+		if (axisNum >= 0)
+			return axisNum;
+	}
+	return -1;
+}
+
 CNegInputSource::CNegInputSource(CInputSource *source) : CInputSource(source->type), m_source(source) 
 {
 	// Acquire source
