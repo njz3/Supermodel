@@ -433,7 +433,7 @@ static Uint32 FullScreenFlags()
 // (linuxloader's HIDE_CURSOR). The in-game menu shows it while it is open
 static bool MouseVisible()
 {
-  return !s_runtime_config["FullScreen"].ValueAs<bool>() && !s_runtime_config["HideCursor"].ValueAsDefault<bool>(false);
+  return !s_runtime_config["FullScreen"].ValueAs<bool>() && !s_runtime_config["HideCursor"].ValueAsDefault<bool>(true);
 }
 
 static Result ResizeGLScreen(unsigned *xOffsetPtr, unsigned *yOffsetPtr, unsigned *xResPtr, unsigned *yResPtr, unsigned *totalXResPtr, unsigned *totalYResPtr, bool keepAspectRatio, Uint32 fullScreenFlags)
@@ -2190,8 +2190,9 @@ Util::Config::Node DefaultConfig()
   SetLabels("RefreshRate", { "57.524 Hz (original hardware)", "60 Hz" });
   config.Set("ShowFrameRate", false, "Video");
   // The mouse pointer hidden over the window in any display mode (always in full screen), shown while the in-game menu
-  // is open; linuxloader's HIDE_CURSOR. Set in the in-game menu's Display page; not shown by the launcher
-  config.Set("HideCursor", false);
+  // is open; linuxloader's HIDE_CURSOR, on by default as there. Set in the in-game menu's Display page; not shown by the
+  // launcher
+  config.Set("HideCursor", true);
   config.Set("Crosshairs", int(0), "Video", 0, 0, { 0,1,2,3 });
   SetLabels("Crosshairs", { "None", "Player 1 only", "Player 2 only", "Players 1 & 2" });
   config.Set<std::string>("CrosshairStyle", "vector", "Video", "", "", { "bmp","vector" });

@@ -1830,7 +1830,7 @@ All settings are case sensitive.
     Description:    Hides the mouse pointer while it is over the window during
                     a game, in any display mode (it is always hidden in full
                     screen).  The settings menu (Tab) shows it while it is
-                    open.  Off by default.  Set in the settings menu's Display
+                    open.  On by default.  Set in the settings menu's Display
                     page, or with --set Display.HIDE_CURSOR (linuxloader's
                     name).
 
