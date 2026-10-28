@@ -1500,6 +1500,11 @@ namespace GameMenu
     bool fps = config["ShowFrameRate"].ValueAsDefault<bool>(false);
     if (ImGui::Checkbox("Show the frame rate (in the window's title)", &fps))
       config.Set("ShowFrameRate", fps);
+    // Over the window, in any display mode (always in full screen); applied when the menu closes, which shows the pointer
+    // while it is open
+    bool hideCursor = config["HideCursor"].ValueAsDefault<bool>(false);
+    if (ImGui::Checkbox("Hide the mouse pointer (shown in this menu)", &hideCursor))
+      config.Set("HideCursor", hideCursor);
   }
 
   unsigned TakeChanges()

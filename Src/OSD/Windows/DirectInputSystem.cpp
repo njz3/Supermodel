@@ -2171,10 +2171,12 @@ bool CDirectInputSystem::Poll()
 
 void CDirectInputSystem::SetMouseVisibility(bool visible)
 {
+	// SDL's cursor, as the in-game menu shows it, and not Win32's ShowCursor: its display count went one step further
+	// at each call, so a pointer hidden once could not be shown by the menu, nor hidden again after being shown twice
 	if (m_useRawInput)
-		ShowCursor(!m_grabMouse && visible ? TRUE : FALSE);
+		SDL_ShowCursor(!m_grabMouse && visible ? SDL_ENABLE : SDL_DISABLE);
 	else
-		ShowCursor(visible ? TRUE : FALSE);
+		SDL_ShowCursor(visible ? SDL_ENABLE : SDL_DISABLE);
 }
 
 void CDirectInputSystem::GrabMouse()

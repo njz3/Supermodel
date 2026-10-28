@@ -429,6 +429,13 @@ static Uint32 FullScreenFlags()
   return s_runtime_config["BorderlessFullScreen"].ValueAsDefault<bool>(false) ? SDL_WINDOW_FULLSCREEN_DESKTOP : SDL_WINDOW_FULLSCREEN;
 }
 
+// The mouse pointer over the window during a game: hidden in full screen, and in any display mode with HideCursor
+// (linuxloader's HIDE_CURSOR). The in-game menu shows it while it is open
+static bool MouseVisible()
+{
+  return !s_runtime_config["FullScreen"].ValueAs<bool>() && !s_runtime_config["HideCursor"].ValueAsDefault<bool>(false);
+}
+
 static Result ResizeGLScreen(unsigned *xOffsetPtr, unsigned *yOffsetPtr, unsigned *xResPtr, unsigned *yResPtr, unsigned *totalXResPtr, unsigned *totalYResPtr, bool keepAspectRatio, Uint32 fullScreenFlags)
 {
   // Set full screen mode
@@ -1312,6 +1319,7 @@ static bool SaveMenuSettings(const std::string &game, bool forGame)
   values.push_back(boolean("Throttle"));
   values.push_back(boolean("VSync"));
   values.push_back(boolean("ShowFrameRate"));
+  values.push_back(boolean("HideCursor"));
   values.push_back(boolean("BackgroundInput"));
   values.push_back(boolean("ForceFeedback"));
   values.push_back(boolean("SimulateDriveBoard"));
@@ -1403,8 +1411,8 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
   if (Result::OKAY != OpenAudio(s_runtime_config))
     return 1;
 
-  // Hide mouse if fullscreen, enable crosshairs for gun games
-  Inputs->GetInputSystem()->SetMouseVisibility(!s_runtime_config["FullScreen"].ValueAs<bool>());
+  // Hide mouse if fullscreen or HideCursor, enable crosshairs for gun games
+  Inputs->GetInputSystem()->SetMouseVisibility(MouseVisible());
   gameHasLightguns = !!(game.inputs & (Game::INPUT_GUN1|Game::INPUT_GUN2));
   gameHasLightguns |= game.name == "lostwsga";
   currentInputs = game.inputs;
@@ -1599,7 +1607,7 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
       {
         GameMenu::Close();
         Inputs->GetInputSystem()->SetPollConsumesEvents(true);
-        Inputs->GetInputSystem()->SetMouseVisibility(!s_runtime_config["FullScreen"].ValueAs<bool>());  // the display mode may have changed
+        Inputs->GetInputSystem()->SetMouseVisibility(MouseVisible());  // the display mode or HideCursor may have changed
         if (!pausedBeforeMenu)
         {
           paused = false;
@@ -1681,7 +1689,7 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
       if (Result::OKAY != InitRenderers(Emu, superAA, Render2D, Render3D, upscaleMode, true))
         goto QuitError;
 
-      Inputs->GetInputSystem()->SetMouseVisibility(!s_runtime_config["FullScreen"].ValueAs<bool>());
+      Inputs->GetInputSystem()->SetMouseVisibility(MouseVisible());
     }
     else if (Inputs->uiSaveState->Pressed())
     {
@@ -2181,6 +2189,9 @@ Util::Config::Node DefaultConfig()
   config.Set("RefreshRate", 60.0f, "Video", 0.0f, 0.0f, { 57.524f, 60.f });
   SetLabels("RefreshRate", { "57.524 Hz (original hardware)", "60 Hz" });
   config.Set("ShowFrameRate", false, "Video");
+  // The mouse pointer hidden over the window in any display mode (always in full screen), shown while the in-game menu
+  // is open; linuxloader's HIDE_CURSOR. Set in the in-game menu's Display page; not shown by the launcher
+  config.Set("HideCursor", false);
   config.Set("Crosshairs", int(0), "Video", 0, 0, { 0,1,2,3 });
   SetLabels("Crosshairs", { "None", "Player 1 only", "Player 2 only", "Players 1 & 2" });
   config.Set<std::string>("CrosshairStyle", "vector", "Video", "", "", { "bmp","vector" });

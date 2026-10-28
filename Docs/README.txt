@@ -298,9 +298,10 @@ InternalHeight; native, the default, is the size the image has in the window).
 Smaller is lighter for a small graphics card, larger smooths the edges.  It also
 has the display mode (a window, full screen or a borderless window covering the
 screen, each with the frame keeping its shape or stretched), the window's size
-or the screen's resolution, the frame rate limit, vertical sync and the frame
-rate display.  A window can also be resized by dragging its edges: its new size
-becomes the resolution.
+or the screen's resolution, the frame rate limit, vertical sync, the frame rate
+display and HideCursor (the mouse pointer hidden over the window in any display
+mode; this menu shows it while it is open).  A window can also be resized by
+dragging its edges: its new size becomes the resolution.
 
 Its 'Controls' page lists the devices found (keyboard, mouse, joysticks); 'Map'
 opens a device's page, with the game's inputs, what each is bound to on that
@@ -1819,6 +1820,19 @@ All settings are case sensitive.
                     If set to 0, the frame rate is not computed.  Disabled by
                     default.  Equivalent to the '-show-fps' command line
                     option.
+
+    ----------------
+
+    Name:           HideCursor
+
+    Argument:       Boolean.
+
+    Description:    Hides the mouse pointer while it is over the window during
+                    a game, in any display mode (it is always hidden in full
+                    screen).  The settings menu (Tab) shows it while it is
+                    open.  Off by default.  Set in the settings menu's Display
+                    page, or with --set Display.HIDE_CURSOR (linuxloader's
+                    name).
 
     ----------------
 
