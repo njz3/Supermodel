@@ -73,6 +73,11 @@ namespace GameMenu
     std::string s_status;
     int s_cursor = SDL_ENABLE;    // the mouse cursor's visibility before it opened
     bool s_selectPage = false;
+
+    // A notification over the game (Notify): shown for its time from its first frame
+    std::string s_noticeTitle, s_noticeText;
+    float s_noticeSeconds = 0.0f;
+    Uint64 s_noticeStart = 0;     // SDL_GetTicks64() at its first frame, 0 before
     Page s_page = Page::Display;
 
     // The Display page
@@ -288,29 +293,94 @@ namespace GameMenu
     style.FontScaleDpi = scale;
   }
 
+  // ImGui set up for the window, once: for the menu, or a notification
+  static bool Initialize(SDL_Window *window)
+  {
+    if (s_initialized)
+      return true;
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO &io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    io.IniFilename = nullptr;
+    io.Fonts->AddFontDefaultVector();
+    if (!ImGui_ImplSDL2_InitForOpenGL(window, SDL_GL_GetCurrentContext()))
+    {
+      ImGui::DestroyContext();
+      return false;
+    }
+    if (!ImGui_ImplOpenGL3_Init("#version 410"))
+    {
+      ImGui_ImplSDL2_Shutdown();
+      ImGui::DestroyContext();
+      return false;
+    }
+    s_initialized = true;
+    return true;
+  }
+
+  // The notification, in the top left corner, while its time runs (counted from its first frame); false once over
+  static bool DrawNotice()
+  {
+    if (s_noticeTitle.empty())
+      return false;
+    Uint64 now = SDL_GetTicks64();
+    if (s_noticeStart == 0)
+      s_noticeStart = now;
+    if (now - s_noticeStart > Uint64(s_noticeSeconds * 1000.0f))
+    {
+      s_noticeTitle.clear();
+      return false;
+    }
+    const ImGuiIO &io = ImGui::GetIO();
+    float margin = ImGui::GetFontSize();
+    ImGui::SetNextWindowPos(ImVec2(margin, margin), ImGuiCond_Always);
+    ImGui::SetNextWindowBgAlpha(0.85f);
+    ImGui::Begin("##notice", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs |
+                 ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav);
+    ImGui::PushTextWrapPos(io.DisplaySize.x - 4.0f * margin);
+    ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.2f, 1.0f), "%s", s_noticeTitle.c_str());
+    ImGui::TextUnformatted(s_noticeText.c_str());
+    ImGui::PopTextWrapPos();
+    ImGui::End();
+    return true;
+  }
+
+  void Notify(const std::string &title, const std::string &text, float seconds)
+  {
+    s_noticeTitle = title;
+    s_noticeText = text;
+    s_noticeSeconds = seconds;
+    s_noticeStart = 0;
+  }
+
+  void DrawNotification()
+  {
+    if (s_open || s_noticeTitle.empty())
+      return;
+    SDL_Window *window = SDL_GL_GetCurrentWindow();
+    if (window == nullptr || !Initialize(window))
+    {
+      s_noticeTitle.clear();
+      return;
+    }
+    // ImGui's backend sets the mouse pointer at each frame: not for a notification, which leaves it as the game has it
+    // (HideCursor)
+    ImGuiIO &io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplSDL2_NewFrame();
+    Scale(io.DisplaySize.y);
+    ImGui::NewFrame();
+    DrawNotice();
+    ImGui::Render();
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+  }
+
   bool Open(SDL_Window *window)
   {
-    if (!s_initialized)
-    {
-      IMGUI_CHECKVERSION();
-      ImGui::CreateContext();
-      ImGuiIO &io = ImGui::GetIO();
-      io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-      io.IniFilename = nullptr;
-      io.Fonts->AddFontDefaultVector();
-      if (!ImGui_ImplSDL2_InitForOpenGL(window, SDL_GL_GetCurrentContext()))
-      {
-        ImGui::DestroyContext();
-        return false;
-      }
-      if (!ImGui_ImplOpenGL3_Init("#version 410"))
-      {
-        ImGui_ImplSDL2_Shutdown();
-        ImGui::DestroyContext();
-        return false;
-      }
-      s_initialized = true;
-    }
+    if (!Initialize(window))
+      return false;
 
     int width = 0, height = 0;
     SDL_GetWindowSize(window, &width, &height);
@@ -1277,6 +1347,7 @@ namespace GameMenu
       return;
 
     ContinueCapture(config);
+    ImGui::GetIO().ConfigFlags &= ~ImGuiConfigFlags_NoMouseCursorChange;  // the menu's pointer, set by the backend
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplSDL2_NewFrame();
     Scale(ImGui::GetIO().DisplaySize.y);
@@ -1338,6 +1409,7 @@ namespace GameMenu
       ImGui::TextUnformatted(s_status.c_str());
     ImGui::End();
 
+    DrawNotice();   // a notification still running stays shown, behind the menu (which keeps the focus)
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
   }

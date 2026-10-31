@@ -151,6 +151,10 @@ static std::string s_logFilePath = Util::Format() << FileSystemPath::GetPath(Fil
 // names (with a write directory, there even when it was read from the usual place)
 static std::string s_settingsReadFrom;
 static bool s_gameSettingsFile = false;
+// Why the write directory asked for is not used (it cannot be written), logged once the log is open, and that
+// directory, shown over the game when it starts
+static std::string s_writeDirError;
+static std::string s_writeDirUnused;
 
 static Util::Config::Node s_runtime_config("Global");
 
@@ -953,9 +957,11 @@ void EndFrameVideo()
   if (videoInputs)
     s_crosshair->Update(currentInputs, videoInputs, xOffset, yOffset, xRes, yRes);
 
-  // The in-game menu over the frame
+  // The in-game menu over the frame, or a notification
   if (GameMenu::IsOpen())
     GameMenu::Draw(s_runtime_config, s_gameTitle, s_configFilePath, s_gameSettingsFile);
+  else
+    GameMenu::DrawNotification();
 
   // Swap the buffers
   SDL_GL_SwapWindow(s_window);
@@ -1385,6 +1391,10 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
   s_gameTitle = baseTitleStr;
   GameMenu::SetGame(game, FileSystemPath::GetReadPath(FileSystemPath::Config, "GameNotes.txt"));
   GameMenu::SetInputs(Inputs);
+  // The write directory asked for and not used, said over the game for 20 s too, in the words of Flycast's notification
+  if (!s_writeDirUnused.empty())
+    GameMenu::Notify("Cannot write to the write folder", s_writeDirUnused +
+                     "\nThe settings and the game saves are read and written in the usual folders instead.", 20.0f);
   ApplyForceFeedbackSettings(Inputs);
   SDL_SetWindowSize(s_window, totalXRes, totalYRes);
 
@@ -1958,12 +1968,42 @@ static void WriteDefaultConfigurationFileIfNotPresent()
     InfoLog("Wrote default configuration file to %s", s_configFilePath.c_str());
 }
 
+// Whether Supermodel can write in a write directory: it and its Config folder made, a file written there then
+// removed; why, if not
+static bool CanWriteIn(const std::filesystem::path &dir, std::string &why)
+{
+  std::error_code ec;
+  std::filesystem::path config = dir / "Config";
+  std::filesystem::create_directories(config, ec);
+  if (ec)
+  {
+    std::string reason = Util::TrimWhiteSpace(ec.message());
+    while (!reason.empty() && reason.back() == '.')
+      reason.pop_back();
+    why = "it or its Config folder cannot be made (" + reason + ")";
+    return false;
+  }
+  std::filesystem::path probe = config / ".write-test";
+  bool written;
+  {
+    std::ofstream out(probe, std::ios::binary | std::ios::trunc);
+    out << "Supermodel";
+    out.close();
+    written = !out.fail();
+  }
+  std::filesystem::remove(probe, ec);
+  if (!written)
+    why = "no file can be written in it";
+  return written;
+}
+
 // The write directory (-write-dir=<path>, or WriteDirectory in the [Global] section of the usual Supermodel.ini): when
 // set, Supermodel writes nothing elsewhere, so that the rest of the disk can be read only. The user's settings are
 // read and saved there (Config/Supermodel.ini, the usual one copied at the first run); each game's NVRAM, save states,
 // screenshots and dumps go to a folder named after it, the log to its root; Games.xml, Music.xml, NVRAM and save
 // states are read from it first, else from their usual places. A relative path is relative to Supermodel's folder.
-// Called first, before anything is written.
+// One that cannot be created or written is not used: everything is read and written in the usual places, as without
+// it, rather than the built-in settings and nothing saved. Called first, before anything is written.
 static void ResolveWriteDirectory(int argc, char **argv)
 {
   std::string dir;
@@ -1996,12 +2036,36 @@ static void ResolveWriteDirectory(int argc, char **argv)
       SDL_free(base);
     }
   }
-  FileSystemPath::SetWriteDirectory(path.lexically_normal().string());
+  path = path.lexically_normal();
+  std::string why;
+  if (!CanWriteIn(path, why))
+  {
+    // Printed now, where the console shows it, and logged once the log is open (see main())
+    s_writeDirError = Util::Format() << "The write directory '" << path.string() << "' is not used: " << why
+      << ". The settings, NVRAM and saves are read and written in their usual places.";
+    fprintf(stderr, "%s\n", s_writeDirError.c_str());
+    s_writeDirUnused = path.string();
+    return;
+  }
+  FileSystemPath::SetWriteDirectory(path.string());
 
   std::string usualConfig = s_configFilePath;
-  s_configFilePath = FileSystemPath::GetWritePath(FileSystemPath::Config) + "Supermodel.ini";
-  if (!std::filesystem::exists(s_configFilePath, ec) && std::filesystem::exists(usualConfig, ec))
-    std::filesystem::copy_file(usualConfig, s_configFilePath, ec);
+  std::string config = FileSystemPath::GetWritePath(FileSystemPath::Config) + "Supermodel.ini";
+  if (!std::filesystem::exists(config, ec) && std::filesystem::exists(usualConfig, ec))
+  {
+    std::filesystem::copy_file(usualConfig, config, ec);
+    if (ec)
+    {
+      s_writeDirError = Util::Format() << "The write directory '" << path.string() << "' is not used: the settings ("
+        << usualConfig << ") cannot be copied there (" << ec.message() << "). The settings, NVRAM and saves are read "
+        "and written in their usual places.";
+      fprintf(stderr, "%s\n", s_writeDirError.c_str());
+      s_writeDirUnused = path.string();
+      FileSystemPath::SetWriteDirectory(std::string());
+      return;
+    }
+  }
+  s_configFilePath = config;
   s_gameXMLFilePath = FileSystemPath::GetReadPath(FileSystemPath::Config, "Games.xml");
   s_musicXMLFilePath = FileSystemPath::GetReadPath(FileSystemPath::Config, "Music.xml");
   s_logFilePath = FileSystemPath::GetWritePath(FileSystemPath::Log) + "Supermodel.log";
@@ -3122,6 +3186,8 @@ int main(int argc, char **argv)
     InfoLog("  argv[%d] = %s", i, argv[i]);
   if (FileSystemPath::HasWriteDirectory())
     InfoLog("Write directory: %s (settings: %s)", FileSystemPath::GetWriteDirectory().c_str(), s_configFilePath.c_str());
+  if (!s_writeDirError.empty())
+    ErrorLog("%s", s_writeDirError.c_str());
 
   // Finish processing command line
   if (cmd_line.print_help)

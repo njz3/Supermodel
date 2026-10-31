@@ -115,6 +115,12 @@ namespace GameMenu
   Action TakeAction();
   void SetStatus(const std::string &status);  // shown under the buttons
 
+  // A message over the game for `seconds` from its first frame, menu open or not (e.g., the write directory not used):
+  // its title, then its text (lines separated by '\n')
+  void Notify(const std::string &title, const std::string &text, float seconds);
+  // Draws the notification, if any, over the frame while the menu is closed (the menu draws it itself)
+  void DrawNotification();
+
   void Shutdown();                // while the OpenGL context still exists
 }
 
