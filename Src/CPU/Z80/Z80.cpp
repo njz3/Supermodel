@@ -154,7 +154,7 @@ static const unsigned char cycleTables[5][256] = {
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
     16,16,16,16,0,0,0,0,16,16,16,16,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    16,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -382,7 +382,14 @@ int CZ80::Run(int numCycles)
     break;
   case 0x10:      /* DJNZ dd */
     cycles -= cycleTables[0][0x10];
-    pc += ((BC -= 0x100) & 0xff00) ? (signed char) GetBYTE(pc) + 1 : 1;
+    if ((BC -= 0x100) & 0xff00)
+    {
+      // 13 cycles when it jumps, 8 when it does not
+      cycles -= 5;
+      pc += (signed char) GetBYTE(pc) + 1;
+    }
+    else
+      pc += 1;
     break;
   case 0x11:      /* LD DE,nnnn */
     cycles -= cycleTables[0][0x11];
@@ -2817,15 +2824,19 @@ int CZ80::Run(int numCycles)
       SETFLAG(Z, hreg(BC) == 0);
       break;
     case 0xB0:      /* LDIR */
+      // A byte at a time, as the Z80 does (an interrupt can come between two): run again while BC is not 0, 21
+      // cycles each, 16 for the last byte
       cycles -= cycleTables[2][0xB0];
-      acu = hreg(AF);
-      BC &= 0xffff;
-      do {
-        acu = GetBYTE_pp(HL);
-        PutBYTE_pp(DE, acu);
-      } while (--BC);
+      acu = GetBYTE_pp(HL);
+      PutBYTE_pp(DE, acu);
       acu += hreg(AF);
-      AF = (AF & ~0x3e) | (acu & 8) | ((acu & 2) << 4);
+      BC = (BC - 1) & 0xffff;
+      AF = (AF & ~0x3e) | (acu & 8) | ((acu & 2) << 4) | ((BC != 0) << 2);
+      if (BC != 0)
+      {
+        cycles -= 5;
+        pc -= 2;
+      }
       break;
     case 0xB1:      /* CPIR */
       cycles -= cycleTables[2][0xB1];

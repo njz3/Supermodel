@@ -414,7 +414,7 @@ namespace
 
     double FirstNmiCycles(void) const override
     {
-      return 2102083;
+      return 2380231;
     }
 
     bool Nmi(UINT8 wheel, UINT8 cockpit, UINT8 &mode, UINT8 &value) override
@@ -1381,13 +1381,13 @@ namespace
     int tableShift;             // EPR-19338A's tables moved by this
   };
 
-  const ScudRaceLayout kEpr19338A = { "ServoProgram19338A", 1823939, 0x1AF9, 0x19F9, true, 0x1BF9, 0x31A9, 0x395C, 0x3A8D,
+  const ScudRaceLayout kEpr19338A = { "ServoProgram19338A", 2102083, 0x1AF9, 0x19F9, true, 0x1BF9, 0x31A9, 0x395C, 0x3A8D,
                                       0x00, ScudRaceLayout::CabinetB0, 0x6C, 0x94, 0x6D, 0x93, 10, true, false, true,
                                       false, 0 };
-  const ScudRaceLayout kEpr19338 = { "ServoProgram19338", 1963011, 0x1A50, 0x1950, true, 0x1B50, 0x3100, 0x38B3, 0x39E4,
+  const ScudRaceLayout kEpr19338 = { "ServoProgram19338", 2241159, 0x1A50, 0x1950, true, 0x1B50, 0x3100, 0x38B3, 0x39E4,
                                      0x00, ScudRaceLayout::Always, 0x69, 0x97, 0x69, 0x97, 1, false, true, false, true,
                                      -0xA9 };
-  const ScudRaceLayout kEpr20512 = { "ServoProgram20512", 1684867, 0x12C2, 0x12C2, false, 0x14C2, 0x2AE2, 0x3295, 0x33C6,
+  const ScudRaceLayout kEpr20512 = { "ServoProgram20512", 1963015, 0x12C2, 0x12C2, false, 0x14C2, 0x2AE2, 0x3295, 0x33C6,
                                      0x11, ScudRaceLayout::Never, 0x6C, 0x94, 0x6D, 0x93, 10, true, false, true, false,
                                      0 };
 
@@ -2607,9 +2607,9 @@ namespace
 
     double FirstNmiCycles(void) const override
     {
-      // As the emulated Z80 has it: its ROM checksum and RAM test end in the 12th frame, the NMI timer starting with
-      // the next (computed from the Z80 core's cycle table; the formula gives the three wheel programs' measured ones)
-      return 1684867;
+      // As the emulated Z80 has it: its ROM checksum and RAM test end in the 14th frame, the NMI timer starting with
+      // the next (measured, as the wheel programs' ones)
+      return 1963008;
     }
 
     void NmiOutputs(UINT8 &tq1, UINT8 &tq2, UINT8 &mode) override

@@ -55,7 +55,7 @@ public:
 
   // The Z80 cycles (8 MHz) from reset to the first NMI: the program's ROM checksum and RAM test, then its CTC. As
   // the emulated Z80 has it (measured): its NMI timer starts with the frame after the CTC's programming, the first
-  // NMI 16003 cycles into it
+  // NMI 16000 cycles into it plus what its last instruction overran
   virtual double FirstNmiCycles(void) const = 0;
 
   // One NMI (500 Hz), the wheel at `wheel` (0 left .. FF right), the cockpit at `cockpit` (deluxe cabinets): true

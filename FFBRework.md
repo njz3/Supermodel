@@ -350,8 +350,9 @@ Le squelette commun (`CServoProgram<State>`, les mêmes adresses de RAM dans les
 NMI qui la lit, la réponse, la file de paires (registre, valeur), le mouvement du volant, les secousses C2/C6, la
 glisse, l'aléa. `CWheelBoard` cadence les NMI comme le CTC (16 000 cycles), chaque NMI son corps puis les passes du
 programme principal ; les paires vont au même étage de sortie que celles du Z80 (`ProcessEncoderCmd`). La première NMI
-au cycle où l'émulée l'a (mesuré : son temporisateur part avec l'image qui suit la programmation du CTC, la NMI 16 003
-cycles plus loin ; D2 2 102 083, 19338A 1 823 939, SR2 1 684 867). Sauvegardes d'état : un bloc par programme ; un état
+au cycle où l'émulée l'a (mesuré : son temporisateur part avec l'image qui suit la programmation du CTC, la NMI 16 000
+cycles plus loin et ce que dépasse sa dernière instruction ; depuis le 31 octobre, §2.16 : D2 2 380 231, 19338A
+2 102 083, 19338 2 241 159, SR2 1 963 015, 21119 1 963 008). Sauvegardes d'état : un bloc par programme ; un état
 de carte émulée chargé en mode simulé reprend la RAM du Z80 (`ImportRam`). Interface : `Nmi(volant, cockpit, ...)`.
 
 **Vérification.** Un banc hors de Supermodel (`servo_replay`, la simulation compilée seule) rejoue le programme
@@ -506,6 +507,37 @@ par un autre Supermodel), Supermodel ne s'arrête plus en silence : une boîte d
 puis le jeu tourne sans sorties ; en mode agent, l'avertissement va seulement au journal. Vérifié le port 8000 tenu
 par un autre programme : le jeu démarre en mode agent ; en mode normal, la boîte « Supermodel: outputs unavailable »
 attend.
+
+### 2.16 Le Z80 : les cycles de `DJNZ` et `LDIR` (31 octobre)
+
+Trouvé avec la session Hikaruloader, dont le Z80 faisait tourner EPR-20512 (NASCAR Arcade) avec 16 % de cycles de plus
+au démarrage. Un banc hors de Supermodel (`pkg/autopilot_data/tools_driveboard/z80_drive` : le cœur Z80 et le CTC de
+Supermodel, les ports de `CWheelBoard` recopiés ; 0 écart avec le journal d'une partie de Sega Rally 2 sur 85 224 NMI)
+a compté les cycles instruction par instruction du reset au démarrage du CTC : 1 607 042 contre 1 860 648 selon les
+T-states de Zilog. Toutes les instructions concordaient sauf deux :
+- `DJNZ` comptait 8 cycles qu'il saute ou non (Zilog : 13 s'il saute) ;
+- `LDIR` faisait toute la copie en une instruction, comptée 0 cycle (la table d'`ED B0` à 0) : 8 191 octets effacés
+  en un pas au lieu de 172 006 cycles.
+
+**Changé** (`Src/CPU/Z80/Z80.cpp`, demande du propriétaire) : `DJNZ` compte 5 cycles de plus quand il saute ; `LDIR`
+copie un octet par exécution et revient sur lui-même tant que BC n'est pas nul, 21 cycles, 16 pour le dernier octet
+(`ED B0` à 16 dans la table) : une interruption peut tomber au milieu, comme sur le Z80. Le démarrage d'EPR-20512
+compte maintenant 1 860 648 cycles, ceux de Zilog. Les sauts, retours et appels conditionnels (`JR`, `RET`, `CALL`)
+gardent un coût fixe, pris ou non ; les autres instructions répétées (`LDDR`, `CPIR`, `INIR`, `OTIR`...) restent
+d'un seul pas.
+
+**Effets** : les cartes de direction démarrent plus tard, la première NMI deux images après (SR2 et Star Wars image 14,
+Scud et Dirt Devils 15, Scud Plus 16, D2 17), comme le prévoyait le banc. Les constantes `FirstNmiCycles` des cartes
+simulées suivent (§2.12). Vérifié en mode agent, parties complètes depuis la mise sous tension :
+- cartes émulées : les six jeux démarrent leur carte (CF, CE, CD, CC) et jouent ; les simulations rejouées sur leurs
+  entrées (`servo_replay`) : 0 paire différente sur 76 493 à 76 517 NMI par jeu (SR2, Scud, D2, Scud Plus, Dirt
+  Devils, Star Wars), réponses identiques : la logique simulée ne dépend pas de la vitesse du programme principal ;
+- `-simulate-driveboard` contre l'émulée : les mêmes commandes aux mêmes images (SR2 2 258/2 258, une valeur envoyée
+  par le jeu différente ; Scud 143, D2 390, Scud Plus 51, Star Wars 5 370), autant d'effets (Scud 272 contre 273),
+  la même course (0,000 m) ; 0,45 à 1,57 % des NMI décalées d'une NMI, comme le 17 octobre ;
+- la DSB1 de Scud Race (Z80 à 4 MHz, `-no-threads` pour que le son suive les images) : les mêmes morceaux aux mêmes
+  positions MPEG, à l'octet, de la sélection de la voiture au morceau suivant (rien ne joue avant, dans les deux). Le panneau (billboard, vf3 et fvipers2) n'a
+  pas pu être essayé : pas de ROM ici.
 
 ## 3. Les essais
 
