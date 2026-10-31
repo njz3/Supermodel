@@ -1326,10 +1326,12 @@ not.  All options are case sensitive.
                     <path>/Supermodel.log.  Games.xml, Music.xml, NVRAM files
                     and save states are read from there first, else from their
                     usual places.  A relative path is relative to Supermodel's
-                    directory.  A directory that cannot be created or written
-                    is not used: an error is printed and logged, a message
-                    shows over the game for 20 seconds, and everything is
-                    read and written in the usual places, as without it.  Without it (the default), nothing changes.
+                    directory.  If it cannot be created or written, nothing
+                    is saved: the settings, NVRAM files and save states are
+                    read from their usual places, which are never written
+                    (they are the templates), every write fails, an error is
+                    printed, and a message shows over the game for 20
+                    seconds.  Without it (the default), nothing changes.
                     Same as the WriteDirectory setting, which it overrides.
 
     ----------------

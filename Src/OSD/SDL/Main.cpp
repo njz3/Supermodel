@@ -151,10 +151,17 @@ static std::string s_logFilePath = Util::Format() << FileSystemPath::GetPath(Fil
 // names (with a write directory, there even when it was read from the usual place)
 static std::string s_settingsReadFrom;
 static bool s_gameSettingsFile = false;
-// Why the write directory asked for is not used (it cannot be written), logged once the log is open, and that
-// directory, shown over the game when it starts
+// A write directory that cannot be written (ResolveWriteDirectory): why, logged once the log is open; the directory,
+// shown over the game when it starts; and the settings file read instead of its copy there, the usual one (empty: the
+// settings are read from s_configFilePath)
 static std::string s_writeDirError;
-static std::string s_writeDirUnused;
+static std::string s_writeDirUnusable;
+static std::string s_settingsToRead;
+
+static const std::string &SettingsFileToRead()
+{
+  return s_settingsToRead.empty() ? s_configFilePath : s_settingsToRead;
+}
 
 static Util::Config::Node s_runtime_config("Global");
 
@@ -1391,10 +1398,10 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
   s_gameTitle = baseTitleStr;
   GameMenu::SetGame(game, FileSystemPath::GetReadPath(FileSystemPath::Config, "GameNotes.txt"));
   GameMenu::SetInputs(Inputs);
-  // The write directory asked for and not used, said over the game for 20 s too, in the words of Flycast's notification
-  if (!s_writeDirUnused.empty())
-    GameMenu::Notify("Cannot write to the write folder", s_writeDirUnused +
-                     "\nThe settings and the game saves are read and written in the usual folders instead.", 20.0f);
+  // A write directory that cannot be written, said over the game for 20 s too, in the words of Flycast's notification
+  if (!s_writeDirUnusable.empty())
+    GameMenu::Notify("Cannot write to the write folder", s_writeDirUnusable +
+                     "\nNothing is saved: the settings and the game saves are read from the usual folders and not written.", 20.0f);
   ApplyForceFeedbackSettings(Inputs);
   SDL_SetWindowSize(s_window, totalXRes, totalYRes);
 
@@ -1948,6 +1955,10 @@ QuitError:
 // .zip archives without accidentally overwriting the configuration.
 static void WriteDefaultConfigurationFileIfNotPresent()
 {
+    // Nothing is written with a write directory that cannot be written
+    if (!s_writeDirUnusable.empty())
+        return;
+
     // Test whether file exists by opening it
     FILE* fp = fopen(s_configFilePath.c_str(), "r");
     if (fp)
@@ -2002,8 +2013,10 @@ static bool CanWriteIn(const std::filesystem::path &dir, std::string &why)
 // read and saved there (Config/Supermodel.ini, the usual one copied at the first run); each game's NVRAM, save states,
 // screenshots and dumps go to a folder named after it, the log to its root; Games.xml, Music.xml, NVRAM and save
 // states are read from it first, else from their usual places. A relative path is relative to Supermodel's folder.
-// One that cannot be created or written is not used: everything is read and written in the usual places, as without
-// it, rather than the built-in settings and nothing saved. Called first, before anything is written.
+// One that cannot be created or written (or the settings copied into) stays where everything is written, so that
+// every write fails: the usual places are only read, settings and NVRAM included, never written (the owner: they are
+// the templates, and two emulators started by accident on one write directory must not break them). Called first,
+// before anything is written.
 static void ResolveWriteDirectory(int argc, char **argv)
 {
   std::string dir;
@@ -2038,32 +2051,29 @@ static void ResolveWriteDirectory(int argc, char **argv)
   }
   path = path.lexically_normal();
   std::string why;
-  if (!CanWriteIn(path, why))
-  {
-    // Printed now, where the console shows it, and logged once the log is open (see main())
-    s_writeDirError = Util::Format() << "The write directory '" << path.string() << "' is not used: " << why
-      << ". The settings, NVRAM and saves are read and written in their usual places.";
-    fprintf(stderr, "%s\n", s_writeDirError.c_str());
-    s_writeDirUnused = path.string();
-    return;
-  }
+  bool writable = CanWriteIn(path, why);
   FileSystemPath::SetWriteDirectory(path.string());
 
   std::string usualConfig = s_configFilePath;
   std::string config = FileSystemPath::GetWritePath(FileSystemPath::Config) + "Supermodel.ini";
-  if (!std::filesystem::exists(config, ec) && std::filesystem::exists(usualConfig, ec))
+  if (writable && !std::filesystem::exists(config, ec) && std::filesystem::exists(usualConfig, ec))
   {
     std::filesystem::copy_file(usualConfig, config, ec);
     if (ec)
     {
-      s_writeDirError = Util::Format() << "The write directory '" << path.string() << "' is not used: the settings ("
-        << usualConfig << ") cannot be copied there (" << ec.message() << "). The settings, NVRAM and saves are read "
-        "and written in their usual places.";
-      fprintf(stderr, "%s\n", s_writeDirError.c_str());
-      s_writeDirUnused = path.string();
-      FileSystemPath::SetWriteDirectory(std::string());
-      return;
+      writable = false;
+      why = Util::Format() << "the settings (" << usualConfig << ") cannot be copied there (" << ec.message() << ")";
     }
+  }
+  if (!writable)
+  {
+    // Read from the usual places, written nowhere. Printed now, where the console shows it, and logged once the log
+    // is open (see main())
+    s_writeDirError = Util::Format() << "The write directory '" << path.string() << "' cannot be written: " << why
+      << ". The settings, NVRAM and saves are read from their usual places and nothing is saved.";
+    fprintf(stderr, "%s\n", s_writeDirError.c_str());
+    s_writeDirUnusable = path.string();
+    s_settingsToRead = usualConfig;
   }
   s_configFilePath = config;
   s_gameXMLFilePath = FileSystemPath::GetReadPath(FileSystemPath::Config, "Games.xml");
@@ -3163,7 +3173,7 @@ int main(int argc, char **argv)
       // Editing the game-specific sections themselves is not supported atm but we can
       // look at this later.
       Util::Config::Node fileConfig("Global");
-      Util::Config::FromINIFile(&fileConfig, s_configFilePath);
+      Util::Config::FromINIFile(&fileConfig, SettingsFileToRead());
 
       cmd_line.rom_files = RunGUI(s_configFilePath, fileConfig, &cmd_line.game);
 
@@ -3184,7 +3194,7 @@ int main(int argc, char **argv)
   InfoLog("Started as:");
   for (int i = 0; i < argc; i++)
     InfoLog("  argv[%d] = %s", i, argv[i]);
-  if (FileSystemPath::HasWriteDirectory())
+  if (FileSystemPath::HasWriteDirectory() && s_writeDirUnusable.empty())
     InfoLog("Write directory: %s (settings: %s)", FileSystemPath::GetWriteDirectory().c_str(), s_configFilePath.c_str());
   if (!s_writeDirError.empty())
     ErrorLog("%s", s_writeDirError.c_str());
@@ -3225,8 +3235,8 @@ int main(int argc, char **argv)
     Util::Config::Node fileConfigWithDefaults("Global");
     Util::Config::Node config3("Global");
     Util::Config::Node config4("Global");
-    Util::Config::FromINIFile(&fileConfig, s_configFilePath);
-    s_settingsReadFrom = s_configFilePath;
+    Util::Config::FromINIFile(&fileConfig, SettingsFileToRead());
+    s_settingsReadFrom = SettingsFileToRead();
     Util::Config::MergeINISections(&fileConfigWithDefaults, DefaultConfig(), fileConfig); // apply .ini file's global section over defaults
     Util::Config::MergeINISections(&config3, fileConfigWithDefaults, cmd_line.config);    // apply command line overrides
     if (rom_specified || print_games)
