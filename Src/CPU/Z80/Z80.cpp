@@ -154,7 +154,7 @@ static const unsigned char cycleTables[5][256] = {
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
     16,16,16,16,0,0,0,0,16,16,16,16,0,0,0,0,
-    16,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    16,0,0,0,0,0,0,0,16,0,0,0,0,0,0,0,
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -229,6 +229,14 @@ static const unsigned char cycleTables[5][256] = {
     else                                \
       pc += 2;                          \
   }
+
+// The conditional jumps, returns and calls: the cycle table holds what they take when the condition fails; when it
+// holds, a JR takes 5 cycles more (12), a RET 6 (11), a CALL 7 (17)
+#define JRC(cond)                                 do                                              {                                                 if (cond)                                       {                                                 cycles -= 5;                                    pc += (signed char) GetBYTE(pc) + 1;          }                                               else                                              pc += 1;                                    } while (0)
+
+#define RETC(cond)                                do                                              {                                                 if (cond)                                       {                                                 cycles -= 6;                                    POP(pc);                                      }                                             } while (0)
+
+#define CALLCC(cond)                              do                                              {                                                 if (cond)                                         cycles -= 7;                                  CALLC(cond);                                  } while (0)
   
 
 /*******************************************************************************
@@ -484,7 +492,7 @@ int CZ80::Run(int numCycles)
     break;
   case 0x20:      /* JR NZ,dd */
     cycles -= cycleTables[0][0x20];
-    pc += (!TSTFLAG(Z)) ? (signed char) GetBYTE(pc) + 1 : 1;
+    JRC(!TSTFLAG(Z));
     break;
   case 0x21:      /* LD HL,nnnn */
     cycles -= cycleTables[0][0x21];
@@ -554,7 +562,7 @@ int CZ80::Run(int numCycles)
     break;
   case 0x28:      /* JR Z,dd */
     cycles -= cycleTables[0][0x28];
-    pc += (TSTFLAG(Z)) ? (signed char) GetBYTE(pc) + 1 : 1;
+    JRC(TSTFLAG(Z));
     break;
   case 0x29:      /* ADD HL,HL */
     cycles -= cycleTables[0][0x29];
@@ -603,7 +611,7 @@ int CZ80::Run(int numCycles)
     break;
   case 0x30:      /* JR NC,dd */
     cycles -= cycleTables[0][0x30];
-    pc += (!TSTFLAG(C)) ? (signed char) GetBYTE(pc) + 1 : 1;
+    JRC(!TSTFLAG(C));
     break;
   case 0x31:      /* LD SP,nnnn */
     cycles -= cycleTables[0][0x31];
@@ -648,7 +656,7 @@ int CZ80::Run(int numCycles)
     break;
   case 0x38:      /* JR C,dd */
     cycles -= cycleTables[0][0x38];
-    pc += (TSTFLAG(C)) ? (signed char) GetBYTE(pc) + 1 : 1;
+    JRC(TSTFLAG(C));
     break;
   case 0x39:      /* ADD HL,SP */
     cycles -= cycleTables[0][0x39];
@@ -1530,7 +1538,7 @@ int CZ80::Run(int numCycles)
     break;
   case 0xC0:      /* RET NZ */
     cycles -= cycleTables[0][0xC0];
-    if (!TSTFLAG(Z)) POP(pc);
+    RETC(!TSTFLAG(Z));
     break;
   case 0xC1:      /* POP BC */
     cycles -= cycleTables[0][0xC1];
@@ -1546,7 +1554,7 @@ int CZ80::Run(int numCycles)
     break;
   case 0xC4:      /* CALL NZ,nnnn */
     cycles -= cycleTables[0][0xC4];
-    CALLC(!TSTFLAG(Z));
+    CALLCC(!TSTFLAG(Z));
     break;
   case 0xC5:      /* PUSH BC */
     cycles -= cycleTables[0][0xC5];
@@ -1569,7 +1577,7 @@ int CZ80::Run(int numCycles)
     break;
   case 0xC8:      /* RET Z */
     cycles -= cycleTables[0][0xC8];
-    if (TSTFLAG(Z)) POP(pc);
+    RETC(TSTFLAG(Z));
     break;
   case 0xC9:      /* RET */
     cycles -= cycleTables[0][0xC9];
@@ -1663,7 +1671,7 @@ int CZ80::Run(int numCycles)
     break;
   case 0xCC:      /* CALL Z,nnnn */
     cycles -= cycleTables[0][0xCC];
-    CALLC(TSTFLAG(Z));
+    CALLCC(TSTFLAG(Z));
     break;
   case 0xCD:      /* CALL nnnn */
     cycles -= cycleTables[0][0xCD];
@@ -1686,7 +1694,7 @@ int CZ80::Run(int numCycles)
     break;
   case 0xD0:      /* RET NC */
     cycles -= cycleTables[0][0xD0];
-    if (!TSTFLAG(C)) POP(pc);
+    RETC(!TSTFLAG(C));
     break;
   case 0xD1:      /* POP DE */
     cycles -= cycleTables[0][0xD1];
@@ -1702,7 +1710,7 @@ int CZ80::Run(int numCycles)
     break;
   case 0xD4:      /* CALL NC,nnnn */
     cycles -= cycleTables[0][0xD4];
-    CALLC(!TSTFLAG(C));
+    CALLCC(!TSTFLAG(C));
     break;
   case 0xD5:      /* PUSH DE */
     cycles -= cycleTables[0][0xD5];
@@ -1725,7 +1733,7 @@ int CZ80::Run(int numCycles)
     break;
   case 0xD8:      /* RET C */
     cycles -= cycleTables[0][0xD8];
-    if (TSTFLAG(C)) POP(pc);
+    RETC(TSTFLAG(C));
     break;
   case 0xD9:      /* EXX */
     cycles -= cycleTables[0][0xD9];
@@ -1747,7 +1755,7 @@ int CZ80::Run(int numCycles)
     break;
   case 0xDC:      /* CALL C,nnnn */
     cycles -= cycleTables[0][0xDC];
-    CALLC(TSTFLAG(C));
+    CALLCC(TSTFLAG(C));
     break;
   case 0xDD:      /* DD prefix */
     op = GetBYTE_pp(pc);
@@ -2397,7 +2405,7 @@ int CZ80::Run(int numCycles)
     break;
   case 0xE0:      /* RET PO */
     cycles -= cycleTables[0][0xE0];
-    if (!TSTFLAG(P)) POP(pc);
+    RETC(!TSTFLAG(P));
     break;
   case 0xE1:      /* POP HL */
     cycles -= cycleTables[0][0xE1];
@@ -2413,7 +2421,7 @@ int CZ80::Run(int numCycles)
     break;
   case 0xE4:      /* CALL PO,nnnn */
     cycles -= cycleTables[0][0xE4];
-    CALLC(!TSTFLAG(P));
+    CALLCC(!TSTFLAG(P));
     break;
   case 0xE5:      /* PUSH HL */
     cycles -= cycleTables[0][0xE5];
@@ -2431,7 +2439,7 @@ int CZ80::Run(int numCycles)
     break;
   case 0xE8:      /* RET PE */
     cycles -= cycleTables[0][0xE8];
-    if (TSTFLAG(P)) POP(pc);
+    RETC(TSTFLAG(P));
     break;
   case 0xE9:      /* JP (HL) */
     cycles -= cycleTables[0][0xE9];
@@ -2447,7 +2455,7 @@ int CZ80::Run(int numCycles)
     break;
   case 0xEC:      /* CALL PE,nnnn */
     cycles -= cycleTables[0][0xEC];
-    CALLC(TSTFLAG(P));
+    CALLCC(TSTFLAG(P));
     break;
   case 0xED:      /* ED prefix */
     op = GetBYTE_pp(pc);
@@ -2876,14 +2884,18 @@ int CZ80::Run(int numCycles)
       SETFLAG(Z, 1);
       break;
     case 0xB8:      /* LDDR */
+      // As LDIR, downwards
       cycles -= cycleTables[2][0xB8];
-      BC &= 0xffff;
-      do {
-        acu = GetBYTE_mm(HL);
-        PutBYTE_mm(DE, acu);
-      } while (--BC);
+      acu = GetBYTE_mm(HL);
+      PutBYTE_mm(DE, acu);
       acu += hreg(AF);
-      AF = (AF & ~0x3e) | (acu & 8) | ((acu & 2) << 4);
+      BC = (BC - 1) & 0xffff;
+      AF = (AF & ~0x3e) | (acu & 8) | ((acu & 2) << 4) | ((BC != 0) << 2);
+      if (BC != 0)
+      {
+        cycles -= 5;
+        pc -= 2;
+      }
       break;
     case 0xB9:      /* CPDR */
       cycles -= cycleTables[2][0xB9];
@@ -2936,7 +2948,7 @@ int CZ80::Run(int numCycles)
     break;
   case 0xF0:      /* RET P */
     cycles -= cycleTables[0][0xF0];
-    if (!TSTFLAG(S)) POP(pc);
+    RETC(!TSTFLAG(S));
     break;
   case 0xF1:      /* POP AF */
     cycles -= cycleTables[0][0xF1];
@@ -2952,7 +2964,7 @@ int CZ80::Run(int numCycles)
     break;
   case 0xF4:      /* CALL P,nnnn */
     cycles -= cycleTables[0][0xF4];
-    CALLC(!TSTFLAG(S));
+    CALLCC(!TSTFLAG(S));
     break;
   case 0xF5:      /* PUSH AF */
     cycles -= cycleTables[0][0xF5];
@@ -2969,7 +2981,7 @@ int CZ80::Run(int numCycles)
     break;
   case 0xF8:      /* RET M */
     cycles -= cycleTables[0][0xF8];
-    if (TSTFLAG(S)) POP(pc);
+    RETC(TSTFLAG(S));
     break;
   case 0xF9:      /* LD SP,HL */
     cycles -= cycleTables[0][0xF9];
@@ -2985,7 +2997,7 @@ int CZ80::Run(int numCycles)
     break;
   case 0xFC:      /* CALL M,nnnn */
     cycles -= cycleTables[0][0xFC];
-    CALLC(TSTFLAG(S));
+    CALLCC(TSTFLAG(S));
     break;
   case 0xFD:      /* FD prefix */
     op = GetBYTE_pp(pc);

@@ -2609,7 +2609,7 @@ namespace
     {
       // As the emulated Z80 has it: its ROM checksum and RAM test end in the 14th frame, the NMI timer starting with
       // the next (measured, as the wheel programs' ones)
-      return 1963008;
+      return 1963013;
     }
 
     void NmiOutputs(UINT8 &tq1, UINT8 &tq2, UINT8 &mode) override

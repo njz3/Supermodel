@@ -352,7 +352,7 @@ glisse, l'aléa. `CWheelBoard` cadence les NMI comme le CTC (16 000 cycles), cha
 programme principal ; les paires vont au même étage de sortie que celles du Z80 (`ProcessEncoderCmd`). La première NMI
 au cycle où l'émulée l'a (mesuré : son temporisateur part avec l'image qui suit la programmation du CTC, la NMI 16 000
 cycles plus loin et ce que dépasse sa dernière instruction ; depuis le 31 octobre, §2.16 : D2 2 380 231, 19338A
-2 102 083, 19338 2 241 159, SR2 1 963 015, 21119 1 963 008). Sauvegardes d'état : un bloc par programme ; un état
+2 102 083, 19338 2 241 159, SR2 1 963 015, 21119 1 963 013). Sauvegardes d'état : un bloc par programme ; un état
 de carte émulée chargé en mode simulé reprend la RAM du Z80 (`ImportRam`). Interface : `Nmi(volant, cockpit, ...)`.
 
 **Vérification.** Un banc hors de Supermodel (`servo_replay`, la simulation compilée seule) rejoue le programme
@@ -522,9 +522,16 @@ T-states de Zilog. Toutes les instructions concordaient sauf deux :
 **Changé** (`Src/CPU/Z80/Z80.cpp`, demande du propriétaire) : `DJNZ` compte 5 cycles de plus quand il saute ; `LDIR`
 copie un octet par exécution et revient sur lui-même tant que BC n'est pas nul, 21 cycles, 16 pour le dernier octet
 (`ED B0` à 16 dans la table) : une interruption peut tomber au milieu, comme sur le Z80. Le démarrage d'EPR-20512
-compte maintenant 1 860 648 cycles, ceux de Zilog. Les sauts, retours et appels conditionnels (`JR`, `RET`, `CALL`)
-gardent un coût fixe, pris ou non ; les autres instructions répétées (`LDDR`, `CPIR`, `INIR`, `OTIR`...) restent
-d'un seul pas.
+compte maintenant 1 860 648 cycles, ceux de Zilog (4e5aa3d).
+
+Ensuite (même jour, demande du propriétaire, après que la session Hikaruloader a vu ses NMI glisser encore de 1 000
+à 1 300 cycles) : les sauts, retours et appels conditionnels prennent eux aussi leurs cycles quand la condition tient,
+`JR` 12 (5 de plus), `RET` 11 (6), `CALL` 17 (7), la table gardant ceux d'une condition fausse (macros `JRC`, `RETC`,
+`CALLCC`) ; `LDDR` fait comme `LDIR`, vers le bas (`ED B8` à 16). Vérifié instruction par instruction sur un
+programme d'essai dans le banc (pris et non pris, `LDDR` de 16 octets) : 9/9 aux cycles de Zilog. Les autres
+instructions répétées (`CPIR`, `CPDR`, `INIR`, `INDR`, `OTIR`, `OTDR`) restent d'un seul pas. Le journal de référence
+envoyé à Hikaruloader, refait : les 551 changements des sorties dans le même ordre, 491 d'entre eux une NMI plus tôt
+ou plus tard (le glissement qu'elle voyait). Les premières NMI ne bougent pas, sauf celle de Star Wars (5 cycles).
 
 **Effets** : les cartes de direction démarrent plus tard, la première NMI deux images après (SR2 et Star Wars image 14,
 Scud et Dirt Devils 15, Scud Plus 16, D2 17), comme le prévoyait le banc. Les constantes `FirstNmiCycles` des cartes
@@ -536,8 +543,13 @@ simulées suivent (§2.12). Vérifié en mode agent, parties complètes depuis l
   par le jeu différente ; Scud 143, D2 390, Scud Plus 51, Star Wars 5 370), autant d'effets (Scud 272 contre 273),
   la même course (0,000 m) ; 0,45 à 1,57 % des NMI décalées d'une NMI, comme le 17 octobre ;
 - la DSB1 de Scud Race (Z80 à 4 MHz, `-no-threads` pour que le son suive les images) : les mêmes morceaux aux mêmes
-  positions MPEG, à l'octet, de la sélection de la voiture au morceau suivant (rien ne joue avant, dans les deux). Le panneau (billboard, vf3 et fvipers2) n'a
-  pas pu être essayé : pas de ROM ici.
+  positions MPEG, à l'octet, de la sélection de la voiture au morceau suivant (rien ne joue avant, dans les deux) ;
+- refait après les sauts conditionnels et `LDDR`, les mêmes essais : cartes émulées, les six jeux démarrent et
+  jouent, les premières NMI aux mêmes images, 0 paire différente en rejouant les simulations ; simulées contre
+  émulées, les mêmes commandes aux mêmes valeurs dans les cinq jeux, autant d'effets (Scud 272/272), la même course,
+  0,25 à 1,57 % des NMI décalées d'une NMI ; la DSB1, les mêmes morceaux aux mêmes positions que 4e5aa3d.
+
+Le panneau (billboard, vf3 et fvipers2) n'a pas pu être essayé : pas de ROM ici.
 
 ## 3. Les essais
 
