@@ -3414,11 +3414,14 @@ int main(int argc, char **argv)
   }
 
   // Network server: for the net board, and for the programs that connect to
-  // the Pro-1000. If it cannot listen, emulation continues.
+  // the Pro-1000. If it cannot listen, emulation continues. The net board's
+  // link starts it once its handlers are registered: started here, it would
+  // refuse a machine that connects while the game loads.
   if (game.platform == Game::PLATFORM_PRO1000 || (game.netboard_present && s_runtime_config["Network"].ValueAs<bool>()))
   {
     netServer = std::make_shared<CNetServer>(s_runtime_config["PortIn"].ValueAs<unsigned>(), "Supermodel " SUPERMODEL_VERSION " (" + game.name + ")");
-    netServer->Start();
+    if (game.platform == Game::PLATFORM_PRO1000)
+      netServer->Start();
   }
 
   // Console input is created only when something reads it: the emulated

@@ -551,6 +551,32 @@ simulées suivent (§2.12). Vérifié en mode agent, parties complètes depuis l
 
 Le panneau (billboard, vf3 et fvipers2) n'a pas pu être essayé : pas de ROM ici.
 
+### 2.17 Le link : deux bornes lancées à quelques secondes d'écart (2 novembre)
+
+Signalé par la session Image borne (Racecab1 et Racecab2, Sega Rally 2, 5d535cd, carte réseau simulée) : lancées à 1
+ou 4 s d'écart, les deux bornes ne se liaient jamais (« CHECKING NETWORK NOW » sur la première, écran noir sur la
+seconde) ; à 30 s d'écart, si. Deux défauts ensemble :
+- le serveur réseau écoutait dès le démarrage de Supermodel (`Main.cpp`), avant que la carte réseau enregistre ses
+  récepteurs (`CNetBoardLink`, créé au chargement du jeu) : la borne encore en chargement acceptait la connexion de
+  l'autre, ne connaissait pas son `NBJ1` et la fermait ;
+- la borne dont la connexion sortante avait été fermée attendait ensuite l'autre sans jamais la rouvrir
+  (`CSimNetBoard::ConnectProc` n'appelait `Connect()` qu'avant). Les deux attendaient pour toujours.
+
+**Changé** : le serveur n'écoute qu'une fois les récepteurs de la carte réseau enregistrés (`CNetBoardLink` le
+démarre ; `Main.cpp` ne démarre plus lui-même que celui du Pro-1000). En attendant la machine précédente, la carte
+simulée rouvre sa connexion sortante si la suivante l'a fermée, au plus une fois par seconde (`kReconnectMS`) : une
+borne qui redémarre pendant cette attente est reprise de même.
+
+**Vérifié** en mode agent, deux Supermodel cachés sur 127.0.0.1 (`pkg/autopilot_data/tools_link/link_stagger_test.py`) :
+- une fausse borne 2 prend la connexion de la borne 1 puis la ferme, comme la borne en chargement : avec a460b59, la
+  borne 1 ne la rouvre jamais et aucune des deux ne se lie (les journaux des bornes) ; avec le correctif, elle la
+  rouvre et les deux se lient (« machine 1 of 2 (master) », « machine 2 of 2 (slave) ») ;
+- démarrages décalés de 0, 1 et 4 s (Sega Rally 2) et de 1 s (Scud Race) : liés à chaque fois. En local, le
+  chargement est assez court pour que a460b59 se lie aussi à 0 et 1 s : le défaut ne s'y voit qu'avec la fausse
+  borne ;
+- la carte réseau émulée (`-emulate-netboard`), liée à elle-même (`netboard_self_test.py`) : elle démarre et se
+  connecte comme avant.
+
 ## 3. Les essais
 
 ### 3.1 Le banc

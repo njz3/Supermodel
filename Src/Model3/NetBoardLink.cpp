@@ -196,6 +196,10 @@ CNetBoardLink::CNetBoardLink(std::shared_ptr<CNetServer> server, const std::stri
   {
     OnDisconnect(connection);
   });
+
+  // Only now does the server listen: a Join that came before would find no
+  // handler, and its connection would be closed
+  m_server->Start();
 }
 
 CNetBoardLink::~CNetBoardLink(void)

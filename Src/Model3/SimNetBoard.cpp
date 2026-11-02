@@ -38,6 +38,7 @@ static const int kLinkTimeoutMS = 10000;			// a linked machine silent this long:
 static const int kHandshakeStepMS = 3000;			// each step of a handshake round, once started
 static const uint32_t kHandshakeRetryMS = 2000;		// the master's GUID sent again when it has not come round
 static const uint32_t kRoleSettleMS = 500;			// the game's role read this long after the handshake can start
+static const uint32_t kReconnectMS = 1000;			// the output connection opened again at most this often
 
 inline bool CSimNetBoard::IsGame(const char* gameName)
 {
@@ -360,13 +361,20 @@ void CSimNetBoard::ConnectProc(void)
 		CThread::Sleep(100);
 	}
 
-	// wait until the previous machine has linked
+	// wait until the previous machine has linked. The next machine may close the output connection (it came before
+	// that machine could answer, or that machine restarted): it is opened again
+	uint32_t lastConnect = CThread::GetTicks();
 	while (!m_link->Connected())
 	{
 		if (m_quit)
 		{
 			m_connectDone = true;
 			return;
+		}
+		if (CThread::GetTicks() - lastConnect >= kReconnectMS)
+		{
+			m_link->Connect();		// nothing to do while the output connection is open
+			lastConnect = CThread::GetTicks();
 		}
 		CThread::Sleep(1);
 	}

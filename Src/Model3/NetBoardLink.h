@@ -110,6 +110,9 @@ public:
   /*
    * CNetBoardLink(server, address, port):
    *
+   * Registers the handlers, then starts the server (if it is not started), so
+   * that the previous machine's Join finds them.
+   *
    * Parameters:
    *    server    Network server of this machine.
    *    address   Address of the next machine.
