@@ -349,8 +349,10 @@ UINT8 CDSB1::IORead8(UINT32 addr)
 
 	case 0xF0:	// Latch
 		UINT8 d;
+		int idxW;
+		idxW = fifoIdxW;
 		d = fifo[fifoIdxR];	// retrieve next command byte
-		if (fifoIdxR != fifoIdxW)	// if these are equal, nothing has been written yet (don't advance)
+		if (fifoIdxR != idxW)	// if these are equal, nothing has been written yet (don't advance)
 		{
 			fifoIdxR++;
 			fifoIdxR &= FIFO_STACK_SIZE_MASK;
@@ -391,8 +393,9 @@ void CDSB1::SendCommand(UINT8 data)
 	 * up with the other CPUs and must process all commands it has received
 	 * over the course of a frame at once.
 	 */
-	fifo[fifoIdxW++] = data;
-	fifoIdxW &= FIFO_STACK_SIZE_MASK;
+	// Sound thread reads the FIFO: publish the index after the data
+	fifo[fifoIdxW] = data;
+	fifoIdxW = (fifoIdxW + 1) & FIFO_STACK_SIZE_MASK;
 	//printf("Write FIFO: %02X\n", data);
 
 	// Have we caught up to the read pointer?
@@ -838,10 +841,12 @@ void CDSB2::WriteMPEGFIFO(UINT8 byte)
 	}
 }
 
+// The program ROM is in the 68K's byte order (big endian: Games.xml's
+// byte_swap region), as the CPU reads it
 UINT8 CDSB2::Read8(UINT32 addr)
 {
 	if (addr < (128*1024))
-		return progROM[addr^1];
+		return progROM[addr];
 
 	if (addr == 0xc00001)
 	{
@@ -871,7 +876,7 @@ UINT16 CDSB2::Read16(UINT32 addr)
 {
 	if (addr < (128*1024))
 	{
-		return *(UINT16 *) &progROM[addr];
+		return (UINT16(progROM[addr]) << 8) | progROM[addr+1];
 	}
 	if ((addr >= 0xf00000) && (addr < 0xf20000))
 	{
@@ -889,8 +894,8 @@ UINT32 CDSB2::Read32(UINT32 addr)
 
 	if (addr < (128*1024))
 	{
-		hi = *(UINT16 *) &progROM[addr];
-		lo = *(UINT16 *) &progROM[addr+2];
+		hi = (UINT32(progROM[addr]) << 8) | progROM[addr+1];
+		lo = (UINT32(progROM[addr+2]) << 8) | progROM[addr+3];
 		return (hi<<16)|lo;
 	}
 	if ((addr >= 0xf00000) && (addr < 0xf20000))
@@ -955,8 +960,9 @@ void CDSB2::SendCommand(UINT8 data)
 	 * up with the other CPUs and must process all commands it has received
 	 * over the course of a frame at once.
 	 */
-	fifo[fifoIdxW++] = data;
-	fifoIdxW &= FIFO_STACK_SIZE_MASK;
+	// Sound thread reads the FIFO: publish the index after the data
+	fifo[fifoIdxW] = data;
+	fifoIdxW = (fifoIdxW + 1) & FIFO_STACK_SIZE_MASK;
 	//printf("Write FIFO: %02X\n", data);
 
 	// Have we caught up to the read pointer?

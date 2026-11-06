@@ -7,7 +7,8 @@ Usage (from anywhere): python Scripts/release_windows.py [--skip-build]
 The build uses MSVC (the newest Visual Studio, found with vswhere, or the VsDevCmd.bat given in VSDEVCMD) and goes
 to MSVC/x64/ReleaseStatic/, without touching the projects: SDL2 and SDL2_net are rebuilt as static libraries (their
 ConfigurationType overridden, no DLL exports), everything is compiled with /MT, and the version is compiled in as the
-Makefiles set it, 0.3a-YYYYMMDD-git-HASH from HEAD. The usual DLL build, in MSVC/x64/Release/, is left alone.
+Makefiles set it, SUPERMODEL_GIT_REVISION=YYYYMMDD-git-HASH from HEAD, after the series of Src/Version.cpp. The usual DLL
+build, in MSVC/x64/Release/, is left alone.
 The 32-bit ASPI DLL for Real3D Pro-1000 host programs, wnaspi32.dll, which the official package carries beside
 supermodel.exe (Makefiles/Makefile.Win32 builds it with a 32-bit MinGW), is built with MSVC's x86 compiler and its C
 run-time linked in, in MSVC/x86/ReleaseStatic/. CHANGES.txt comes from Scripts/changelog.sh, which needs bash (Git
@@ -34,9 +35,15 @@ def git(*args):
     return subprocess.run(["git", "-C", REPO, *args], capture_output=True, text=True, check=True).stdout.strip()
 
 
-def version():
-    """As Makefiles/Rules.inc's set_version: 0.3a-<date of HEAD>-git-<short hash>."""
-    return f"0.3a-{git('show', '-s', '--format=%cd', '--date=format:%Y%m%d', 'HEAD')}-git-{git('rev-parse', '--short', 'HEAD')}"
+def revision():
+    """As Makefiles/Rules.inc's set_git_revision: <date of HEAD>-git-<short hash>."""
+    return f"{git('show', '-s', '--format=%cd', '--date=format:%Y%m%d', 'HEAD')}-git-{git('rev-parse', '--short', 'HEAD')}"
+
+
+def built_version():
+    """As Makefiles/Rules.inc's READ_VERSION: what the build says it is, series and revision."""
+    out = subprocess.run([os.path.join(OUT, "Supermodel.exe"), "-version"], capture_output=True, text=True, check=True)
+    return out.stdout.split()[-1]
 
 
 def vs_environment(arch="amd64"):
@@ -72,9 +79,9 @@ def msbuild(env, project, extra_env, *props):
                     "/p:VCPkgLocalAppDataDisabled=true", *props], env=run_env, check=True)
 
 
-def build(v):
+def build(rev):
     env = vs_environment()
-    cl = {"CL": f'/DSUPERMODEL_VERSION#\\"{v}\\"'}
+    cl = {"CL": f'/DSUPERMODEL_GIT_REVISION#\\"{rev}\\"'}
     # SDL2 and SDL2_net as static libraries, without their DLL exports
     for project in ("SDL\\SDL.vcxproj", "SDLnet\\SDL_net.vcxproj"):
         msbuild(env, project, {**cl, "_CL_": "/MT /UDLL_EXPORT"}, "/p:ConfigurationType=StaticLibrary")
@@ -149,12 +156,13 @@ def main():
     ap.add_argument("--skip-build", action="store_true",
                     help="package the last build of MSVC/x64/ReleaseStatic/ and MSVC/x86/ReleaseStatic/")
     a = ap.parse_args()
-    v = version()
+    rev = revision()
     if git("status", "--porcelain", "--untracked-files=no"):
-        print(f"warning: the working tree has changes that {v} does not name", file=sys.stderr)
-    print("Supermodel", v)
+        print(f"warning: the working tree has changes that {rev} does not name", file=sys.stderr)
     if not a.skip_build:
-        build(v)
+        build(rev)
+    v = built_version()
+    print("Supermodel", v)
     zip_path = package(v)
     print(zip_path, os.path.getsize(zip_path), "bytes")
 

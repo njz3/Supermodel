@@ -1,3 +1,23 @@
+/**
+ ** Supermodel
+ ** A Sega Model Series Arcade Emulator.
+ **
+ ** This file is part of Supermodel.
+ **
+ ** Supermodel is free software: you can redistribute it and/or modify it under
+ ** the terms of the GNU General Public License as published by the Free
+ ** Software Foundation, either version 3 of the License, or (at your option)
+ ** any later version.
+ **
+ ** Supermodel is distributed in the hope that it will be useful, but WITHOUT
+ ** ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ ** FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ ** more details.
+ **
+ ** You should have received a copy of the GNU General Public License along
+ ** with Supermodel.  If not, see <http://www.gnu.org/licenses/>.
+ **/
+
 #include "SDLIncludes.h"
 #include <GL/glew.h>
 #include <cmath>
@@ -63,8 +83,8 @@ Quick description on the GUI stuff
 // parent's zip file when that holds the clone too (a MAME merged ROM set)
 // ---------------------------------------------------------------------------------------------------------------
 
-static const bool  s_hideUnownedGames = false;   // true: unowned games are removed from the list
-                                                // false: unowned games are greyed out so the list layout is kept
+static bool s_showAllGames = false;   // the "Show all supported games" checkbox: off, only the games in the
+                                      // ROM folder are listed; on, the others are too, greyed out
 
 static std::string ToLowerStr(std::string s)
 {
@@ -558,6 +578,12 @@ static void CreateControls(Util::Config::Node& config, const std::string& group)
 
                             break;
                         }
+                        }
+
+                        // the setting's note, if it has one (e.g. "Model 1/2 only")
+                        if (!vRange->GetNote().empty()) {
+                            ImGui::SameLine();
+                            ImGui::TextDisabled("(%s)", vRange->GetNote().c_str());
                         }
                     }
                 }
@@ -1152,6 +1178,24 @@ static void GUI(const ImGuiIO& io, Util::Config::Node& globalConfig, const std::
 
     ImGui::Begin("Custom Window", nullptr, ImGuiWindowFlags_NoTitleBar); // Explicitly set a window name
 
+    // Only the games in the ROM folder, unless all supported games are asked for
+    {
+        size_t ownedCount = 0;
+        for (const auto& g : games) {
+            if (romZips.count(g.second.name)) {
+                ownedCount++;
+            }
+        }
+        if (ImGui::Checkbox("Show all supported games", &s_showAllGames) && !s_showAllGames && selectedGameIndex >= 0) {
+            // a game that is no longer listed can't stay selected
+            if (!romZips.count(GetGame(games, selectedGameIndex).name)) {
+                selectedGameIndex = -1;
+            }
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("(%zu of %zu supported games in the ROM folder)", ownedCount, games.size());
+    }
+
     ImGui::BeginChild("TableRegion", ScaledSize(0.0f, 200.0f), true, ImGuiWindowFlags_HorizontalScrollbar);
 
     if (ImGui::BeginTable("Games", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit))
@@ -1170,7 +1214,7 @@ static void GUI(const ImGuiIO& io, Util::Config::Node& globalConfig, const std::
             const bool owned = romZips.count(g.second.name) > 0;
 
             // row must always advance, GetGame() / GetRomPath() index the full games map
-            if (!owned && s_hideUnownedGames) {
+            if (!owned && !s_showAllGames) {
                 row++;
                 continue;
             }

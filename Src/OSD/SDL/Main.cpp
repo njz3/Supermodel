@@ -1,6 +1,6 @@
 /**
  ** Supermodel
- ** A Sega Model 3 Arcade Emulator.
+ ** A Sega Model Series Arcade Emulator.
  ** Copyright 2003-2026 The Supermodel Team
  **
  ** This file is part of Supermodel.
@@ -99,6 +99,9 @@
 #include "Pro1000/Pro1000.h"
 #include "Network/NetServer.h"
 #include "Graphics/Pro1000Render2D.h"
+#include "Model1/Model1.h"
+#include "Model2/Model2.h"
+#include "Graphics/Model1Render.h"
 #include "Graphics/IRender2D.h"
 #include "OSD/Audio.h"
 #include "OSD/ConsoleInput.h"
@@ -139,7 +142,7 @@ extern "C"
 ******************************************************************************/
 
 // The windows' titles start with it: this branch's name and the build's version (the release package's)
-static const std::string s_windowTitle = "Supermodel FFB Edition " SUPERMODEL_VERSION;
+static const std::string s_windowTitle = "Supermodel FFB Edition " + SupermodelVersion();
 
 static const std::string s_analysisPath = Util::Format() << FileSystemPath::GetPath(FileSystemPath::Analysis);
 // In the write directory when one is set (ResolveWriteDirectory)
@@ -393,6 +396,12 @@ static Result CreateGLScreen(bool coreContext, const std::string &caption, bool 
 
   // Initialize GLEW, allowing us to use features beyond OpenGL 1.2
   err = glewInit();
+#ifdef GLEW_ERROR_NO_GLX_DISPLAY
+  // Wayland: SDL's context is EGL, so there's no GLX display. GLEW has loaded
+  // the GL functions by then and fails only on its GLX extensions, unused here.
+  if (GLEW_ERROR_NO_GLX_DISPLAY == err)
+    err = GLEW_OK;
+#endif
   if (GLEW_OK != err)
   {
     ErrorLog("OpenGL initialization failed: %s\n", glewGetErrorString(err));
@@ -811,7 +820,7 @@ static bool SaveState(IEmulator *Emu, std::string file_path = std::string())
 
   if (file_path.empty())
     file_path = Util::Format() << FileSystemPath::GetWritePath(FileSystemPath::Saves) << Emu->GetGame().name << ".st" << s_saveSlot;
-  if (Result::OKAY != SaveState.Create(file_path, "Supermodel Save State", "Supermodel Version " SUPERMODEL_VERSION))
+  if (Result::OKAY != SaveState.Create(file_path, "Supermodel Save State", "Supermodel Version " + SupermodelVersion()))
   {
     ErrorLog("Unable to save state to '%s'.", file_path.c_str());
     return false;
@@ -875,7 +884,7 @@ static void SaveNVRAM(IEmulator *Emu)
   CBlockFile  NVRAM;
 
   std::string file_path = Util::Format() << FileSystemPath::GetWritePath(FileSystemPath::NVRAM) << Emu->GetGame().name << ".nv";
-  if (Result::OKAY != NVRAM.Create(file_path, "Supermodel NVRAM State", "Supermodel Version " SUPERMODEL_VERSION))
+  if (Result::OKAY != NVRAM.Create(file_path, "Supermodel NVRAM State", "Supermodel Version " + SupermodelVersion()))
   {
     ErrorLog("Unable to save NVRAM to '%s'. Make sure directory exists!", file_path.c_str());
     return;
@@ -1032,6 +1041,8 @@ static IRender2D *CreateRender2D(IEmulator *Emu)
 {
   if (dynamic_cast<CPro1000 *>(Emu))
     return new CPro1000Render2D();
+  if (dynamic_cast<CModel1 *>(Emu) || dynamic_cast<CModel2 *>(Emu))
+    return new CModel1Render();
   return new CRender2D(s_runtime_config);
 }
 
@@ -1537,6 +1548,8 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
       {
         s_runtime_config.Set("XResolution", unsigned(width));
         s_runtime_config.Set("YResolution", unsigned(height));
+        if (!paused)
+          Emu->PauseThreads();
         delete Render2D;
         Render2D = nullptr;
         totalXRes = xRes = unsigned(width);
@@ -1544,6 +1557,8 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
         if (Result::OKAY != ResizeGLScreen(&xOffset, &yOffset, &xRes, &yRes, &totalXRes, &totalYRes, !s_runtime_config["Stretch"].ValueAs<bool>(), 0) ||
             Result::OKAY != InitRenderers(Emu, superAA, Render2D, Render3D, upscaleMode, true))
           goto QuitError;
+        if (!paused)
+          Emu->ResumeThreads();
       }
     }
 
@@ -1661,7 +1676,7 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
         SetAudioEnabled(true);
       }
 
-      puts("Model 3 reset.");
+      puts("Emulator reset.");
     }
     else if (Inputs->uiPause->Pressed())
     {
@@ -2195,9 +2210,15 @@ Util::Config::Node DefaultConfig()
   // CModel3
   config.Set("PowerPCFrequency", 0u, "Core", 0u, 200u);
   config["PowerPCFrequency"].GetValue()->GetValueRange()->SetSliderFormat("%u MHz", "Auto"); // 0 = chosen by default game stepping
+  config["PowerPCFrequency"].GetValue()->GetValueRange()->SetNote("Model 3 only");
   config.Set("MultiThreaded", true,"Core");
   config.Set("GPUMultiThreaded", true, "Core");
   config.Set("IdleSkip", true, "Core");
+  // CModel1, CModel2: the video board's geometrizer simulated (high level,
+  // fast), else its DSP programs run (low level, more accurate). Model 2:
+  // only 2B has the low level one (2A/2C are always simulated)
+  config.Set("HighLevelGeometrizer", true, "Core");
+  config["HighLevelGeometrizer"].GetValue()->GetValueRange()->SetNote("Model 1/2 only");
   config.Set<std::string>("ROMDirectory", FileSystemPath::GetPath(FileSystemPath::ROMs), "Core", "", ""); // where the GUI looks for <romset>.zip
   // 2D and 3D graphics engines
 #ifndef SUPERMODEL_OSX
@@ -2231,6 +2252,7 @@ Util::Config::Node DefaultConfig()
 
   // Platform-specific/UI
   config.Set("New3DEngine", true, "Video");
+  config["New3DEngine"].GetValue()->GetValueRange()->SetNote("Model 3 only");
   config.Set("QuadRendering", true, "Video");
   config.Set("XResolution", 496, "Video");
   config.Set("YResolution", 384, "Video");
@@ -2309,7 +2331,7 @@ Util::Config::Node DefaultConfig()
   config.Set("SDLVibrateMax", 100, "ForceFeedback", 0, 100);
   config.Set("SDLConstForceThreshold", 30, "ForceFeedback", 0, 100);
 #endif
-  // Network. PortIn is the port of the network server (net board and Pro-1000
+  // Network. PortIn is the port of the network server (net board and PRO-1000
   // SCSI TCP bridge). PortOut and AddressOut give the next net board machine.
   config.Set("Network", false, "Network");
   config.Set("SimulateNet", true, "Network");
@@ -2561,7 +2583,7 @@ Util::Config::Node DefaultConfig()
 
 static void Title(void)
 {
-  puts("Supermodel: A Sega Model 3 Arcade Emulator (Version " SUPERMODEL_VERSION ")");
+  printf("Supermodel: A Sega Model Series Arcade Emulator (Version %s)\n", SupermodelVersion().c_str());
   puts("Copyright 2003-2026 by The Supermodel Team");
 }
 
@@ -2573,6 +2595,7 @@ static void Help(void)
   puts("");
   puts("General Options:");
   puts("  -?, -h, -help, --help   Print this help text");
+  puts("  -version, --version     Print the version and quit");
   puts("  -print-games            List supported games and quit");
   puts("  -game=<name>            Game to load from a ROM set holding several (a MAME");
   puts("                          merged set: the parent and its clones)");
@@ -2596,6 +2619,10 @@ static void Help(void)
   puts("  -no-gpu-thread          Run graphics rendering in main thread");
   puts("  -idle-skip              Skip PowerPC idle loops [Default]");
   puts("  -no-idle-skip           Execute PowerPC idle loops in full");
+  puts("  -high-level-geometrizer  Model 1/2 only: simulate the geometrizer (fast)");
+  puts("                          [Default]");
+  puts("  -no-high-level-geometrizer  Model 1/2 only: run the geometrizer DSP programs");
+  puts("                          (more accurate, slower; Model 2: 2B games only)");
   puts("  -load-state=<file>      Load save state after starting");
   puts("");
   puts("Video Options:");
@@ -2664,7 +2691,7 @@ static void Help(void)
   puts("  -net                    Enable net board");
   puts("  -simulate-netboard      Simulate the net board [Default]");
   puts("  -emulate-netboard       Emulate the net board (requires -no-threads)");
-  printf("  -port=<n>, -port-in=<n> TCP port of this machine (net board and Pro-1000)\n"
+  printf("  -port=<n>, -port-in=<n> TCP port of this machine (net board and PRO-1000)\n"
          "                          [Default: %u]\n", defaultConfig["PortIn"].ValueAs<unsigned>());
   printf("  -port-out=<n>           TCP port of the next machine [Default: %u]\n", defaultConfig["PortOut"].ValueAs<unsigned>());
   printf("  -address-out=<addr>     Address of the next machine [Default: %s]\n", defaultConfig["AddressOut"].ValueAs<std::string>().c_str());
@@ -2861,6 +2888,8 @@ static ParsedCommandLine ParseCommandLine(int argc, char **argv)
     { "-no-gpu-thread",       { "GPUMultiThreaded", false } },
     { "-idle-skip",           { "IdleSkip",         true } },
     { "-no-idle-skip",        { "IdleSkip",         false } },
+    { "-high-level-geometrizer",    { "HighLevelGeometrizer", true } },
+    { "-no-high-level-geometrizer", { "HighLevelGeometrizer", false } },
     { "-window",              { "FullScreen",       false } },
     { "-fullscreen",          { "FullScreen",       true } },
     { "-borderless",          { "BorderlessWindow", true } },
@@ -3144,6 +3173,17 @@ static ParsedCommandLine ParseCommandLine(int argc, char **argv)
  */
 int main(int argc, char **argv)
 {
+  // Handled before anything else so that only the version is printed and nothing
+  // is written to disk. The packaging scripts rely on this output.
+  for (int i = 1; i < argc; i++)
+  {
+    if (!strcmp(argv[i], "-version") || !strcmp(argv[i], "--version"))
+    {
+      printf("Supermodel %s\n", SupermodelVersion().c_str());
+      return 0;
+    }
+  }
+
   Agent::Init(argc, argv);
   Title();
   ResolveWriteDirectory(argc, argv);
@@ -3190,7 +3230,7 @@ int main(int argc, char **argv)
     return 1;
   }
   SetLogger(logger);
-  InfoLog("Supermodel Version " SUPERMODEL_VERSION);
+  InfoLog("Supermodel Version %s", SupermodelVersion().c_str());
   InfoLog("Started as:");
   for (int i = 0; i < argc; i++)
     InfoLog("  argv[%d] = %s", i, argv[i]);
@@ -3414,18 +3454,18 @@ int main(int argc, char **argv)
   }
 
   // Network server: for the net board, and for the programs that connect to
-  // the Pro-1000. If it cannot listen, emulation continues. The net board's
+  // the PRO-1000. If it cannot listen, emulation continues. The net board's
   // link starts it once its handlers are registered: started here, it would
   // refuse a machine that connects while the game loads.
   if (game.platform == Game::PLATFORM_PRO1000 || (game.netboard_present && s_runtime_config["Network"].ValueAs<bool>()))
   {
-    netServer = std::make_shared<CNetServer>(s_runtime_config["PortIn"].ValueAs<unsigned>(), "Supermodel " SUPERMODEL_VERSION " (" + game.name + ")");
+    netServer = std::make_shared<CNetServer>(s_runtime_config["PortIn"].ValueAs<unsigned>(), "Supermodel " + SupermodelVersion() + " (" + game.name + ")");
     if (game.platform == Game::PLATFORM_PRO1000)
       netServer->Start();
   }
 
   // Console input is created only when something reads it: the emulated
-  // machine's serial console (Pro-1000) and/or the debugger
+  // machine's serial console (PRO-1000) and/or the debugger
   {
     bool needConsoleInput = game.platform == Game::PLATFORM_PRO1000;
 #ifdef SUPERMODEL_DEBUGGER
@@ -3448,6 +3488,10 @@ int main(int argc, char **argv)
 #endif
   if (game.platform == Game::PLATFORM_PRO1000)
     Emu = new CPro1000(s_runtime_config, consoleInput ? consoleInput->CreateInput() : nullptr, netServer);
+  else if (game.platform == Game::PLATFORM_MODEL1)
+    Emu = new CModel1(s_runtime_config, Inputs, emuOutputs);
+  else if (game.platform == Game::PLATFORM_MODEL2)
+    Emu = new CModel2(s_runtime_config, Inputs, emuOutputs, netServer);
   else
     Emu = new CModel3(s_runtime_config, Inputs, emuOutputs, netServer);
 

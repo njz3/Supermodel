@@ -577,6 +577,43 @@ borne qui redémarre pendant cette attente est reprise de même.
 - la carte réseau émulée (`-emulate-netboard`), liée à elle-même (`netboard_self_test.py`) : elle démarre et se
   connecte comme avant.
 
+### 2.18 La fusion d'upstream : Model 1, Model 2 et la série 0.4 (6 novembre)
+
+Upstream (345c3ad) ajoute le Model 1 et le Model 2 et renomme le projet « Sega Model Series ». Sa version devient
+`0.4-AAAAMMJJ-git-HASH`, donnée par `SupermodelVersion()` (`Src/Version.cpp`) au lieu de la macro `SUPERMODEL_VERSION`.
+Ce que git ne pouvait pas décider seul :
+- **Le redimensionnement de la fenêtre** : upstream a écrit le sien, nous avions le nôtre, et git a gardé les deux sans
+  conflit. Le nôtre reste (pas pour `BorderlessWindow` ni pour l'agent, la taille gardée comme résolution), avec la mise
+  en pause des threads d'upstream autour. Son `SDL_SetWindowResizable(s_window, SDL_TRUE)` est retiré : il aurait rendu
+  redimensionnables les fenêtres sans bordure des bornes.
+- **`-game` contre la règle du nom du zip** : upstream prend le jeu complet nommé comme le zip ; `-game`, le nôtre,
+  passe avant. Un zip qui contient plusieurs jeux charge donc maintenant celui de son nom : `srally2.zip` chargeait
+  `srally2dx` et charge `srally2`, ce qui change aussi le fichier NVRAM lu (`srally2.nv`).
+- **Le serveur réseau** : notre démarrage tardif (§2.17) reste. Le Model 2 passe aussi par `CNetBoardLink`, donc il en
+  profite ; sa `CModel2Comm::ConnectProc` ne rouvre pas encore une connexion fermée.
+- **Le numéro de version** : `release_windows.py` compile `SUPERMODEL_GIT_REVISION` et nomme le paquet d'après ce que
+  répond `Supermodel.exe -version`, comme `Makefiles/Rules.inc`. `-version` passe avant `Agent::Init`.
+- `GameLoader.cpp` conflictait sur tout le fichier : upstream l'a passé de CRLF à LF. Fusionné sur des fins de ligne
+  normalisées, il garde celles d'upstream. `Scripts/supermodel_build_bot.py`, supprimé par upstream, le reste.
+- Model 1 et Model 2 reçoivent `emuOutputs`, pour que l'agent voie leurs sorties.
+
+**Vérifié** en mode agent (`roms\srally2.zip`, `vr.zip`, `hotd.zip` ; 0.3a-d7cc56c contre la fusion,
+`pkg/autopilot_data/tools_link/merge_test.py`) :
+- Sega Rally 2 : depuis une même sauvegarde de d7cc56c, les images identiques au pixel près sur 1 200 images ; depuis la
+  mise sous tension, identiques sauf l'image 1800 de l'attraction, qui change aussi d'un lancement à l'autre sur chaque
+  version ; une sauvegarde de la fusion se recharge ;
+- la musique (DSB2, dont upstream a changé l'ordre des octets de la ROM) : le même morceau aux mêmes positions MPEG ; sa
+  RAM ne diffère que de quelques octets de sa pile, comme d'un lancement à l'autre sur une même version ;
+- le link (§2.17) : fausse borne, décalages de 1 et 4 s, liés à chaque fois, avec les NVRAM des bornes ;
+- le menu en jeu, ses quatre pages, sur les trois plateformes ;
+- VR (Model 1) et House of the Dead (Model 2) : démarrage, attraction, pièce, partie, sauvegarde rechargée ;
+- `-game=hotdo` dans un zip nommé `vr.zip` qui contient les deux jeux : charge `hotdo`, et sans `-game`, `vr`.
+
+**Pas vérifié** : le redimensionnement (il faut une vraie fenêtre, l'agent n'en a pas) ; les effets joués sur un volant,
+seules les commandes de la carte de direction se comparent ici (upstream n'a touché ni à la carte ni au Z80) ; Scud
+Race, Daytona 2, Le Mans 24, Star Wars et la DSB1 (leurs ROMs ne sont plus sur ce PC) ; le retour de force du Model 2 ; les
+Makefiles.
+
 ## 3. Les essais
 
 ### 3.1 Le banc

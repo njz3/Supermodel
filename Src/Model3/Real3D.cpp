@@ -350,7 +350,7 @@ void CReal3D::LoadState(CBlockFile *SaveState)
   SaveState->Read(&dmaConfig, sizeof(dmaConfig));
 
   SaveState->Read(m_internalRenderConfig, sizeof(m_internalRenderConfig));
-  SaveState->Read(&commandPortWritten);
+  SaveState->Read(commandPortWritten);
   SaveState->Read(&m_pingPong, sizeof(m_pingPong));
   SaveState->Read(&m_modeword, sizeof(m_modeword));
   Render3D->SetSunClamp((m_modeword[static_cast<int>(CASIC::Name::Mars)] & 0x40000) == 0);
@@ -1410,7 +1410,9 @@ Result CReal3D::Init(const uint8_t *vromPtr, IBus *BusObjectPtr, IIRQController 
 
 CReal3D::CReal3D(const Util::Config::Node &config)
   : m_config(config),
-    m_gpuMultiThreaded(config["GPUMultiThreaded"].ValueAs<bool>())
+    m_gpuMultiThreaded(config["GPUMultiThreaded"].ValueAs<bool>()),
+    m_layout{},
+    m_configRegisters{}
 {
   DebugLog("Built Real3D\n");
 }

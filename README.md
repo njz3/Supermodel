@@ -1,4 +1,4 @@
-# Supermodel: A Sega Model 3 Arcade Emulator
+# Supermodel: A Sega Model Series Arcade Emulator
 *Copyright 2003-2026 The Supermodel Team*
 
 ## Overview
@@ -121,3 +121,9 @@ service menu (GAME ASSIGNMENTS):
 The drive board program in `Config/Games.xml` must match the cabinet type: `lemans24`'s `driveboard_program` region
 lists both, one of them commented out. With the wrong one, the board reads the game's commands as its own, and the
 force feedback is wrong.
+
+## License
+
+Supermodel is distributed under the terms of the [GNU General Public License](Docs/LICENSE.txt).
+
+Parts of it, mainly the Sega Model 1 and Model 2 support, are based on code from [MAME](https://www.mamedev.org) by Aaron Giles, Andreas Naive, Angelo Salese, Ariane Fugmann, David Haywood, ElSemi, Ernesto Corvi, Farfetch'd, Matthew Daniels, Miguel Angel Horna, Morten Shearman Kirkegaard, Olivier Galibert, Peter Wilhelmsen, R. Belmont, Robbbert, Samuel Neves, smf and Ville Linde. Their code was made available under the BSD 3-Clause License: the full notice is in the Acknowledgments section of [Docs/README.txt](Docs/README.txt).
