@@ -2113,7 +2113,8 @@ All settings are case sensitive.
                     command bytes also go out as 'm3ffb = XX' (hexadecimal, next
                     to RawDrive), and a client driving a real drive board with
                     them (BackForceFeeder in its raw mode) may send back the
-                    byte the board replied, 'm3ffb_rx = XX' (hexadecimal). With
+                    byte the board replied, 'm3ffb_rx = XX' (hexadecimal). On
+                    Model 2 these are 'm2ffb' and 'm2ffb_rx'. With
                     this setting true, the default, the game reads that reply
                     in place of the emulated board's from the first one
                     received until that client disconnects; the emulated board

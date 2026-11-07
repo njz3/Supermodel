@@ -549,7 +549,7 @@ namespace GameMenu
       if (outputs == nullptr || !outputs->HasValue(output))
         return std::string("-");
       char text[8];
-      snprintf(text, sizeof(text), output == OutputM3ffb ? "%02X" : "%u", unsigned(outputs->GetValue(output)));
+      snprintf(text, sizeof(text), (output == OutputM3ffb || output == OutputM2ffb) ? "%02X" : "%u", unsigned(outputs->GetValue(output)));
       return std::string(text);
     };
 
@@ -578,13 +578,17 @@ namespace GameMenu
     case Game::DRIVE_BOARD_WHEEL:     board = "The force feedback board's commands"; break;
     case Game::DRIVE_BOARD_JOYSTICK:  board = "The joystick board's commands"; break;
     case Game::DRIVE_BOARD_SKI:       board = "The ski board's commands"; break;
+    case Game::DRIVE_BOARD_MOTION:    board = "The motion board's commands"; break;
     case Game::DRIVE_BOARD_BILLBOARD: board = "The bill board's commands"; break;
     default: break;
     }
     if (board)
     {
       lines.push_back({ "RawDrive", "byte, 0 to 255", std::string(board) + ", one line each, up to 4 per frame", value(OutputRawDrive) });
-      lines.push_back({ "m3ffb", "hex, 00 to FF", "The same byte in hexadecimal (BackForceFeeder's raw mode)", value(OutputM3ffb) });
+      const bool model2 = game.stepping == Game::Stepping::MODEL2 || game.stepping == Game::Stepping::MODEL2A ||
+                          game.stepping == Game::Stepping::MODEL2B || game.stepping == Game::Stepping::MODEL2C;
+      const EOutputs hexOutput = model2 ? OutputM2ffb : OutputM3ffb;
+      lines.push_back({ COutputs::GetOutputName(hexOutput), "hex, 00 to FF", "The same byte in hexadecimal (BackForceFeeder's raw mode)", value(hexOutput) });
     }
 
     // The fighting games' bill board: the win counters above the cabinet, 7-segment digits (bits hgfedcba, 0 lights)
@@ -626,7 +630,7 @@ namespace GameMenu
       ImGui::EndTable();
     }
     ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextDisabled("Each line goes as \"name = value\" on the TCP port, at each change (m3ffb in hexadecimal, the others "
+    ImGui::TextDisabled("Each line goes as \"name = value\" on the TCP port, at each change (m3ffb and m2ffb in hexadecimal, the others "
                         "in decimal); a client that connects gets every known value first. Value: the last sent.");
     if (!inGame)
       ImGui::TextDisabled("The values show in the in-game menu (Tab), on its Outputs page, while the game runs.");

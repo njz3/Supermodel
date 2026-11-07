@@ -29,7 +29,8 @@
  *
  *   IN 27      the command from the main board (Daytona: the I/O board's
  *              shared RAM byte 11; the 2A games: I/O port E)
- *   OUT 23     the reply (not connected to the main board here, as in MAME)
+ *   OUT 23     the reply, on the main board's I/O port D (Daytona: the I/O
+ *              board's IN2, shared RAM byte 10)
  *   IN 26      DIP switches: 7-6 equal for normal operation, 3 power-on
  *              calibration, 5-4 the display, 2-0 the strength (inverted)
  *   IN 28-2B, 48-4B  the I/O chips' "SEGA" ID, checked at power-on

@@ -590,7 +590,7 @@ Ce que git ne pouvait pas décider seul :
   passe avant. Un zip qui contient plusieurs jeux charge donc maintenant celui de son nom : `srally2.zip` chargeait
   `srally2dx` et charge `srally2`, ce qui change aussi le fichier NVRAM lu (`srally2.nv`).
 - **Le serveur réseau** : notre démarrage tardif (§2.17) reste. Le Model 2 passe aussi par `CNetBoardLink`, donc il en
-  profite ; sa `CModel2Comm::ConnectProc` ne rouvre pas encore une connexion fermée.
+  profite ; sa `CModel2Comm::ConnectProc` rouvre aussi une connexion fermée (essayé sur Daytona USA, fausse borne).
 - **Le numéro de version** : `release_windows.py` compile `SUPERMODEL_GIT_REVISION` et nomme le paquet d'après ce que
   répond `Supermodel.exe -version`, comme `Makefiles/Rules.inc`. `-version` passe avant `Agent::Init`.
 - `GameLoader.cpp` conflictait sur tout le fichier : upstream l'a passé de CRLF à LF. Fusionné sur des fins de ligne
@@ -613,6 +613,34 @@ Ce que git ne pouvait pas décider seul :
 seules les commandes de la carte de direction se comparent ici (upstream n'a touché ni à la carte ni au Z80) ; Scud
 Race, Daytona 2, Le Mans 24, Star Wars et la DSB1 (leurs ROMs ne sont plus sur ce PC) ; le retour de force du Model 2 ; les
 Makefiles.
+
+### 2.19 Les cartes Model 2 : sorties `m2ffb` et réponse (6 novembre)
+
+Deux écarts avec `dev/ffbedition` de sm2-emu, relevés à la revue des cartes d'upstream, sont corrigés :
+
+- **Sorties** : sur les jeux à carte Model 2 (volant, ski, mouvement), chaque commande sort en `RawDrive` et en
+  `m2ffb` (hexadécimal), avec ou sans carte émulée. C'est le nom que BFF attend pour le Model 2 : il répond sous le
+  nom de la ligne reçue. Le jeu ne garde que `m2ffb` : pas de `m3ffb` sur Model 2.
+- **Réponse d'une vraie carte** : `m2ffb_rx = XX` remplace la réponse émulée tant que le client reste connecté
+  (`DriveBoardNetReply`) ; `m3ffb_rx` est accepté aussi.
+- **Réponse émulée** : les cartes de Daytona et Sega Rally répondent enfin (`OUT 23`) : port D sur 2A, IN2 de la carte
+  d'I/O (octet 10 de sa RAM partagée) sur Daytona. Sans carte, le port se lit comme avant.
+
+Essais, en mode agent avec un faux BFF en TCP :
+
+- Forces d'une carte émulée (Daytona, Sega Rally, Touring Car, 10 800 images) : statistiques identiques à la revue.
+- Écran DRIVE BD TEST avec un volant simulé qui bouge : Sega Rally affiche STEERING FORCE au lieu de
+  « DRIVE BD ERROR !!! » ; sur Daytona, HANDLE VOL suit le volant (`AB`, `40`, `C0`) et les DIP s'affichent.
+- Sans retour de force, jusqu'à la course : autant de lignes `m2ffb` que d'octets relevés par l'agent (Daytona 41,
+  Sega Rally 566, Touring Car 332). `RawDrive` et `m2ffb` donnent les mêmes valeurs.
+- `m2ffb_rx = 5A` puis `M2FFB_RX=3c` : Daytona affiche `5A`, `3C`, et `FF` à la déconnexion ; l'erreur de Sega Rally
+  disparaît.
+- Sega Rally 2 (Model 3) envoie toujours `m3ffb` ; Ski Super G et Manx TT démarrent et envoient leurs lignes.
+
+**Piège des essais** : tant que la calibration n'est pas finie, la carte répond `FF`. Avec un volant immobile, l'écran
+de test reste donc en erreur, ce qui n'est pas un défaut de la liaison (écart 8 de la revue).
+
+**Pas vérifié** : BFF lui-même et une vraie carte ; la page Outputs du menu (code seulement).
 
 ## 3. Les essais
 

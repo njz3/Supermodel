@@ -43,7 +43,8 @@ const char *COutputs::s_outputNames[] =
 		"BillDigit3",
 		"BillDigit4",
 		"BillDigit5",
-		"m3ffb"
+		"m3ffb",
+		"m2ffb"
 	};
 
 const char *COutputs::GetOutputName(EOutputs output)

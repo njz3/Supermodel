@@ -900,6 +900,28 @@ uint8_t CModel2::RailChase2DriveRead() const
   return data;
 }
 
+// What the game reads from its drive board: a real board's reply, from the
+// outputs' client (BackForceFeeder: m2ffb_rx), while that client is connected;
+// else the emulated wheel board's; else what the port reads without one
+uint8_t CModel2::DriveBoardReply(uint8_t noWheelBoard)
+{
+  uint8_t reply;
+  if (m_driveOutputs && m_outputs && m_outputs->GetDriveBoardReply(reply))
+    return reply;
+  return m_wheelBoard ? m_wheelBoard->Read() : noWheelBoard;
+}
+
+// A drive board command, for a client driving a real board with it (hexadecimal
+// in m2ffb): sent with or without the emulated board
+void CModel2::DriveCommandOutput(uint8_t cmd)
+{
+  if (m_driveOutputs && m_outputs)
+  {
+    m_outputs->SetValue(OutputRawDrive, cmd);
+    m_outputs->SetValue(OutputM2ffb, cmd);
+  }
+}
+
 uint8_t CModel2::IORead(unsigned offset)
 {
   switch (offset)
@@ -912,9 +934,7 @@ uint8_t CModel2::IORead(unsigned offset)
       case 1:  return In0Read();    // port B
       case 2:  return m_in[1];      // port C
       case 3:                       // port D (or the drive board)
-        if (m_wheelBoardReplies)
-          return m_wheelBoard->Read();
-        return m_driveBoard.present ? DriveBoardRead() : m_rchase2Drive ? RailChase2DriveRead() : m_in[2];
+        return DriveBoardReply(m_driveBoard.present ? DriveBoardRead() : m_rchase2Drive ? RailChase2DriveRead() : m_in[2]);
       case 6:  return 0xFF;         // port G: DIP switches
       default: return 0xFF;
       }
@@ -950,10 +970,14 @@ void CModel2::IOWrite(unsigned offset, uint8_t data)
     m_io.portValue[offset] = data;
     if (offset == 0)
       EEPROMWrite(data);            // port A
-    else if (offset == 4 && m_driveBoard.present)
-      DriveBoardWrite(data);        // port E: drive board command
-    else if (offset == 4 && m_wheelBoard)
-      m_wheelBoard->Write(data);    // port E: wheel drive board command
+    else if (offset == 4)           // port E: drive board command
+    {
+      if (m_driveBoard.present)
+        DriveBoardWrite(data);
+      else if (m_wheelBoard)
+        m_wheelBoard->Write(data);
+      DriveCommandOutput(data);
+    }
     // port E: billboard / drive board, port F: lamps and coin counters
     break;
   case 0x08:
@@ -1433,8 +1457,12 @@ void CModel2::WriteDword(uint32_t addr, uint32_t data, uint32_t mask)
     if (mask & 0x00ff0000)
       m_dpram[i + 1] = uint8_t(data >> 16);
     // byte 11: the drive board command, which the I/O board passes on (its port E)
-    if (m_wheelBoard && ((i == 0x11 && (mask & 0x000000ff)) || (i + 1 == 0x11 && (mask & 0x00ff0000))))
-      m_wheelBoard->Write(m_dpram[0x11]);
+    if ((i == 0x11 && (mask & 0x000000ff)) || (i + 1 == 0x11 && (mask & 0x00ff0000)))
+    {
+      if (m_wheelBoard)
+        m_wheelBoard->Write(m_dpram[0x11]);
+      DriveCommandOutput(m_dpram[0x11]);
+    }
     return;
   }
   if (addr >= 0x01c00000 && addr < 0x01c00020)
@@ -2373,7 +2401,7 @@ void CModel2::UpdateIOBoard(const uint8_t (&an)[8], uint8_t in0, uint8_t in1, ui
   // cannon)
   m_dpram[8] = (uint8_t) ~in0;
   m_dpram[9] = (m_game.inputs & Game::INPUT_SHIFT4) ? (uint8_t) ((~in1 & 0x8f) | (in1 & 0x70)) : (uint8_t) ~in1;
-  m_dpram[10] = (uint8_t) ~in2;
+  m_dpram[10] = DriveBoardReply((uint8_t) ~in2);    // the drive board answers on IN2
   // the board's DIP switches (MAME: three banks, all off)
   m_dpram[0x0B] = m_dpram[0x0C] = m_dpram[0x0D] = 0xFF;
   // a fourth input port (Desert Tank reads it at boot; 0 there keeps it in
@@ -3133,7 +3161,7 @@ Result CModel2::Init(const Game &game, const ROMSet &rom_set)
   // The wheel drive board, if its ROM is there (optional, as Model 3's) and
   // force feedback is on (without, the game runs as with no board)
   m_wheelBoard.reset();
-  m_wheelBoardReplies = false;
+  m_driveOutputs = m_driveBoard.present || game.driveboard_type == Game::DRIVE_BOARD_WHEEL;
   if (game.driveboard_type == Game::DRIVE_BOARD_WHEEL && m_config["ForceFeedback"].ValueAsDefault<bool>(false))
   {
     ROM rom = rom_set.get_rom("driveboard_program");
@@ -3142,8 +3170,7 @@ Result CModel2::Init(const Game &game, const ROMSet &rom_set)
       m_wheelBoardROM.assign(0x10000, 0xFF);
       rom.CopyTo(m_wheelBoardROM.data(), m_wheelBoardROM.size());
       // 2B/2C (Indy 500, Touring Car, Over Rev, Super GT 24h): EPR-18261
-      m_wheelBoardReplies = m_model2b || m_model2c;
-      if (m_wheelBoardReplies)
+      if (m_model2b || m_model2c)
         m_wheelBoard = std::make_unique<CModel2DirectDriveBoard>(m_config);
       else
         m_wheelBoard = std::make_unique<CModel2DriveBoard>(m_config);

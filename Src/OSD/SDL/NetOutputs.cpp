@@ -91,7 +91,7 @@ void CNetOutputs::SendOutput(EOutputs output, UINT8 prevValue, UINT8 value)
 std::string CNetOutputs::FormatOutput(EOutputs output, UINT8 value) const
 {
     std::string strvalue;
-    if (output == OutputM3ffb) {
+    if (output == OutputM3ffb || output == OutputM2ffb) {
         char hex[4];
         snprintf(hex, sizeof(hex), "%02X", value);
         strvalue = hex;
@@ -150,7 +150,8 @@ void CNetOutputs::ReceiveFromClients()
 
 void CNetOutputs::ParseLine(RegisteredClientTcp& client, const std::string& line)
 {
-    // "m3ffb_rx = XX": the byte the real drive board replied (BackForceFeeder), in hexadecimal; spaces and case free
+    // "m3ffb_rx = XX" or "m2ffb_rx = XX": the byte the real drive board replied (BackForceFeeder), in hexadecimal;
+    // spaces and case free
     size_t eq = line.find('=');
     if (eq == std::string::npos) {
         return;
@@ -163,7 +164,7 @@ void CNetOutputs::ParseLine(RegisteredClientTcp& client, const std::string& line
     for (auto& c : name) {
         c = (char)tolower((unsigned char)c);
     }
-    if (name != "m3ffb_rx" || value.empty() || value.size() > 2 || !m_driveBoardReply) {
+    if ((name != "m3ffb_rx" && name != "m2ffb_rx") || value.empty() || value.size() > 2 || !m_driveBoardReply) {
         return;
     }
     char* end = nullptr;
@@ -173,7 +174,7 @@ void CNetOutputs::ParseLine(RegisteredClientTcp& client, const std::string& line
     }
     m_reply.store((UINT8)v);
     if (!m_replyActive.load() || m_replySource != client.ClientSocket) {
-        InfoLog("Drive board: the game now reads the replies of the outputs' client (m3ffb_rx).");
+        InfoLog("Drive board: the game now reads the replies of the outputs' client (%s).", name.c_str());
     }
     m_replySource = client.ClientSocket;
     m_replyActive.store(true);

@@ -222,6 +222,8 @@ private:
   // I/O
   uint8_t IORead(unsigned offset);
   uint8_t RailChase2DriveRead() const;
+  uint8_t DriveBoardReply(uint8_t noWheelBoard);
+  void DriveCommandOutput(uint8_t cmd);
   void IOWrite(unsigned offset, uint8_t data);
   void EEPROMWrite(uint8_t data);
   uint8_t In0Read();
@@ -363,10 +365,10 @@ private:
   // The racing games' wheel drive board (force feedback), when its ROM is
   // there and force feedback is on: Daytona's and Sega Rally's
   // (CModel2DriveBoard), or the 2B/2C games' EPR-18261 board
-  // (CModel2DirectDriveBoard), which answers on port D
+  // (CModel2DirectDriveBoard). All answer on port D (Daytona: IN2)
   std::unique_ptr<CDriveBoard> m_wheelBoard;
   std::vector<uint8_t> m_wheelBoardROM;
-  bool      m_wheelBoardReplies = false;
+  bool      m_driveOutputs = false;                      // the game has a drive board: its commands go to the outputs
   bool      m_rchase2Drive = false;                      // Rail Chase 2's drive board on port D/E (MAME's simulation)
 
   // Drive board (Sega Ski Super G's ski board, Manx TT DX's motion slider),

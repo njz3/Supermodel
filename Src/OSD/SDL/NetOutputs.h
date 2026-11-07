@@ -24,8 +24,9 @@
   *
   * Implementation of COutputs that sends MAMEHooker compatible messages via TCP and UDP.
   *
-  * It also reads its clients: BackForceFeeder, driving a real drive board from the m3ffb output (the game's command
-  * bytes, in hexadecimal), sends back "m3ffb_rx = XX", the byte the board replied. From the first one on, the game
+  * It also reads its clients: BackForceFeeder, driving a real drive board from the m3ffb or m2ffb output (the game's
+  * command bytes, in hexadecimal), sends back "m3ffb_rx = XX" or "m2ffb_rx = XX", the byte the board replied.
+  * From the first one on, the game
   * reads that reply in place of the emulated board's, until that client disconnects.
   */
 
@@ -93,13 +94,13 @@ public:
 	void SetFrameEnding(const std::string& ending) { m_frameEnding = ending; }
 	void SetTcpPort(unsigned int port) { m_tcpPort = port; }
 	void SetUdpBroadcastPort(unsigned int port) { m_udpBroadcastPort = port; }
-	// Whether the drive board's reply from a client (m3ffb_rx) is given to the game (DriveBoardNetReply)
+	// Whether the drive board's reply from a client (m3ffb_rx, m2ffb_rx) is given to the game (DriveBoardNetReply)
 	void SetDriveBoardReply(bool enabled) { m_driveBoardReply = enabled; }
 
 	/*
 	 * GetDriveBoardReply(value):
 	 *
-	 * The last m3ffb_rx received, while the client that sent it stays connected.
+	 * The last m3ffb_rx or m2ffb_rx received, while the client that sent it stays connected.
 	 */
 	bool GetDriveBoardReply(UINT8 &value) override;
 protected:
@@ -154,7 +155,7 @@ private:
 	/*
 	 * FormatOutput(output, value):
 	 *
-	 * The line sent for an output: its value in decimal, m3ffb's in hexadecimal.
+	 * The line sent for an output: its value in decimal, m3ffb's and m2ffb's in hexadecimal.
 	 */
 	std::string FormatOutput(EOutputs output, UINT8 value) const;
 
@@ -168,7 +169,7 @@ private:
 	/*
 	 * ParseLine(client, line):
 	 *
-	 * Takes a line received from a client: "m3ffb_rx = XX", the drive board's reply in hexadecimal.
+	 * Takes a line received from a client: "m3ffb_rx = XX" or "m2ffb_rx = XX", the drive board's reply in hexadecimal.
 	 */
 	void ParseLine(RegisteredClientTcp& client, const std::string& line);
 

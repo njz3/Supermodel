@@ -54,10 +54,11 @@ enum EOutputs
 	OutputBill3,
 	OutputBill4,
 	OutputBill5,
-	OutputM3ffb     // the drive board command byte again, sent in hexadecimal (BackForceFeeder's name)
+	OutputM3ffb,    // the drive board command byte again, sent in hexadecimal (BackForceFeeder's name)
+	OutputM2ffb     // the same for Model 2's boards, whose commands differ (BackForceFeeder's name, sm2-emu's too)
 };
 
-#define NUM_OUTPUTS 15
+#define NUM_OUTPUTS 16
 
 class COutputs
 {
