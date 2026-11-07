@@ -20,6 +20,7 @@
  **/
 
 #include "NetOutputs.h"
+#include "OSD/Thread.h"
 
 
 CNetOutputs::CNetOutputs()
@@ -184,6 +185,7 @@ bool CNetOutputs::CreateServerThread()
 {
     m_running.store(true);
     m_tcpServerThread = std::thread([this] {
+        Thread::SetCurrentName("NetOutputsTCP");
         while (m_running.load()) {
             {
                 std::lock_guard<std::recursive_mutex> lock(m_mutex);

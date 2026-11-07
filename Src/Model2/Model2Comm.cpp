@@ -34,10 +34,18 @@
 #include "OSD/Logger.h"
 #include "OSD/Thread.h"
 #include <algorithm>
+#include <chrono>
 #include <cstring>
+#include <thread>
 
 // The output connection opened again at most this often
 static constexpr uint32_t RECONNECT_MS = 1000;
+// Milliseconds on a steady clock (CThread::GetTicks() before upstream removed CThread)
+static uint32_t TicksMS()
+{
+  return uint32_t(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
+}
+
 
 CModel2Comm::CModel2Comm()
 {
@@ -67,22 +75,23 @@ void CModel2Comm::Init(std::shared_ptr<CNetServer> server, const std::string &ad
 // answer, or that machine restarted): it is opened again
 void CModel2Comm::ConnectProc()
 {
+  Thread::SetCurrentName("Model2CommConnect");
   while (!m_link->Connect())
   {
     if (m_quit)
       return;
   }
-  uint32_t lastConnect = CThread::GetTicks();
+  uint32_t lastConnect = TicksMS();
   while (!m_link->Connected())
   {
     if (m_quit)
       return;
-    if (CThread::GetTicks() - lastConnect >= RECONNECT_MS)
+    if (TicksMS() - lastConnect >= RECONNECT_MS)
     {
       m_link->Connect();    // nothing to do while the output connection is open
-      lastConnect = CThread::GetTicks();
+      lastConnect = TicksMS();
     }
-    CThread::Sleep(1);
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
   InfoLog("Model 2 communication board: connected.");
   m_connected = true;

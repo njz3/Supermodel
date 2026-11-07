@@ -156,6 +156,12 @@ void CModel2::Unhalt(CPUID cpu, int64_t time)
 {
   m_halted[cpu] = false;
   m_time[cpu] = std::max(m_time[cpu], time);
+  // 2B: the SHARC's slice was sized while the i960 was halted (to the end of
+  // the line). Ended here, the i960 runs as soon as its result is ready, and
+  // the next command comes back within a quantum, not a line later: Last
+  // Bronx makes one round trip per command and ran at half speed.
+  if (m_model2b && cpu == CPU_I960 && m_running == CPU_COPRO)
+    m_sharc.EndSlice();
 }
 
 uint32_t CModel2::FIFOPop(CFIFO &fifo, CPUID reader, CPUID writer)
@@ -844,6 +850,31 @@ void CModel2::TimerWrite(unsigned n, uint32_t data, uint32_t mask)
   m_timerOrig[n] = m_timerVal[n];
   m_timerStart[n] = I960Now();
   m_timerRun[n] = true;
+
+  // A count of 0 runs out at the write, not after this slice. Over Rev stops
+  // a timer in its interrupt handler by writing 0 with that timer's interrupt
+  // disabled, then enables it again: run out later, the timer interrupted
+  // again and again, and each time the handler sent the same byte of its
+  // sound command (timer 1 sends the second byte, timer 2 the third). The
+  // repeated command started a looping sound over and over until all 32 of
+  // the sound driver's voices were taken, and its voice allocation then
+  // returned through a bad stack frame and crashed the sound 68000 (the
+  // sound stuck in a loop at the start of the second race).
+  if (m_timerOrig[n] == 0)
+    TimerExpire(n);
+}
+
+// A timer reaches 0: IRQ 2 if enabled now, and it stops
+void CModel2::TimerExpire(unsigned n)
+{
+  const uint32_t line = 1 << (n + 2);
+  if (m_intEna & line)
+  {
+    m_intReq |= line;
+    IRQUpdate();
+  }
+  m_timerVal[n] = 0xfffff;
+  m_timerRun[n] = false;
 }
 
 void CModel2::RunTimers()
@@ -852,14 +883,7 @@ void CModel2::RunTimers()
   {
     if (!m_timerRun[n] || m_time[CPU_I960] - m_timerStart[n] < int64_t(m_timerOrig[n]) * I960_TIME)
       continue;
-    const uint32_t line = 1 << (n + 2);
-    if (m_intEna & line)
-    {
-      m_intReq |= line;
-      IRQUpdate();
-    }
-    m_timerVal[n] = 0xfffff;
-    m_timerRun[n] = false;
+    TimerExpire(n);
   }
 }
 
@@ -915,11 +939,11 @@ uint8_t CModel2::DriveBoardReply(uint8_t noWheelBoard)
 // in m2ffb): sent with or without the emulated board
 void CModel2::DriveCommandOutput(uint8_t cmd)
 {
-  if (m_driveOutputs && m_outputs)
-  {
-    m_outputs->SetValue(OutputRawDrive, cmd);
+  if (!m_outputs)
+    return;
+  m_outputs->SetValue(OutputRawDrive, cmd);     // every port E command (drive board, billboard), as upstream
+  if (m_driveOutputs)
     m_outputs->SetValue(OutputM2ffb, cmd);
-  }
 }
 
 uint8_t CModel2::IORead(unsigned offset)
@@ -970,15 +994,28 @@ void CModel2::IOWrite(unsigned offset, uint8_t data)
     m_io.portValue[offset] = data;
     if (offset == 0)
       EEPROMWrite(data);            // port A
-    else if (offset == 4)           // port E: drive board command
+    else if (offset == 4)           // port E: drive board or billboard command
     {
       if (m_driveBoard.present)
         DriveBoardWrite(data);
       else if (m_wheelBoard)
         m_wheelBoard->Write(data);
+      else if (m_billBoard)
+        m_billBoard->Write(data);
       DriveCommandOutput(data);
     }
-    // port E: billboard / drive board, port F: lamps and coin counters
+    // Port F: lamps (bits 2-7) and coin counters (MAME's lamp_output_w), as
+    // Model 3's outputs
+    else if (m_outputs && offset == 5)
+    {
+      m_outputs->SetValue(OutputLampStart, !!(data & 0x04));
+      m_outputs->SetValue(OutputLampView1, !!(data & 0x08));
+      m_outputs->SetValue(OutputLampView2, !!(data & 0x10));
+      m_outputs->SetValue(OutputLampView3, !!(data & 0x20));
+      m_outputs->SetValue(OutputLampView4, !!(data & 0x40));
+      m_outputs->SetValue(OutputLampLeader, !!(data & 0x80));
+      m_outputs->SetValue(OutputRawLamps, data);
+    }
     break;
   case 0x08:
     m_io.portConfig = data;
@@ -1535,6 +1572,9 @@ void CModel2::WriteDword(uint32_t addr, uint32_t data, uint32_t mask)
   {
     uint32_t &d = m_textureRAM[(addr >> 21) & 1][(addr & (m_model2c ? 0x1fffff : 0xfffff)) >> 2];
     d = Combine32(d, data, mask);
+    // Mark this sheet changed (bit 21 picks it: 0x11000000 = sheet 0,
+    // 0x11200000 = sheet 1) so the renderer uploads it again
+    m_textureDirty[(addr >> 21) & 1] = true;
     return;
   }
   if ((m_model2b || m_model2c) && addr >= 0x11400000 && addr < 0x11410000)
@@ -1556,6 +1596,9 @@ void CModel2::WriteDword(uint32_t addr, uint32_t data, uint32_t mask)
       d = (d & 0x0000ffff) | ((data & 0xffff) << 16);
     else
       d = (d & 0xffff0000) | (data & 0xffff);
+    // Mark this sheet changed (bit 22 picks it: 0x12000000 = sheet 0,
+    // 0x12400000 = sheet 1) so the renderer uploads it again
+    m_textureDirty[(addr >> 22) & 1] = true;
     return;
   }
   if (!m_model2b && !m_model2c && addr >= 0x12800000 && addr < 0x12820000)
@@ -2490,6 +2533,27 @@ void CModel2::RunLine(void)
     m_uart.Clock(clocks);
 }
 
+// MAME's draw_framebuffer(): 15-bit pixels (blue in the low bits), 512 per
+// line, the bank alternating with the frame, through the scroll colour table
+// and gamma like the palette, placed by the tilemap chip's sync registers
+void CModel2::DrawFrameBuffer(uint32_t *dest)
+{
+  const std::vector<uint16_t> &fb = m_fbVRAM[m_frameNumber & 1];
+  const int xoffs = -m_video3d.CRTCXOffset();
+  const int yoffs = (512 - 384) - m_video3d.CRTCYOffset();
+  for (int y = 0; y < SCREEN_HEIGHT; y++)
+  {
+    for (int x = 0; x < SCREEN_WIDTH; x++)
+    {
+      uint16_t c = fb[unsigned((x + xoffs) + (y + yoffs) * 512) & (fb.size() - 1)];
+      uint8_t r = m_gamma[(uint8_t) m_colorXlat[0x0080 / 2 + ((c >> 5) & 0x1f) * 0x100]];
+      uint8_t g = m_gamma[(uint8_t) m_colorXlat[0x4080 / 2 + ((c >> 10) & 0x1f) * 0x100]];
+      uint8_t b = m_gamma[(uint8_t) m_colorXlat[0x8080 / 2 + ((c >> 0) & 0x1f) * 0x100]];
+      dest[size_t(y) * SCREEN_WIDTH + x] = 0xFF000000 | (uint32_t(r) << 16) | (uint32_t(g) << 8) | b;
+    }
+  }
+}
+
 void CModel2::BuildVideoFrame(void)
 {
   const size_t pixels = size_t(SCREEN_WIDTH) * SCREEN_HEIGHT;
@@ -2513,6 +2577,12 @@ void CModel2::BuildVideoFrame(void)
   m_tiles.DrawLayer(4, m_video.back.data(), SCREEN_WIDTH, SCREEN_WIDTH, SCREEN_HEIGHT, true, m_palette.data());
   m_tiles.DrawLayer(2, m_video.back.data(), SCREEN_WIDTH, SCREEN_WIDTH, SCREEN_HEIGHT, false, m_palette.data());
   m_tiles.DrawLayer(0, m_video.back.data(), SCREEN_WIDTH, SCREEN_WIDTH, SCREEN_HEIGHT, false, m_palette.data());
+
+  // Render test mode: the i960 writes the picture into the frame buffer
+  // itself (Last Bronx's title screen), shown in place of the 3D and covering
+  // the tilemaps below it
+  if (m_renderTestMode)
+    DrawFrameBuffer(m_video.back.data());
 
   // HUD tilemaps, on transparent
   m_video.hud.assign(pixels, 0);
@@ -2613,6 +2683,8 @@ void CModel2::RunFrame(void)
 
   if (m_wheelBoard)
     m_wheelBoard->RunFrame();
+  if (m_billBoard)
+    m_billBoard->RunFrame();
 
   BuildVideoFrame();
   m_frameNumber++;
@@ -2745,6 +2817,8 @@ void CModel2::Reset(void)
   m_comm.Reset();
   if (m_wheelBoard)
     m_wheelBoard->Reset();
+  if (m_billBoard)
+    m_billBoard->Reset();
   IRQUpdate();
 
   DebugLog("Model 2 reset\n");
@@ -2868,6 +2942,8 @@ void CModel2::SaveState(CBlockFile *SaveState)
   }
   if (m_wheelBoard)
     m_wheelBoard->SaveState(SaveState);
+  if (m_billBoard)
+    m_billBoard->SaveState(SaveState);
 }
 
 void CModel2::LoadState(CBlockFile *SaveState)
@@ -2900,6 +2976,8 @@ void CModel2::LoadState(CBlockFile *SaveState)
   ReadVector(SaveState, m_colorXlat);
   ReadVector(SaveState, m_textureRAM[0]);
   ReadVector(SaveState, m_textureRAM[1]);
+  m_textureDirty[0] = true;
+  m_textureDirty[1] = true;
   ReadVector(SaveState, m_lumaRAM);
   ReadVector(SaveState, m_fbVRAM[0]);
   ReadVector(SaveState, m_fbVRAM[1]);
@@ -3008,6 +3086,8 @@ void CModel2::LoadState(CBlockFile *SaveState)
   // (a state made without the board leaves it running as it is)
   if (m_wheelBoard && Result::OKAY == SaveState->FindBlock("DriveBoard.2"))
     m_wheelBoard->LoadState(SaveState);
+  if (m_billBoard)
+    m_billBoard->LoadState(SaveState);   // (restarts if the state has no billboard)
 
   for (unsigned i = 0; i < m_paletteRAM.size(); i++)
     UpdatePaletteEntry(i);
@@ -3184,6 +3264,23 @@ Result CModel2::Init(const Game &game, const ROMSet &rom_set)
       }
     }
   }
+  // The billboard, if its ROM is there: it only drives outputs, so (as on
+  // Model 3) it's only emulated when there are outputs to send them to
+  m_billBoard.reset();
+  if (game.driveboard_type == Game::DRIVE_BOARD_BILLBOARD && m_outputs)
+  {
+    ROM rom = rom_set.get_rom("driveboard_program");
+    if (rom.size)
+    {
+      m_billBoardROM.assign(0x10000, 0xFF);
+      rom.CopyTo(m_billBoardROM.data(), m_billBoardROM.size());
+      m_billBoard = std::make_unique<CBillBoard>();
+      if (m_billBoard->Init(m_billBoardROM.data()) != Result::OKAY)
+        m_billBoard.reset();
+      else
+        m_billBoard->AttachOutputs(m_outputs);
+    }
+  }
 
   if (!LoadROMs(rom_set))
     return Result::FAIL;
@@ -3198,6 +3295,8 @@ Result CModel2::Init(const Game &game, const ROMSet &rom_set)
   m_colorXlat.assign(0xC000 / 2, 0);
   m_textureRAM[0].assign(0x80000, 0);
   m_textureRAM[1].assign(0x80000, 0);
+  m_textureDirty[0] = true;
+  m_textureDirty[1] = true;
   m_lumaRAM.assign(0x8000, 0);
   m_fbVRAM[0].assign(0x80000 / 2, 0);
   m_fbVRAM[1].assign(0x80000 / 2, 0);
@@ -3255,6 +3354,7 @@ Result CModel2::Init(const Game &game, const ROMSet &rom_set)
   mem.lumaRAM = m_lumaRAM.data();
   mem.textureRAM0 = m_textureRAM[0].data();
   mem.textureRAM1 = m_textureRAM[1].data();
+  mem.textureDirty = m_textureDirty;
   mem.gamma = m_gamma;
   mem.polygonROM = m_polyROM.data();
   mem.polygonROMWords = (uint32_t) m_polyROM.size();

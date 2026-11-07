@@ -642,6 +642,21 @@ de test reste donc en erreur, ce qui n'est pas un défaut de la liaison (écart 
 
 **Pas vérifié** : BFF lui-même et une vraie carte ; la page Outputs du menu (code seulement).
 
+### 2.20 La fusion d'upstream d51bdb3 : threads de la STL, lampes Model 2 (7 novembre)
+
+Upstream remplace `CThread`, `CMutex`, `CSemaphore` et `CCondVar` par la STL (`Src/OSD/Thread.cpp`, hors de
+`OSD/SDL`), ajoute les lampes du Model 2 (port F) et le panneau Versus City de Last Bronx (port E). Choix :
+
+- **Port E du Model 2** : carte de volant, de ski ou de mouvement, sinon panneau. `RawDrive` sort désormais à chaque
+  commande du port E, comme upstream ; `m2ffb` reste réservé aux jeux à carte (2.19).
+- **Reconnexion du link** (`Model2Comm`, `SimNetBoard`) : gardée ; `CThread::GetTicks()` et `CThread::Sleep()`
+  deviennent une horloge `steady_clock` locale (`TicksMS()`) et `std::this_thread::sleep_for`.
+- `Rules.inc` garde `WriteDirectory.cpp` et prend `Thread.cpp`.
+
+Essais en mode agent, sorties en TCP : Sega Rally 2 (avec retour de force, puis `-no-threads`), House of the Dead,
+Daytona (carte émulée), Virtua Racing démarrent et envoient leurs lignes. **Pas vérifié** : le son (essais en
+`-no-sound`), le link entre deux machines.
+
 ## 3. Les essais
 
 ### 3.1 Le banc

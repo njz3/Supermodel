@@ -36,7 +36,8 @@
 
 #include "Supermodel.h"
 #include "Input.h"
-#include "OSD/Thread.h"
+#include <chrono>
+#include <thread>
 #include <cmath>
 #include <string>
 #include <algorithm>
@@ -1912,7 +1913,7 @@ bool CInputSystem::ReadMapping(char* buffer, unsigned bufSize, bool fullAxisOnly
             {
                 if (!Poll())
                     goto Cancelled;
-                CThread::Sleep(1000 / 60);
+                std::this_thread::sleep_for(std::chrono::milliseconds(1000 / 60));
             }
             goto Cancelled;
         }
@@ -1947,7 +1948,7 @@ bool CInputSystem::ReadMapping(char* buffer, unsigned bufSize, bool fullAxisOnly
         }
 
         // Don't poll continuously
-        CThread::Sleep(1000 / 60);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000 / 60));
     }
 
     // Copy mapping to buffer and return
@@ -2157,7 +2158,7 @@ bool CInputSystem::DetectJoystickAxis(unsigned joyNum, unsigned &axisNum, const 
       {
         if (!Poll())
           goto Cancelled;
-        CThread::Sleep(1000/60);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000 / 60));
       }
       goto Cancelled;
     }
@@ -2170,7 +2171,7 @@ bool CInputSystem::DetectJoystickAxis(unsigned joyNum, unsigned &axisNum, const 
       {
         if (!Poll())
           goto Cancelled;
-        CThread::Sleep(1000/60);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000 / 60));
       }
       break;
     }
@@ -2202,7 +2203,7 @@ bool CInputSystem::DetectJoystickAxis(unsigned joyNum, unsigned &axisNum, const 
     }
 
     // Don't poll continuously
-    CThread::Sleep(1000/60);
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000 / 60));
   }
 
   maxRange = 0;
@@ -2397,7 +2398,7 @@ Repeat:
         {
           if (!Poll())
             goto Cancelled;
-          CThread::Sleep(1000/60);
+          std::this_thread::sleep_for(std::chrono::milliseconds(1000 / 60));
         }
         goto Cancelled;
       }
@@ -2416,7 +2417,7 @@ Repeat:
       }
 
       // Don't poll continuously
-      CThread::Sleep(1000/60);
+      std::this_thread::sleep_for(std::chrono::milliseconds(1000 / 60));
     }
 
     printf("Done\n\n");

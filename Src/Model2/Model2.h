@@ -71,6 +71,7 @@
 #include "Model2/Model2Comm.h"
 #include "Model2/Sega315_5838.h"
 #include "Model2/Model2DriveBoard.h"
+#include "Model3/BillBoard.h"
 #include "Model3/Crypto.h"
 #include "Model1/I8251.h"
 #include "Graphics/Model1Render.h"
@@ -217,6 +218,7 @@ private:
   int64_t Now(CPUID cpu) const;
   uint32_t TimerRead(unsigned n);
   void TimerWrite(unsigned n, uint32_t data, uint32_t mask);
+  void TimerExpire(unsigned n);
   void RunTimers();
 
   // I/O
@@ -234,6 +236,7 @@ private:
   void UpdateInputs(void);
   void UpdateIOBoard(const uint8_t (&an)[8], uint8_t in0, uint8_t in1, uint8_t in2);
   void BuildVideoFrame(void);
+  void DrawFrameBuffer(uint32_t *dest);
   bool LoadROMs(const ROMSet &rom_set);
 
   Util::Config::Node &m_config;
@@ -284,6 +287,7 @@ private:
   std::vector<uint16_t> m_paletteRAM;     // 0x1800000, 0x2000 words
   std::vector<uint16_t> m_colorXlat;      // 0x1810000, 0x6000 words
   std::vector<uint32_t> m_textureRAM[2];  // 0x12000000 and 0x12400000 (2B: 11000000, 11200000), 0x80000 words each
+  bool      m_textureDirty[2] = { true, true };  // texture RAM 0/1 written since the renderer last uploaded it (it clears them)
   std::vector<uint8_t>  m_lumaRAM;        // 0x12800000 (2B: 11400000), 32 KB
   std::vector<uint16_t> m_fbVRAM[2];      // 0x11600000 and 0x11680000
   std::vector<uint8_t>  m_waitStateRAM;   // 0xE00000, 0x38 bytes
@@ -369,6 +373,9 @@ private:
   std::unique_ptr<CDriveBoard> m_wheelBoard;
   std::vector<uint8_t> m_wheelBoardROM;
   bool      m_driveOutputs = false;                      // the game has a drive board: its commands go to the outputs
+  // Versus City billboard (Last Bronx): commands on port E, as Model 3's
+  std::unique_ptr<CBillBoard> m_billBoard;
+  std::vector<uint8_t> m_billBoardROM;
   bool      m_rchase2Drive = false;                      // Rail Chase 2's drive board on port D/E (MAME's simulation)
 
   // Drive board (Sega Ski Super G's ski board, Manx TT DX's motion slider),

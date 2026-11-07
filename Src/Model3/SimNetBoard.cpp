@@ -20,6 +20,7 @@
  ** with Supermodel.  If not, see <http://www.gnu.org/licenses/>.
  **/
 
+#include <chrono>
 #include <thread>
 #include <algorithm>
 #include "Supermodel.h"
@@ -33,6 +34,12 @@
 // Checked by the handshake: all the machines must run the same build. Changed with the link's handling (the
 // handshake retried, the connections made again), so that a ring never mixes it with the older one
 static const uint64_t netGUID = 0x5bf177da34873;
+// Milliseconds on a steady clock (CThread::GetTicks() before upstream removed CThread)
+static uint32_t TicksMS()
+{
+	return uint32_t(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
+}
+
 
 static const int kLinkTimeoutMS = 10000;			// a linked machine silent this long: the link is broken
 static const int kHandshakeStepMS = 3000;			// each step of a handshake round, once started
@@ -97,7 +104,7 @@ Result CSimNetBoard::Init(uint8_t* netRAMPtr, uint8_t* netBufferPtr)
 	port_out = m_config["PortOut"].ValueAs<unsigned>();
 	addr_out = m_config["AddressOut"].ValueAs<std::string>();
 
-	m_round = (CThread::GetTicks() << 8) ^ (uint32_t(port_in) << 16) ^ port_out;	// rounds differ from machine to machine
+	m_round = (TicksMS() << 8) ^ (uint32_t(port_in) << 16) ^ port_out;	// rounds differ from machine to machine
 	if (!m_server)
 		return ErrorLog("Net board requires the network server.");
 	m_link = std::make_unique<CNetBoardLink>(m_server, addr_out, port_out);
@@ -132,7 +139,7 @@ void CSimNetBoard::RunFrame(void)
 					m_status1 = 0;
 					CommRAM16[0x72] = FLIPENDIAN16(0x1); // is this necessary?
 					m_state = State::testing;
-					m_testingSince = CThread::GetTicks();
+					m_testingSince = TicksMS();
 				}
 				m_status0 = 0;					// 0 should work for all init subroutines
 			}
@@ -142,7 +149,7 @@ void CSimNetBoard::RunFrame(void)
 			// type 2 performs initialization on its own
 			m_status1 = 0;
 			m_state = State::testing;
-			m_testingSince = CThread::GetTicks();
+			m_testingSince = TicksMS();
 			m_counter = 0;
 		}
 		break;
@@ -358,12 +365,12 @@ void CSimNetBoard::ConnectProc(void)
 			m_connectDone = true;
 			return;
 		}
-		CThread::Sleep(100);
+		std::this_thread::sleep_for(std::chrono::milliseconds(100));
 	}
 
 	// wait until the previous machine has linked. The next machine may close the output connection (it came before
 	// that machine could answer, or that machine restarted): it is opened again
-	uint32_t lastConnect = CThread::GetTicks();
+	uint32_t lastConnect = TicksMS();
 	while (!m_link->Connected())
 	{
 		if (m_quit)
@@ -371,12 +378,12 @@ void CSimNetBoard::ConnectProc(void)
 			m_connectDone = true;
 			return;
 		}
-		if (CThread::GetTicks() - lastConnect >= kReconnectMS)
+		if (TicksMS() - lastConnect >= kReconnectMS)
 		{
 			m_link->Connect();		// nothing to do while the output connection is open
-			lastConnect = CThread::GetTicks();
+			lastConnect = TicksMS();
 		}
-		CThread::Sleep(1);
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
 	}
 
 	printf("Successfully connected.\n");
@@ -468,10 +475,10 @@ void CSimNetBoard::SetSegmentSize(uint16_t size)
 // dropped
 CSimNetBoard::Received CSimNetBoard::ReceiveSegment(int timeoutMS)
 {
-	uint32_t start = CThread::GetTicks();
+	uint32_t start = TicksMS();
 	for (;;)
 	{
-		int left = std::max(0, timeoutMS - int(CThread::GetTicks() - start));
+		int left = std::max(0, timeoutMS - int(TicksMS() - start));
 		Received received = ReceivePacket(left);
 		if (received != Received::packet || m_packet.size() == m_segmentSize)
 			return received;
@@ -510,10 +517,10 @@ bool CSimNetBoard::SendIndex(uint32_t round, const uint8_t value[2], size_t inde
 // anything else dropped; false otherwise (the handshake is then tried again later)
 bool CSimNetBoard::ReceiveHandshake(size_t size, uint32_t round, int timeoutMS)
 {
-	uint32_t start = CThread::GetTicks();
+	uint32_t start = TicksMS();
 	for (;;)
 	{
-		int left = std::max(0, timeoutMS - int(CThread::GetTicks() - start));
+		int left = std::max(0, timeoutMS - int(TicksMS() - start));
 		Received received = ReceivePacket(left);
 		if (received == Received::lost || received == Received::nothing)
 			return false;
@@ -541,7 +548,7 @@ bool CSimNetBoard::Handshake(Role role, size_t indexSize, uint8_t index[2], uint
 	uint64_t testGUID;
 	if (role == Role::master)
 	{
-		uint32_t now = CThread::GetTicks();
+		uint32_t now = TicksMS();
 		// the game writes its role (master or not) in the board's RAM a little after starting it: until then, every
 		// machine looks like the master (after a restart, the connections being made already, the handshake would
 		// start at once)
