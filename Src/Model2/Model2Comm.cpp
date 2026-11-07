@@ -36,6 +36,9 @@
 #include <algorithm>
 #include <cstring>
 
+// The output connection opened again at most this often
+static constexpr uint32_t RECONNECT_MS = 1000;
+
 CModel2Comm::CModel2Comm()
 {
   memset(m_shared, 0, sizeof(m_shared));
@@ -59,7 +62,9 @@ void CModel2Comm::Init(std::shared_ptr<CNetServer> server, const std::string &ad
   }
 }
 
-// As CSimNetBoard: the output connection, then the previous machine's
+// As CSimNetBoard: the output connection, then the previous machine's. The next
+// machine may close the output connection (it came before that machine could
+// answer, or that machine restarted): it is opened again
 void CModel2Comm::ConnectProc()
 {
   while (!m_link->Connect())
@@ -67,10 +72,16 @@ void CModel2Comm::ConnectProc()
     if (m_quit)
       return;
   }
+  uint32_t lastConnect = CThread::GetTicks();
   while (!m_link->Connected())
   {
     if (m_quit)
       return;
+    if (CThread::GetTicks() - lastConnect >= RECONNECT_MS)
+    {
+      m_link->Connect();    // nothing to do while the output connection is open
+      lastConnect = CThread::GetTicks();
+    }
     CThread::Sleep(1);
   }
   InfoLog("Model 2 communication board: connected.");
