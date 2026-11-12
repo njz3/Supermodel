@@ -654,8 +654,28 @@ Upstream remplace `CThread`, `CMutex`, `CSemaphore` et `CCondVar` par la STL (`S
 - `Rules.inc` garde `WriteDirectory.cpp` et prend `Thread.cpp`.
 
 Essais en mode agent, sorties en TCP : Sega Rally 2 (avec retour de force, puis `-no-threads`), House of the Dead,
-Daytona (carte émulée), Virtua Racing démarrent et envoient leurs lignes. **Pas vérifié** : le son (essais en
-`-no-sound`), le link entre deux machines.
+Daytona (carte émulée), Virtua Racing démarrent et envoient leurs lignes.
+
+Son et link (8 novembre), contre la release 73ef237 (avant la fusion), sets MAME fusionnés :
+
+- **Son** : les 63 jeux parents (Model 1, 2, 3), 60 s en temps réel (attract, deux pièces, Start), sortie du pilote
+  SDL `disk` mesurée. Niveaux, part non silencieuse et trous identiques entre les deux versions, aux variations de
+  l'attract près ; mêmes jeux muets dans les deux sur cette durée (Scud Race, Ski Champ, Power Sled, Net Merc...).
+- **Link** : deux machines sur 127.0.0.1, la première d'abord coupée par une fausse machine. Model 3 avec les NVRAM
+  link de l'image (Daytona 2, Power Edition, Dirt Devils, Harley, Le Mans 24, Scud, Scud Plus, Sega Rally 2) : les deux
+  machines se relient, maître et esclave, dans les deux versions. Model 2 (12 jeux) : connexion des deux cartes dans
+  les deux versions ; lien établi par le jeu sur Daytona et Super GT 24h seulement, NVRAM vierges. Ski Champ,
+  Spikeout, Spikeout FE, Virtual On 2 sans NVRAM link : pas de connexion, dans les deux versions.
+
+**Pas vérifié** : le link entre deux PC, sur les bornes.
+
+### 2.21 La fusion d'upstream 65ec91d : son DSB et MPEG, Virtua Cop 2 (12 novembre)
+
+Cinq commits, aucun conflit : canaux gauche/droite de la DSB1, musique MPEG de Star Wars Arcade, interruption son du
+Model 2 levée deux cycles après l'écriture du masque (musique de Virtua Cop 2), plan proche du Model 1 (carte du
+circuit de Daytona). Son des 63 jeux parents et de Power Edition contre ec80873, comme en 2.20 : pareil partout, sauf
+Star Wars Arcade (musique en jeu, niveau ×4) et Virtua Cop 2 (plus de son en jeu), comme attendu. Wing War ne démarre
+dans aucune des deux versions (`315-5711.bin` défectueux dans le zip local). Le link n'est pas touché par ces commits.
 
 ## 3. Les essais
 

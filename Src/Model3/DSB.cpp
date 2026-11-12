@@ -309,7 +309,7 @@ void CDSB1::IOWrite8(UINT32 addr, UINT8 data)
 		break;
 
 	case 0xE8:	// MPEG volume
-		volume = 0x7F-data;
+		volume = ~data & 0x7F;	// MSB use is unknown
 		//printf("Set Volume: %02X\n", volume);
 		break;
 
@@ -372,7 +372,13 @@ UINT8 CDSB1::IORead8(UINT32 addr)
 		 * Bit 0: Must be 1 for most games.
 		 * Bit 1: Command pending (used by SWA instead of IRQ)
 		 * SWA requires (status&0x38)==0 or else it loops endlessly
+		 *
+		 * This is the i8251's status: bit 1 is RxRDY, set whenever a byte is
+		 * waiting, including the first one into an empty FIFO (SWA polls it,
+		 * so otherwise it never sees a lone command such as "play").
 		 */
+		if (fifoIdxR != fifoIdxW)
+			status |= 2;
 		return status;
 	}
 
@@ -435,7 +441,24 @@ void CDSB1::RunFrame(float *audioL, float *audioR, int numSamples)
 
 	// Decode MPEG for this frame
 	MpegDec::DecodeAudio(&mpegL[retainedSamples], &mpegR[retainedSamples], MPEG_SAMPLES_FOR(numSamples) - retainedSamples);
-	retainedSamples = Resampler.UpSampleAndMix(audioL, audioR, mpegL, mpegR, v, v, numSamples, MPEG_SAMPLES_FOR(numSamples), 44100, 32000);
+
+	// Some streams hold two mono tracks, one in each channel. Port 0xE9 selects
+	// the channel to send to both speakers (MAME: 1 = left, 2 = right).
+	INT16 *leftChannelSource = mpegL;
+	INT16 *rightChannelSource = mpegR;
+	switch (stereo & 3)
+	{
+	case 1:
+		rightChannelSource = mpegL;
+		break;
+	case 2:
+		leftChannelSource = mpegR;
+		break;
+	default:
+		break;
+	}
+
+	retainedSamples = Resampler.UpSampleAndMix(audioL, audioR, leftChannelSource, rightChannelSource, v, v, numSamples, MPEG_SAMPLES_FOR(numSamples), 44100, 32000);
 }
 
 void CDSB1::Reset(void)
