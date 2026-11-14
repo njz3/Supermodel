@@ -307,9 +307,15 @@ void CModel2::CoproCtlWrite(uint32_t data, uint32_t mask)
           if (sscanf(range, "%x,%x", &start, &end) == 2)
             for (UINT32 pc = start; pc < end; pc++)
               InfoLog("SHARC %05X: %012llX %s\n", pc, (unsigned long long) m_sharc.ReadProgramWord(pc), m_sharc.Disassemble(pc).c_str());
+        m_wideScreen.ProgramLoaded(m_sharc);
       }
       else if (!m_model2c)
+      {
         m_tgp.Reset();
+        m_wideScreen.DumpTGP(m_tgpProgram.data(), m_tgpProgram.size());
+      }
+      else
+        m_wideScreen.ProgramLoaded(m_tgpx4.GetProgramRAM(), CMB86235::PROGRAM_WORDS);
       m_time[CPU_COPRO] = std::max(m_time[CPU_COPRO], I960Now());
     }
   }
@@ -2604,6 +2610,7 @@ void CModel2::BuildVideoFrame(void)
       // at its left and right edges clip that much further out (from the
       // next frame's polygons on)
       m_video3d.SetWideExtension(m_render ? (int) std::ceil(m_render->WideExtension()) : 0);
+      m_wideScreen.Update(m_render ? (int) std::ceil(m_render->WideExtension()) : 0);
       m_video.model2 = &m_video3d.BuildGPU();
       m_video.model2Quads = m_video3d.GPUQuads();
       m_video.model2Memory = &m_videoMemory;
@@ -2799,6 +2806,7 @@ void CModel2::Reset(void)
   m_i960.Reset();
   m_tgp.Reset();
   m_tgpx4.Reset();          // held (m_coproHeld) until the i960 boots it
+  m_wideScreen.Reset();
   if (m_model2b)
   {
     // MAME: halted, FIFO in empty, FIFO out not full
@@ -2900,6 +2908,7 @@ void CModel2::SaveState(CBlockFile *SaveState)
   SaveState->Write(m_lightgunMux);
 
   m_i960.SaveState(SaveState, "Model 2 i960");
+  m_wideScreen.Restore();   // (the coprocessor's program as uploaded, patched again below)
   m_tgp.SaveState(SaveState, "Model 2 TGP");
   if (m_model2c)
     m_tgpx4.SaveState(SaveState, "Model 2 TGPx4");
@@ -2915,6 +2924,7 @@ void CModel2::SaveState(CBlockFile *SaveState)
     SaveState->NewBlock("Model 2 geometrizer mode", __FILE__);
     SaveState->Write(uint8_t(m_geoLLE ? 1 : 0));
   }
+  m_wideScreen.Reapply();
   m_tiles.SaveState(SaveState);
   m_video3d.SaveState(SaveState);
   m_uart.SaveState(SaveState, "Model 2 UART");
@@ -3049,10 +3059,14 @@ void CModel2::LoadState(CBlockFile *SaveState)
   m_i960.LoadState(SaveState, "Model 2 i960");
   m_tgp.LoadState(SaveState, "Model 2 TGP");
   if (m_model2c)
+  {
     m_tgpx4.LoadState(SaveState, "Model 2 TGPx4");
+    m_wideScreen.ProgramLoaded(m_tgpx4.GetProgramRAM(), CMB86235::PROGRAM_WORDS);
+  }
   if (m_model2b)
   {
     m_sharc.LoadState(SaveState, "Model 2 SHARC");
+    m_wideScreen.ProgramLoaded(m_sharc);
     m_geoSharc.LoadState(SaveState, "Model 2 geometrizer SHARC");
     if (Result::OKAY == SaveState->FindBlock("Model 2 geometrizer"))
     {
@@ -3236,6 +3250,7 @@ bool CModel2::LoadROMs(const ROMSet &rom_set)
 Result CModel2::Init(const Game &game, const ROMSet &rom_set)
 {
   m_game = game;
+  m_wideScreen.SetGame(game.name);
   m_original = game.stepping == Game::Stepping::MODEL2;
   m_model2b = game.stepping == Game::Stepping::MODEL2B;
   m_model2c = game.stepping == Game::Stepping::MODEL2C;

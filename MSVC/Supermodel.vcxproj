@@ -394,6 +394,7 @@ xcopy /D /Y "$(ProjectDir)..\Assets\*" "$(TargetDir)Assets"</Command>
     <ClCompile Include="..\Src\Model2\Model2Comm.cpp" />
     <ClCompile Include="..\Src\Model2\ClutchProgramSim.cpp" />
     <ClCompile Include="..\Src\Model2\Model2DriveBoard.cpp" />
+    <ClCompile Include="..\Src\Model2\Model2WideScreen.cpp" />
     <ClCompile Include="..\Src\Model2\Sega315_5838.cpp" />
     <ClCompile Include="..\Src\Model2\Model2Video.cpp" />
     <ClCompile Include="..\Src\Pro1000\UART.cpp" />
@@ -611,6 +612,7 @@ xcopy /D /Y "$(ProjectDir)..\Assets\*" "$(TargetDir)Assets"</Command>
     <ClInclude Include="..\Src\Model2\Model2Comm.h" />
     <ClInclude Include="..\Src\Model2\ClutchProgramSim.h" />
     <ClInclude Include="..\Src\Model2\Model2DriveBoard.h" />
+    <ClInclude Include="..\Src\Model2\Model2WideScreen.h" />
     <ClInclude Include="..\Src\Model2\Sega315_5838.h" />
     <ClInclude Include="..\Src\Model2\Model2Video.h" />
     <ClInclude Include="..\Src\Pro1000\UART.h" />

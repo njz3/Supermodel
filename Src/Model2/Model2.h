@@ -71,6 +71,7 @@
 #include "Model2/Model2Comm.h"
 #include "Model2/Sega315_5838.h"
 #include "Model2/Model2DriveBoard.h"
+#include "Model2/Model2WideScreen.h"
 #include "Model3/DriveBoard/WheelBoard.h"
 #include "Model3/BillBoard.h"
 #include "Model3/Crypto.h"
@@ -261,6 +262,7 @@ private:
   CMB86233              m_tgp;
   CSHARC                m_sharc;          // 2B coprocessor
   CMB86235              m_tgpx4;          // 2C coprocessor
+  CModel2WideScreen     m_wideScreen;     // 2B, 2C: the coprocessor program's off-screen test widened
   CSHARC                m_geoSharc;       // 2B geometrizer (low level, if enabled)
   CGeoBus               m_geoBus;
   CSys24Tilemap         m_tiles;

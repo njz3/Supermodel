@@ -145,6 +145,8 @@ public:
   // Debugger memory access: internal memory or the bus (no IOP side effects)
   UINT64 ReadProgramWord(UINT32 addr);
   UINT32 ReadDataWord(UINT32 addr);
+  void   WriteProgramWord(UINT32 addr, UINT64 data);    // internal memory only (48 bits)
+  void   WriteDataWord(UINT32 addr, UINT32 data);       // internal memory only (normal word addresses)
 
   std::string Disassemble(UINT32 pc);           // reads the opcode with ReadProgramWord()
   static std::string Disassemble(UINT32 pc, UINT64 opcode);

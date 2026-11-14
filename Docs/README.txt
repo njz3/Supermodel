@@ -277,6 +277,15 @@ objects will be culled by games, which are not aware of the extended field of
 view.  Tile-based 2D background layers will not be stretched and will be
 letterboxed.
 
+On Model 2B and 2C, some games ask their geometry coprocessor whether an object
+is on the 4:3 screen before drawing it.  With '-wide-screen', Supermodel finds
+that test in the coprocessor's program after the game uploads it and moves its
+left and right limits out to the edges of the wide image (and back when wide
+screen is turned off): The House of the Dead, Rail Chase 2, Gunblade NY,
+Virtual On, Fighting Vipers and Sonic the Fighters have it.  The coprocessor
+programs of the other Model 2 games have no such test: objects those games
+leave out can still pop in at the sides.
+
 To stretch the 2D background layers, use '-wide-bg'.  Many games use 2D back-
 grounds instead of 3D skyboxes and when playing in wide screen mode, this option
 often enhances their appearance.

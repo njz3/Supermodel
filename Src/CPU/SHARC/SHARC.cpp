@@ -6000,6 +6000,20 @@ UINT64 CSHARC::ReadProgramWord(UINT32 addr)
 	return data;
 }
 
+void CSHARC::WriteProgramWord(UINT32 addr, UINT64 data)
+{
+	unsigned block;
+	uint32_t offset;
+	if (pm_internal(addr, block, offset) && offset < 0x5000)
+		pm_w(block, offset, data, 0x0000ffffffffffffU);
+}
+
+void CSHARC::WriteDataWord(UINT32 addr, UINT32 data)
+{
+	if (addr >= 0x20000 && addr < 0x40000)
+		m_blocks[(addr & 0x18000) ? 1 : 0][addr & 0x7fff] = data;
+}
+
 UINT32 CSHARC::ReadDataWord(UINT32 addr)
 {
 	if (addr < 0x80000)
