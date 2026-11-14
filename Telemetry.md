@@ -263,6 +263,104 @@ d'abord le menu système, dont EXIT mène au menu du jeu), GAME ASSIGNMENTS : LI
 (Daytona 2 : MASTER, SLAVE, LIVE, SINGLE ; Scud : MASTER, SLAVE, SINGLE), MOTOR POWER 100 %,
 puis les deux EXIT (sans eux rien n'est gardé).
 
+### 4.3 Les jeux Model 2 (14 novembre)
+
+**Décodeurs portés de Keisho** (ex sm2-emu, `src/telemetry/*.cpp`, `TELEMETRY.md` : le code du propriétaire, repris
+sous GPL v3+ avec son accord) dans `Src/Telemetry/Model2Games.cpp` (`MakeModel2Decoder`), les dix jeux et leurs
+clones aux mêmes noms : `daytona` (et ses clones ; `daytona93` à ses propres adresses, sans IA ni place),
+`srallyc` (`srallycc`, `srallycdxa` : leurs horloges et leur mode ailleurs), `indy500` (`indy500to`, `indy500d` :
+les leurs), `stcc` (`stcca`, `stccb`, `stcco` : les leurs), `overrev`, `sgt24h`, `motoraid`, `waverunr`, `desert`,
+`manxtt` (pas `manxttdx`, dont la RAM diffère). Un clone sans adresses à lui prend celles de son parent, comme
+dans Keisho. Les RAM de l'i960 sont lues par `CModel2::WorkRAM()` (0x500000) et `ScratchRAM()` (0x200000), petit-
+boutistes : les adresses de Keisho telles quelles.
+
+- **Ce qu'ils donnent** (le tableau « What each game gives » de Keisho) : Daytona état, tours, temps restant, de
+  course, du tour, dernier et meilleur tour, place, rapport, régime, 39 adversaires ; Sega Rally état (mode et
+  horloges), temps restant et total, rapport, régime, 7 adversaires ; Indy 500 circuit, boîte, tours, secteurs,
+  place, rapport, régime, temps restant et du tour, caméra, 27 ou 32 adversaires ; Touring Car temps restant et du
+  tour, rapport, régime (probable), place, 7 adversaires (pas de tangage ni de roulis) ; Over Rev tours, temps,
+  places, rapport, régime, 7 adversaires ; Super GT 24h état, tours, temps, places, rapport, régime, matrice du
+  joueur, 13 adversaires ; Motor Raid état, temps, 9 adversaires ; Wave Runner état, temps de course ; Desert Tank
+  temps de mission, angles tirés des quatre coins ; Manx TT temps restant, rapport, vitesse du compteur.
+- **Côté Supermodel** : ce que le cadre de Keisho fait autour de `decode()` reste au cadre de Supermodel
+  (`CDeriver` : vitesses, accélérations, vitesses angulaires, chocs, écarts). Ajouté dans `Model2Games.cpp` : la
+  matrice tirée du cap, du tangage et du roulis (`SetAngles`, l'`orient()` de Keisho), `racing` sans état du jeu
+  donne `race` (son `derive()`), les commandes du joueur (`throttle`, `brake`, `steer`) lues sur les voies
+  analogiques que le jeu lit (accesseur `CModel2::AnalogChannel`, seul ajout à `Model2.h`) avec le câblage de
+  `CModel2::UpdateInputs` (Daytona 0x20 à 0xE0, pédales inversées de Super GT et Over Rev, inclinaison inversée des
+  motos), et la vitesse au sol tirée des positions pour les voitures dont le jeu ne la garde pas (IA de Daytona et
+  de Sega Rally, Desert Tank : les règles de `kinematics()` de Keisho).
+- **Vérifié en mode agent le 14 novembre** (`Supermodel.exe` de `ReleaseTelM2` et `keisho.exe` côte à côte sur la
+  même ROM, mises sous tension, attract, pièces, départ, accélérateur tenu, `tel` toutes les 5 ou 10 s ; scripts
+  dans le scratchpad de la session) : `daytona`, `srallyc`, `indy500`, `stcc`, `overrev`, `sgt24h`, `motoraid`,
+  `waverunr`, `desert`, `manxtt`, et les clones `daytona93`, `srallycc`, `indy500to`, `indy500d`, `stcco`. Les
+  valeurs concordent avec celles de Keisho aux mêmes images (Sega Rally au bit près : les deux émulateurs y
+  restent identiques ; ailleurs les courses divergent peu à peu, les valeurs restent du même ordre) : positions,
+  angles, vitesses, rapport, régime, tours, places, horloges, état.
+- **Écarts** : `steer` au repos −0,004 au lieu de +0,004 sur les motos (Supermodel envoie 0x7F, Keisho 0x80) et 0 au
+  lieu de −0,004 sur Daytona (sa plage 0x20-0xE0 ici) ; l'accélérateur de Wave Runner au repos 0 (Keisho 0,498, sa
+  voie au repos à 0x80) ; quand le décodeur ne rend rien (Indy 500 hors course, Over Rev en attract), `tel` de
+  Supermodel redonne la dernière image décodée là où Keisho répond vide.
+- **Limites héritées de Keisho** : la `progress` du joueur de Sega Rally est le compteur brut (≈ 17 000, pas des
+  tours) ; dans la course de Super GT 24h atteinte ici (« POSITION 1/1 », une seule voiture) le joueur est la
+  première entrée et non la dernière (les deux émulateurs donnent un joueur immobile) ; Desert Tank : le char n'a
+  pas bougé avec l'accélérateur seul ; `daytona93` n'a pas quitté l'attract avec deux pièces (lu sans erreur) ;
+  `motoraiddx` et `manxttdx` non essayés.
+
+### 4.4 Virtua Racing et Virtua Formula (Model 1, 14 novembre)
+
+**Décodeur `CVirtuaRacing`** (`Src/Telemetry/Model1Games.cpp`, `MakeModel1Decoder`) pour `vr` et `vformula`
+(mêmes adresses, vérifié). Trouvé en mode agent (`ram`/`poke` lisent le bus du V60) en partant de la note de BFF
+(`docs/EPR-15111-VirtuaRacing-DriveBoard`) : la voiture du joueur pointée par `[501320]`, km/h à +14. Scripts
+dans le dossier temporaire `vrtel/` de la session : `race_rec.py`/`race_rec2.py` (un cycle complet, de la mise
+sous tension au retour en attract, RAM A et 0x500000-0x504000 toutes les 4 ou 8 images, images de l'écran),
+`pilot.py` (pilote automatique qui suit la ligne des voitures du jeu, tronçon par tronçon), `find_rec.py`,
+`an_race.py`, `tel_check.py`.
+
+- **Horloge du jeu** : il déplace ses voitures **une image sur deux** et ses chronos comptent **1/32 s** à chaque
+  déplacement (1/28,76 s réelle) : une seconde du jeu dure 1,11 s. Son compteur suit la même horloge : km/h =
+  113,8 × mètres par déplacement, 11 % de plus que la vitesse tirée des positions en temps réel (180 contre 200
+  km/h). Positions gardées en mètres (voir plus bas), `speed` = le compteur.
+- **Voitures** : 16 blocs de 0x280 octets depuis 0x400D00 (RAM A), le joueur d'abord (`[501320]` = 0x400D00).
+  +14 u16 km/h (l'écran à 1 ou 2 près) ; **+1E, +22, +26 x, y, z** (flottants, mètres : les points des roues à +72
+  sont à 1,8 m en travers et 3,6 m en long ; y vers le haut ; **monde non miroir** : un coup de volant à droite fait
+  croître atan2(dx, dz), la voiture tourne vers les tribunes de droite et tape le mur de droite) ; **+2A tangage**
+  (+ nez levé : +3,4° dans la montée de 2,7° de pente), **+2C moins le cap** (égal au cap du mouvement hors
+  glissade), **+2E roulis** (+ penché à droite : la matrice de la caméra à 0x501B00, seule matrice trouvée en RAM,
+  penche de 24° du même côté ; 13-15° vers l'intérieur dans le virage relevé à droite de Big Forest), s16, 65536
+  par tour ; +44 les mètres du dernier déplacement le long du nez (flottant) ; **+70 s16 tours finis** (−1 sur la
+  grille derrière la ligne) ; **+A6 u16 tronçon** (0 à la ligne) ; **+123 u8 place** (0 = premier, comme
+  « POSITION 12th/16 ») ; +140..+148 ce qu'il y a sous le milieu et sous les roues avant gauche, avant droite,
+  arrière gauche, arrière droite (2 la piste, 0x100 le dégagement gris, 4 l'herbe, 0x20 contre un mur ; vu en
+  sortant à gauche : +142 puis +146 d'abord). Joueur seulement : **+156 u16 rapport − 1** (boîte automatique à 7
+  rapports ; +1B4 le même quelques images plus tard), **+15A u16 régime du moteur** (+15E l'aiguille, qui le suit :
+  11089 = aiguille sur 11 ; arc rouge à 14000, cadran jusqu'à 16000). Les places +123 sont le rang tiré de (tours,
+  tronçon) de toutes les voitures.
+- **Course** (RAM B) : **0x501122 u16 l'état** (cycle complet enregistré trois fois) : 0 démarrage et attract (la
+  course de démonstration aussi, la voiture y roule), 1 choix du circuit, 2 départ, 4 départ des stands et compte
+  à rebours (8 une image), 0x10 course, 0x400 ligne franchie au dernier tour (« GOAL », la voiture roule seule),
+  0x800 puis 0x1000 temps écoulé et résultat (« GAME OVER » ; 0x20 une image), 0x4000 saisie du nom. **0x501168 u32
+  temps de course** (figé à l'arrivée : « TOTAL TIME 5'15"84 » = 10107), **0x50116C s32 temps restant** (−1 au
+  temps écoulé ; « EXTEND TIME » l'augmente), **0x501B80 u32 temps des tours du joueur** l'un après l'autre (2134
+  1999 1979 1978 2016 = 1'06"68, 1'02"46, 1'01"84, 1'01"81, 1'03"00 à l'écran), tout en 1/32 s ; le tour en cours =
+  temps de course − tours finis ; meilleur tour = le plus petit (« BEST LAP 1'01"81 »). **0x5011A4 u16 tours de la
+  course** (5 ; l'arrivée au 5e tour vérifiée sur Big Forest et Acropolis). **0x501954 u16 tronçons par tour**, qui
+  donne le circuit : 338 Big Forest (débutant), 418 Bay Bridge (moyen, aussi le circuit de l'attract), 592
+  Acropolis (expert) ; longueurs d'après les trajectoires des voitures du jeu : ~3500, ~3350, ~4380 m.
+- **Envoyé** : état, position, cap, tangage, roulis, vitesse, rapport (7), régime (zone rouge 14000), tour,
+  progression, place, revêtement sous chaque roue (`asphalt`, `grass`, `runoff`), temps restant, temps du tour,
+  de course, dernier et meilleur tour, tours de la course, circuit et difficulté, `finished` (état fin et 5 tours
+  faits), les 15 autres voitures (position, orientation, vitesse, tour, progression, place). Écarts (`gap_*`,
+  `dist_*`) par la longueur du tour.
+- **Vérifié** avec la nouvelle version (`tel_check.py`, en mode agent, pilote automatique, Big Forest) contre
+  l'écran : TIME, LAP TIME (l'écran a un pas de 1/32 s de retard), POSITION, SPEED ; tour 1 de 67,34 s, `last_lap`
+  et `best_lap` ensuite ; même chose sur `vformula` (mêmes valeurs, même course). La vitesse tirée des positions
+  vaut 0,89 fois le compteur (l'horloge du jeu, plus haut).
+- **Pas trouvé / pas fait** : boîte manuelle (« START + accélérateur » au choix du circuit, pas essayée : le
+  rapport y est sans doute le même), vitesses lues du jeu (tirées des positions), chocs (+124, +68, +F5 de BFF non
+  envoyés), autres modes de vue, partie à deux (le pointeur 0x501320 le dit, non essayé). `poke` de taille 4 ne
+  marche pas sur Model 1 (taille 2 oui).
+
 ## 5. Les outils (BFF `autopilot/supermodel/`)
 
 - `tel_record.py` : enregistre une fenêtre de RAM à chaque image pendant que le pilote automatique
@@ -306,7 +404,8 @@ puis les deux EXIT (sans eux rien n'est gardé).
   documentés dans `Docs/README.txt`.
 - **Écrit indépendamment de celui de sm2-emu**, au même protocole : l'en-tête des sources de
   sm2-emu ajoute à la BSD une interdiction d'usage commercial, incompatible avec la GPL v3 de
-  Supermodel ; on ne copie donc pas son code.
+  Supermodel ; on ne copie donc pas son code (sauf les décodeurs Model 2, repris avec l'accord du propriétaire,
+  auteur de ces lignes : §4.3).
 - Vérifié en mode agent (`tel_check.py` dans BFF) sur Daytona 2 et Sega Rally 2 : `tel`, les
   commandes du serveur (`fields`, `others`, `every`, `udp forza`, `list`, une commande inconnue),
   les lignes sélectionnées, le datagramme de 311 octets décodé (régime, vitesse, rapport,

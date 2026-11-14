@@ -653,6 +653,12 @@
     <ClCompile Include="..\Src\OSD\SDL\TelemetryServer.cpp">
       <Filter>Source Files\OSD\SDL</Filter>
     </ClCompile>
+    <ClCompile Include="..\Src\Telemetry\Model1Games.cpp">
+      <Filter>Source Files\Telemetry</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Src\Telemetry\Model2Games.cpp">
+      <Filter>Source Files\Telemetry</Filter>
+    </ClCompile>
     <ClCompile Include="..\Src\Telemetry\Model3Games.cpp">
       <Filter>Source Files\Telemetry</Filter>
     </ClCompile>

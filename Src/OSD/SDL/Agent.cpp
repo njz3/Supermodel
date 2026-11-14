@@ -120,6 +120,8 @@
 #include "Inputs/InputTypes.h"
 #include "Model3/IEmulator.h"
 #include "Model3/Model3.h"
+#include "Model2/Model2.h"
+#include "Model1/Model1.h"
 #include "Model3/DriveBoard/DriveBoard.h"
 #include "OSD/Outputs.h"
 #include "Util/BMPFile.h"
@@ -557,6 +559,12 @@ namespace Agent
 
     CInput::SetForceFeedbackObserver(OnForceFeedback);
     CModel3 *model3 = dynamic_cast<CModel3 *>(emulator);
+    // The main CPU's bus, for ram and poke: the PowerPC's, the i960's (Model 2), the V60's (Model 1)
+    IBus *bus = model3 != nullptr ? static_cast<IBus *>(model3) : nullptr;
+    if (CModel2 *model2 = dynamic_cast<CModel2 *>(emulator))
+      bus = static_cast<II960Bus *>(model2);
+    if (CModel1 *model1 = dynamic_cast<CModel1 *>(emulator))
+      bus = static_cast<IBus *>(model1);
     const Game &game = emulator->GetGame();
     uint32_t gameInputs = game.inputs;
 
@@ -810,14 +818,14 @@ namespace Agent
       {
         unsigned address = 0, length = 0;
         in >> std::hex >> address >> length;
-        if (!in || model3 == nullptr || length == 0 || length > 0x100000)
+        if (!in || bus == nullptr || length == 0 || length > 0x100000)
         {
           Reply("err usage: %s ADDRESS LENGTH (hex, at most 100000)", command.c_str());
           continue;
         }
         std::vector<uint8_t> bytes(length);
         for (unsigned i = 0; i < length; i++)
-          bytes[i] = model3->Read8(address + i);
+          bytes[i] = bus->Read8(address + i);
         ReplyBytes(command + " " + std::to_string(length), bytes.data(), bytes.size());
       }
       else if (command == "poke")
@@ -827,17 +835,23 @@ namespace Agent
         bool parsed = bool(in >> std::hex >> address >> value);
         if (parsed && !(in >> std::dec >> size))
           size = 4;
-        if (!parsed || model3 == nullptr || (size != 1 && size != 2 && size != 4))
+        if (!parsed || bus == nullptr || (size != 1 && size != 2 && size != 4))
         {
           Reply("err usage: poke ADDRESS VALUE [SIZE] (hex address and value, size 1, 2 or 4)");
           continue;
         }
         if (size == 1)
-          model3->Write8(address, UINT8(value));
+          bus->Write8(address, UINT8(value));
         else if (size == 2)
-          model3->Write16(address, UINT16(value));
+          bus->Write16(address, UINT16(value));
+        else if (dynamic_cast<CModel1 *>(emulator) != nullptr)
+        {
+          // The V60's bus is 16 bits wide (no 32-bit access): two halves, little-endian
+          bus->Write16(address, UINT16(value));
+          bus->Write16(address + 2, UINT16(value >> 16));
+        }
         else
-          model3->Write32(address, value);
+          bus->Write32(address, value);
         Reply("ok");
       }
       else if (command == "settle")

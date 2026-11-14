@@ -107,7 +107,7 @@ namespace Telemetry
     std::string Json(const Selection &selection = Selection()) const;
 
   private:
-    CModel3 *m_model3 = nullptr;
+    IEmulator *m_emulator = nullptr;
     std::unique_ptr<IDecoder> m_decoder;
     CDeriver m_deriver;
     Frame m_last;

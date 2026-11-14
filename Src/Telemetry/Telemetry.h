@@ -46,7 +46,7 @@
 #include <string>
 #include <vector>
 
-class CModel3;
+class IEmulator;
 struct Game;
 
 namespace Telemetry
@@ -128,16 +128,19 @@ namespace Telemetry
   // Fills a car's rotation, heading, pitch and roll from its right, up and forward vectors (world, y up)
   void SetOrientation(Vehicle &v, const float right[3], const float up[3], const float forward[3]);
 
-  // A game's decoder: reads one frame from the RAM, false when the game is in no state to say anything
+  // A game's decoder: reads one frame from the machine's RAM, false when the game is in no state to say anything
   class IDecoder
   {
   public:
     virtual ~IDecoder() {}
-    virtual bool Decode(CModel3 &model3, uint64_t frame, Frame &out) = 0;
+    virtual bool Decode(IEmulator &emulator, uint64_t frame, Frame &out) = 0;
   };
 
-  // The decoder for this game, or nullptr for a game not decoded
+  // The decoder for this game, or nullptr for a game not decoded: Model 3's (Model3Games.cpp), Model 2's
+  // (Model2Games.cpp, MakeModel2Decoder), Model 1's (Model1Games.cpp, MakeModel1Decoder)
   std::unique_ptr<IDecoder> MakeDecoder(const Game &game);
+  std::unique_ptr<IDecoder> MakeModel2Decoder(const Game &game);
+  std::unique_ptr<IDecoder> MakeModel1Decoder(const Game &game);
 
   // What is worked out from the decoded frames: velocities and accelerations from the positions (unless the game
   // gives them), the accelerations in the car's frame, the rates, the impacts, airborne, the gaps

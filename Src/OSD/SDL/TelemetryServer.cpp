@@ -333,8 +333,9 @@ namespace Telemetry
 
   void CService::Init(const Util::Config::Node &config, IEmulator *emulator, bool always)
   {
-    m_model3 = dynamic_cast<CModel3 *>(emulator);
-    m_decoder = m_model3 ? MakeDecoder(emulator->GetGame()) : nullptr;
+    // Model 3 and Model 2 games (their decoders know their machine)
+    m_emulator = emulator;
+    m_decoder = emulator ? MakeDecoder(emulator->GetGame()) : nullptr;
     m_always = always;
     m_haveLast = false;
     unsigned port = config["TelemetryPort"].ValueAsDefault<unsigned>(0);
@@ -368,7 +369,7 @@ namespace Telemetry
       return;
     }
     Frame f;
-    if (!m_decoder->Decode(*m_model3, frame, f))
+    if (!m_decoder->Decode(*m_emulator, frame, f))
       return;
     m_deriver.Derive(f);
     m_last = std::move(f);

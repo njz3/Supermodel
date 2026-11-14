@@ -108,8 +108,9 @@ namespace Telemetry
       {
       }
 
-      bool Decode(CModel3 &model3, uint64_t frame, Frame &out) override
+      bool Decode(IEmulator &emulator, uint64_t frame, Frame &out) override
       {
+        CModel3 &model3 = static_cast<CModel3 &>(emulator);
         CRam ram(model3);
         const ScudLayout &l = m_l;
         const int cars = 40;
@@ -256,8 +257,9 @@ namespace Telemetry
     class CSegaRally2 : public IDecoder
     {
     public:
-      bool Decode(CModel3 &model3, uint64_t frame, Frame &out) override
+      bool Decode(IEmulator &emulator, uint64_t frame, Frame &out) override
       {
+        CModel3 &model3 = static_cast<CModel3 &>(emulator);
         CRam ram(model3);
         out.game = "srally2";
         out.frame = frame;
@@ -369,8 +371,9 @@ namespace Telemetry
       {
       }
 
-      bool Decode(CModel3 &model3, uint64_t frame, Frame &out) override
+      bool Decode(IEmulator &emulator, uint64_t frame, Frame &out) override
       {
+        CModel3 &model3 = static_cast<CModel3 &>(emulator);
         CRam ram(model3);
         const uint32_t base = 0x2230D8, carSize = 10 * 0x38;
         const float unit = 0.0608f;
@@ -439,8 +442,9 @@ namespace Telemetry
     class CEmergencyCallAmbulance : public IDecoder
     {
     public:
-      bool Decode(CModel3 &model3, uint64_t frame, Frame &out) override
+      bool Decode(IEmulator &emulator, uint64_t frame, Frame &out) override
       {
+        CModel3 &model3 = static_cast<CModel3 &>(emulator);
         CRam ram(model3);
         out.game = "eca";
         out.frame = frame;
@@ -496,8 +500,9 @@ namespace Telemetry
     class CLeMans24 : public IDecoder
     {
     public:
-      bool Decode(CModel3 &model3, uint64_t frame, Frame &out) override
+      bool Decode(IEmulator &emulator, uint64_t frame, Frame &out) override
       {
+        CModel3 &model3 = static_cast<CModel3 &>(emulator);
         CRam ram(model3);
         const float unit = 1.0f / 9.26f;
         const float pi = 3.14159265f;
@@ -720,6 +725,8 @@ namespace Telemetry
       return std::make_unique<CEmergencyCallAmbulance>();
     if (game.name == "lemans24")
       return std::make_unique<CLeMans24>();
-    return nullptr;
+    if (std::unique_ptr<IDecoder> decoder = MakeModel2Decoder(game))
+      return decoder;
+    return MakeModel1Decoder(game);
   }
 }

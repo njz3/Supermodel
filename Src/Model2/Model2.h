@@ -95,6 +95,15 @@ public:
   // The racing games' wheel drive board, if any (its effects sent again when the force feedback settings change)
   CDriveBoard *GetDriveBoard(void) { return m_wheelBoard.get(); }
 
+  // The i960's RAMs as it sees them (little-endian), for the telemetry: work RAM (0x500000, 1 MB) and the RAM at
+  // 0x200000 (256 KB)
+  const std::vector<uint8_t> &WorkRAM(void) const { return m_workRAM; }
+  const std::vector<uint8_t> &ScratchRAM(void) const { return m_ram; }
+
+  // The analog channel (0-7) as the game reads it, for the telemetry: the wheel, the pedals... as the inputs were set
+  // for the last frame run (UpdateInputs)
+  uint8_t AnalogChannel(unsigned channel) const { return m_analog[channel & 7]; }
+
   // IEmulator
   void SaveState(CBlockFile *SaveState) override;
   void LoadState(CBlockFile *SaveState) override;

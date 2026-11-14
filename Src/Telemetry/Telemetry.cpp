@@ -198,11 +198,12 @@ namespace Telemetry
           if (d < 0 && (std::isnan(behind) || -d < behind))
             behind = -d;
         }
-        float speed = std::max(std::isnan(v.speed) ? std::sqrt(v.vx * v.vx + v.vz * v.vz) : v.speed, 1.0f);
+        // The gaps in seconds at the car's speed: none for a car standing (on the grid, the times would be endless)
+        float speed = std::isnan(v.speed) ? std::sqrt(v.vx * v.vx + v.vz * v.vz) : v.speed;
         v.dist_ahead = ahead;
         v.dist_behind = behind;
-        v.gap_ahead = std::isnan(ahead) ? NAN : ahead / speed;
-        v.gap_behind = std::isnan(behind) ? NAN : behind / speed;
+        v.gap_ahead = std::isnan(ahead) || !(speed >= 1.0f) ? NAN : ahead / speed;
+        v.gap_behind = std::isnan(behind) || !(speed >= 1.0f) ? NAN : behind / speed;
       }
     }
   }

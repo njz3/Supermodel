@@ -465,6 +465,8 @@ xcopy /D /Y "$(ProjectDir)..\Assets\*" "$(TargetDir)Assets"</Command>
     <ClCompile Include="..\Src\OSD\WriteDirectory.cpp" />
     <ClCompile Include="..\Src\OSD\SDL\Agent.cpp" />
     <ClCompile Include="..\Src\OSD\SDL\TelemetryServer.cpp" />
+    <ClCompile Include="..\Src\Telemetry\Model1Games.cpp" />
+    <ClCompile Include="..\Src\Telemetry\Model2Games.cpp" />
     <ClCompile Include="..\Src\Telemetry\Model3Games.cpp" />
     <ClCompile Include="..\Src\Telemetry\Telemetry.cpp" />
     <ClCompile Include="..\Src\OSD\SDL\GameMenu.cpp" />

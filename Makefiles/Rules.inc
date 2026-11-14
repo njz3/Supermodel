@@ -217,6 +217,8 @@ SRC_FILES = \
 	Src/OSD/SDL/NetOutputs.cpp \
 	Src/OSD/SDL/TelemetryServer.cpp \
 	Src/Telemetry/Telemetry.cpp \
+	Src/Telemetry/Model1Games.cpp \
+	Src/Telemetry/Model2Games.cpp \
 	Src/Telemetry/Model3Games.cpp \
 	Src/Network/NetServer.cpp \
 	Src/Network/TCPConnection.cpp \
