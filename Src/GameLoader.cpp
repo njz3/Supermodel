@@ -28,7 +28,11 @@
 #include <cctype>
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <iterator>
+#include <zlib.h>
 
 bool GameLoader::LoadZipArchive(ZipArchive *zip, const std::string &zipfilename) const
 {
@@ -117,6 +121,21 @@ bool GameLoader::LoadZippedFile(std::shared_ptr<uint8_t> *buffer, uint32_t *file
   const ZippedFile *zipped_file = LookupFile(file, zip);
   if (!zipped_file)
     return true;
+  if (!zipped_file->loose_path.empty())
+  {
+    // A file beside the zip archive (AddLooseFiles)
+    std::ifstream in(zipped_file->loose_path, std::ios::binary);
+    std::vector<char> data((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    if (data.size() != zipped_file->uncompressed_size)
+    {
+      ErrorLog("Unable to read '%s'.", zipped_file->loose_path.c_str());
+      return true;
+    }
+    *file_size = zipped_file->uncompressed_size;
+    buffer->reset(new uint8_t[*file_size], std::default_delete<uint8_t[]>());
+    memcpy(buffer->get(), data.data(), *file_size);
+    return false;
+  }
   if (UNZ_OK != unzLocateFile(zipped_file->zf, zipped_file->filename.c_str(), 2))
   {
     ErrorLog("Unable to locate '%s' in '%s'. Is zip file corrupt?", zipped_file->filename.c_str(), zipped_file->zipfilename.c_str());
@@ -1169,15 +1188,36 @@ bool GameLoader::Load(Game *game, ROMSet *rom_set, const std::string &zipfilenam
 {
   *game = Game();
 
+  // A clone's zip that does not exist (scudplus.zip): its parent's, as MAME's merged sets hold their clones' files
+  std::string zip_to_open = zipfilename;
+  std::string game_to_load = requested_game;
+  std::error_code ec;
+  if (!std::filesystem::exists(zipfilename, ec))
+  {
+    std::string name = Util::ToLower(std::filesystem::path(zipfilename).stem().string());
+    auto it = m_game_info_by_game.find(name);
+    if (it != m_game_info_by_game.end() && !it->second.parent.empty())
+    {
+      std::string parent_zipfilename = StripFilename(zipfilename) + it->second.parent + ".zip";
+      if (std::filesystem::exists(parent_zipfilename, ec))
+      {
+        InfoLog("'%s' not found: '%s' loaded from its parent's ROM set, '%s'.", zipfilename.c_str(), name.c_str(), parent_zipfilename.c_str());
+        zip_to_open = parent_zipfilename;
+        if (game_to_load.empty())
+          game_to_load = name;
+      }
+    }
+  }
+
   // Read the zip contents
   ZipArchive zip;
-  if (LoadZipArchive(&zip, zipfilename))
+  if (LoadZipArchive(&zip, zip_to_open))
     return true;
 
   // Pick the game to load (there could be multiple ROM sets in a zip file)
   std::string chosen_game;
   bool missing_parent_roms = false;
-  ChooseGameInZipArchive(&chosen_game, &missing_parent_roms, zip, zipfilename, requested_game);
+  ChooseGameInZipArchive(&chosen_game, &missing_parent_roms, zip, zip_to_open, game_to_load);
   if (chosen_game.empty())
     return true;
 
@@ -1187,7 +1227,7 @@ bool GameLoader::Load(Game *game, ROMSet *rom_set, const std::string &zipfilenam
   // Bring in additional parent ROM set if needed
   if (missing_parent_roms)
   {
-    std::string parent_zipfilename = StripFilename(zipfilename) + game->parent + ".zip";
+    std::string parent_zipfilename = StripFilename(zip_to_open) + game->parent + ".zip";
     if (LoadZipArchive(&zip, parent_zipfilename))
     {
       ErrorLog("Expected to find parent ROM set of '%s' at '%s'.", game->name.c_str(), parent_zipfilename.c_str());
@@ -1195,11 +1235,57 @@ bool GameLoader::Load(Game *game, ROMSet *rom_set, const std::string &zipfilenam
     }
   }
 
+  // The optional ROMs MAME's sets lack (the drive boards' programs), as loose files beside the zip
+  AddLooseFiles(&zip, game->name, StripFilename(zip_to_open));
+
   // Load
   bool error = LoadROMs(rom_set, game->name, zip);
   if (error)
     *game = Game();
   return error;
+}
+
+// The files of the game's optional regions (drive boards' programs, which MAME's sets lack) not in the zip archives:
+// looked for as loose files in the folder of the zip, by name, checked by their CRC32. MAME's zips need not be changed
+void GameLoader::AddLooseFiles(ZipArchive *zip, const std::string &game_name, const std::string &folder) const
+{
+  auto it = m_game_info_by_game.find(game_name);
+  if (it == m_game_info_by_game.end())
+    return;
+  const auto &by_game = IsChildSet(it->second) ? m_regions_by_merged_game : m_regions_by_game;
+  auto regions = by_game.find(game_name);
+  if (regions == by_game.end())
+    return;
+  for (auto &v: regions->second)
+  {
+    if (v.second->required)
+      continue;
+    for (auto &file: v.second->files)
+    {
+      if (FileExistsInZipArchive(file, *zip))
+        continue;
+      std::string path = folder + file->filename;
+      std::error_code ec;
+      if (!std::filesystem::is_regular_file(path, ec))
+        continue;
+      std::ifstream in(path, std::ios::binary);
+      std::vector<char> data((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+      uint32_t crc = uint32_t(crc32(0, reinterpret_cast<const Bytef *>(data.data()), uInt(data.size())));
+      if (file->has_crc32 && crc != file->crc32)
+      {
+        ErrorLog("'%s' is not the expected file (CRC32 0x%08x, not 0x%08x): not used.", path.c_str(), crc, file->crc32);
+        continue;
+      }
+      ZippedFile &zipped = zip->files_by_crc[crc];
+      zipped.zf = nullptr;
+      zipped.zipfilename = path;
+      zipped.filename = file->filename;
+      zipped.uncompressed_size = uint32_t(data.size());
+      zipped.crc32 = crc;
+      zipped.loose_path = path;
+      InfoLog("'%s' read from the file beside the ROM set, '%s'.", file->filename.c_str(), path.c_str());
+    }
+  }
 }
 
 bool GameLoader::HoldsFilesOf(const std::string &zipfilename, const std::string &game_name) const

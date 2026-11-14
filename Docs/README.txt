@@ -133,12 +133,23 @@ example:
 This will load 'scud.zip' (Scud Race) and run it in full screen mode.
 
 A MAME merged ROM set keeps the parent and all of its clones in the parent's ZIP
-file.  Supermodel then loads one of the clones; '-game' picks the game instead:
+file.  Supermodel then loads the game named like the ZIP file (the parent);
+'-game' picks another one:
 
     supermodel daytona2.zip -game=dayto2pe
 
-A clone can also come from a ZIP file of its own holding only its own files,
-next to its parent's ZIP file, from which the rest is read.
+A clone's ZIP file name that does not exist is looked for in its parent's: with
+only daytona2.zip in the folder, 'supermodel roms/dayto2pe.zip' loads dayto2pe
+from daytona2.zip.  So a folder of MAME merged sets serves both MAME and
+Supermodel, the clones given by their own names.  A clone can also come from a
+ZIP file of its own holding only its own files, next to its parent's ZIP file,
+from which the rest is read.
+
+The drive boards' ROMs MAME's sets lack (EPR-19338A for Emergency Call
+Ambulance and Le Mans 24, EPR-18261 for Le Mans 24 and Indy 500...) can be put
+in the ROM folder as loose files, under the names Games.xml gives (e.g.,
+epr-19338a.bin): a file missing from the ZIP files is read from there, checked
+by its CRC32, so MAME's ZIP files need not be changed.
 
 Initially, inputs are assigned according to the settings in 'Supermodel.ini',
 located in the 'Config' subdirectory.
@@ -678,8 +689,8 @@ catalog and at the time of this writing, have not yet widely proliferated.
 The sizes and checksums must match those listed above.  The file names may be
 different but will almost certainly contain the same identifying numbers.
 Ensure that the appropriate drive board ROM files are present in the
-corresponding games' ZIP archives, otherwise Supermodel will silently proceed
-without force feedback.
+corresponding games' ZIP archives or beside them, otherwise Supermodel will
+proceed without force feedback (a line in the log says so).
 
 Force feedback will only work with the DirectInput (the default on Windows) and
 XInput input systems.  XInput is intended only for XBox 360 controllers, which

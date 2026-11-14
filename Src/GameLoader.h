@@ -83,6 +83,7 @@ private:
     std::string filename;     // file inside the zip archive
     uint32_t uncompressed_size = 0;
     uint32_t crc32 = 0;
+    std::string loose_path;   // not in a zip archive: a file beside it (AddLooseFiles)
   };
 
   // Multiple zip archives
@@ -102,6 +103,7 @@ private:
   };
 
   bool LoadZipArchive(ZipArchive *zip, const std::string &zipfilename) const;
+  void AddLooseFiles(ZipArchive *zip, const std::string &game_name, const std::string &folder) const;
   const ZippedFile *LookupFile(const File::ptr_t &file, const ZipArchive &zip) const;
   bool FileExistsInZipArchive(const File::ptr_t &file, const ZipArchive &zip) const;
   bool LoadZippedFile(std::shared_ptr<uint8_t> *buffer, uint32_t *file_size, const GameLoader::File::ptr_t &file, const ZipArchive &zip) const;
