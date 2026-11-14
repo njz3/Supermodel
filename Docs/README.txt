@@ -1495,6 +1495,20 @@ not.  All options are case sensitive.
                     Force feedback still goes to the device the inputs are
                     mapped to.  'Scripts/ffbtest/smagent.py' is a Python client.
 
+                    NVRAM works as in a normal run: when the game's .nv file
+                    is missing, Supermodel starts with a blank backup RAM and
+                    the game writes its own factory settings into it, saved
+                    on exit.  Supermodel creates no settings of its own.  The
+                    factory settings of the twin cabinet sets, such as Scud
+                    Race (scud) and Daytona USA 2 (daytona2), are LINK ID
+                    MASTER: without '-net' the game restarts its boot over and
+                    over on 'DRIVE BOARD INITIALIZING', and with '-net' a
+                    single instance waits on 'THIS IS MASTER CONTROLLER' for
+                    a slave.  To test such a set alone, give it an NVRAM set
+                    to LINK ID SINGLE in the test menu, run two linked
+                    instances, or use a deluxe set (scuddx, dirtdvls), which
+                    starts alone.
+
     ----------------
 
     Option:         -no-throttle
