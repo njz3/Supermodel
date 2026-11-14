@@ -55,10 +55,22 @@ enum EOutputs
 	OutputBill4,
 	OutputBill5,
 	OutputM3ffb,    // the drive board command byte again, sent in hexadecimal (BackForceFeeder's name)
-	OutputM2ffb     // the same for Model 2's boards, whose commands differ (BackForceFeeder's name, sm2-emu's too)
+	OutputM2ffb,    // the same for Model 2's boards, whose commands differ (BackForceFeeder's name, sm2-emu's too)
+	// The game state some Model 1 and Model 2 games keep in their RAM (Model2/Model2Outputs.cpp), with the names
+	// arcade output tools use: credits; the light-gun games' ammo and life per player, their gun firing (recoil) and
+	// a pulse when the player is hit
+	OutputCredits,
+	OutputP1Ammo,
+	OutputP2Ammo,
+	OutputP1Life,
+	OutputP2Life,
+	OutputP1CtmRecoil,
+	OutputP2CtmRecoil,
+	OutputP1Damaged,
+	OutputP2Damaged
 };
 
-#define NUM_OUTPUTS 16
+#define NUM_OUTPUTS 25
 
 class COutputs
 {

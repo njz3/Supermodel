@@ -125,6 +125,7 @@ SRC_FILES = \
 	Src/Model1/Model1.cpp \
 	Src/Model1/Model1Geometry.cpp \
 	Src/Model1/Model1Geometrizer.cpp \
+	Src/Model1/Model1Outputs.cpp \
 	Src/Model1/Model1Tilemap.cpp \
 	Src/Model1/Model1SoundBoard.cpp \
 	Src/Model1/I8251.cpp \
@@ -148,6 +149,7 @@ SRC_FILES = \
 	Src/Model2/Model2Comm.cpp \
 	Src/Model2/ClutchProgramSim.cpp \
 	Src/Model2/Model2DriveBoard.cpp \
+	Src/Model2/Model2Outputs.cpp \
 	Src/Model2/Model2WideScreen.cpp \
 	Src/Model2/Model2Video.cpp \
 	Src/Model2/Sega315_5838.cpp \

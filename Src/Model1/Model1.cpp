@@ -712,6 +712,8 @@ void CModel1::WriteWord(uint32_t addr, uint16_t data, uint16_t mask)
         m_dpram[(addr & 0xFFF) >> 1] = (uint8_t) data;
         if (((addr & 0xFFF) >> 1) == 0x11)
           DriveCommand((uint8_t) data);
+        else if (((addr & 0xFFF) >> 1) == Model1Outputs::kLampByte)
+          Model1Outputs::Lamps(m_outputs, (uint8_t) data);   // the cabinet's lamps
       }
     }
     else if (addr >= 0xC40000 && addr < 0xC40004)
@@ -1338,6 +1340,7 @@ void CModel1::RunFrame(void)
     m_soundBoard->RunFrame();
   if (m_wheelBoard)
     m_wheelBoard->RunFrame();
+  m_stateOutputs.Update(m_game, m_outputs, [this](uint32_t addr) { return Read8(addr); });
 
   RenderFrame();
 }

@@ -45,6 +45,8 @@
  *                       minimum: Steering fully left, a stick left or up), -1
  *                       at its right end.
  *                       Answer: "ok", or "err ..." for an unknown input.
+ *                       A light gun's trigger: AutoTrigger (AutoTrigger2), 0
+ *                       or 1 (its Trigger switch is read before the overrides).
  *   setraw INPUT VALUE  The same with the raw value the game reads.
  *   get INPUT           The raw value the game reads now (held, or read from
  *                       the device at the last frame): "value RAW".
@@ -418,6 +420,8 @@ namespace Agent
     }
     else if (auto *button = dynamic_cast<const CSwitchInput *>(input))
       r = v >= 0.5 ? button->GetOnValue() : button->GetOffValue();
+    else if (dynamic_cast<const CTriggerInput *>(input))
+      r = v >= 0.5 ? 1 : 0;   // a light gun's trigger as the game reads it (AutoTrigger): its Trigger switch is read before the overrides
     else
       return false;
     raw = UINT16(std::lround(r));

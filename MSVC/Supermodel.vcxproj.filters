@@ -254,6 +254,9 @@
     <ClCompile Include="..\Src\Model1\Model1Geometrizer.cpp">
       <Filter>Source Files\Model1</Filter>
     </ClCompile>
+    <ClCompile Include="..\Src\Model1\Model1Outputs.cpp">
+      <Filter>Source Files\Model1</Filter>
+    </ClCompile>
     <ClCompile Include="..\Src\Model1\Model1Tilemap.cpp">
       <Filter>Source Files\Model1</Filter>
     </ClCompile>
@@ -321,6 +324,9 @@
       <Filter>Source Files\Model2</Filter>
     </ClCompile>
     <ClCompile Include="..\Src\Model2\Model2DriveBoard.cpp">
+      <Filter>Source Files\Model2</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Src\Model2\Model2Outputs.cpp">
       <Filter>Source Files\Model2</Filter>
     </ClCompile>
     <ClCompile Include="..\Src\Model2\Model2WideScreen.cpp">
@@ -781,6 +787,9 @@
     <ClInclude Include="..\Src\Model1\Model1Geometrizer.h">
       <Filter>Header Files\Model1</Filter>
     </ClInclude>
+    <ClInclude Include="..\Src\Model1\Model1Outputs.h">
+      <Filter>Header Files\Model1</Filter>
+    </ClInclude>
     <ClInclude Include="..\Src\Model1\Model1Geometry.h">
       <Filter>Header Files\Model1</Filter>
     </ClInclude>
@@ -857,6 +866,9 @@
       <Filter>Header Files\Model2</Filter>
     </ClInclude>
     <ClInclude Include="..\Src\Model2\Model2DriveBoard.h">
+      <Filter>Header Files\Model2</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Src\Model2\Model2Outputs.h">
       <Filter>Header Files\Model2</Filter>
     </ClInclude>
     <ClInclude Include="..\Src\Model2\Model2WideScreen.h">

@@ -71,6 +71,7 @@
 #include "Model2/Model2Comm.h"
 #include "Model2/Sega315_5838.h"
 #include "Model2/Model2DriveBoard.h"
+#include "Model2/Model2Outputs.h"
 #include "Model2/Model2WideScreen.h"
 #include "Model3/DriveBoard/WheelBoard.h"
 #include "Model3/BillBoard.h"
@@ -388,6 +389,7 @@ private:
   std::unique_ptr<CDriveBoard> m_wheelBoard;
   std::vector<uint8_t> m_wheelBoardROM;
   bool      m_driveOutputs = false;                      // the game has a drive board: its commands go to the outputs
+  CGameStateOutputs m_stateOutputs{ FindModel2RAMOutputs };  // the credits, ammo... the game keeps in RAM (Model2Outputs.cpp)
   // Versus City billboard (Last Bronx): commands on port E, as Model 3's
   std::unique_ptr<CBillBoard> m_billBoard;
   std::vector<uint8_t> m_billBoardROM;

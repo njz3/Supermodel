@@ -35,6 +35,8 @@
 #include "Main.h"
 #include "Version.h"
 #include "OSD/Outputs.h"
+#include "Model1/Model1Outputs.h"
+#include "Model2/Model2Outputs.h"
 #include "Graphics/AspectRatio.h"
 #include "Inputs/Inputs.h"
 #include "Inputs/Input.h"
@@ -515,8 +517,9 @@ namespace GameMenu
       std::string name, type, meaning, value;
     };
 
-    // The lamps each game lights on its lamp port (CModel3::WriteInputs, register 0x14), bit 0 first, as seen in its
-    // attract mode and in a race with each view button pressed in turn; nullptr: that bit never lit. A lamp's use is
+    // The lamps each game lights on its lamp port (CModel3::WriteInputs, register 0x14; Model 2's I/O port F; Model 1's
+    // I/O board byte 0F), bit 0 first, as seen in its attract mode and in a race with each view button pressed in turn
+    // (the gun games: with each gun fired); nullptr: that bit never lit. A lamp's use is
     // given only where it is known (the start lamp blinks with "press start", Daytona USA 2's VR buttons light their
     // own); the others say where they lit. The games not listed were not checked: no lamp is shown for them
     struct GameLamps
@@ -538,6 +541,13 @@ namespace GameMenu
       { "dirtdvls", { nullptr, nullptr, kStart, kInRace, nullptr, nullptr, nullptr, nullptr } },
       { "eca",      { nullptr, nullptr, kStart, kInRace, kInRace, kInRace, kInRace, "Lamp" } },
       { "harley",   { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, "Lamp, lit in the attract mode and the race" } },
+      // Model 1 (Model1Outputs.cpp)
+      { "vr",       { nullptr, nullptr, nullptr, "VR1 view button lamp", "VR2 view button lamp", "VR3 view button lamp", "VR4 view button lamp", kInAttract } },
+      { "vf",       { nullptr, nullptr, "Player 1 start button lamp", "Player 2 start button lamp", nullptr, nullptr, nullptr, nullptr } },
+      { "swa",      { nullptr, nullptr, kStart, nullptr, nullptr, nullptr, "Lamp, lit in the game", nullptr } },
+      // Model 2 gun games: the guns' motors (Model2Outputs.cpp)
+      { "gunblade", { nullptr, nullptr, nullptr, "Player 2 start button lamp", "Player 1 gun motor (on while it fires)", "Player 2 gun motor (on while it fires)", nullptr, nullptr } },
+      { "bel",      { nullptr, nullptr, nullptr, nullptr, "Player 1 gun motor (on while it fires)", "Player 2 gun motor (on while it fires)", nullptr, nullptr } },
     };
 
     // The lamp port's bits sent as outputs of their own
@@ -588,6 +598,27 @@ namespace GameMenu
         if (lamps->bits[bit])
           lines.push_back({ COutputs::GetOutputName(kLampOutputs[bit]), "0 or 1",
                             std::string(lamps->bits[bit]) + " (bit " + std::to_string(bit) + ")", value(kLampOutputs[bit]) });
+      }
+    }
+
+    // The game state the Model 1 and Model 2 games keep in RAM: credits, the gun games' ammo and life, and what is made
+    // from them (Model2Outputs.cpp)
+    const GameRAMOutputs *state = FindModel2RAMOutputs(game.name);
+    if (!state)
+      state = FindModel1RAMOutputs(game.name);
+    if (state)
+    {
+      for (const GameRAMValue *v = state->values; v->output != OutputUnknown; v++)
+        lines.push_back({ COutputs::GetOutputName(v->output), "number, 0 to 255", v->meaning, value(v->output) });
+      if (const char *recoil = RecoilMeaning(*state))
+      {
+        lines.push_back({ "P1_CtmRecoil", "0 or 1", std::string("Player 1's gun: ") + recoil, value(OutputP1CtmRecoil) });
+        lines.push_back({ "P2_CtmRecoil", "0 or 1", std::string("Player 2's gun: ") + recoil, value(OutputP2CtmRecoil) });
+      }
+      if (const char *damaged = DamagedMeaning(*state))
+      {
+        lines.push_back({ "P1_Damaged", "0 or 1", std::string("Player 1: ") + damaged, value(OutputP1Damaged) });
+        lines.push_back({ "P2_Damaged", "0 or 1", std::string("Player 2: ") + damaged, value(OutputP2Damaged) });
       }
     }
 

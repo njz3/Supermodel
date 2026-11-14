@@ -44,7 +44,16 @@ const char *COutputs::s_outputNames[] =
 		"BillDigit4",
 		"BillDigit5",
 		"m3ffb",
-		"m2ffb"
+		"m2ffb",
+		"Credits",
+		"P1_Ammo",
+		"P2_Ammo",
+		"P1_Life",
+		"P2_Life",
+		"P1_CtmRecoil",
+		"P2_CtmRecoil",
+		"P1_Damaged",
+		"P2_Damaged"
 	};
 
 const char *COutputs::GetOutputName(EOutputs output)

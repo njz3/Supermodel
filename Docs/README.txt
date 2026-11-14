@@ -1516,6 +1516,10 @@ not.  All options are case sensitive.
                                           An axis goes the trigonometric
                                           way, as a real wheel: +1 fully
                                           left (or up), -1 fully right.
+                                          A light gun's trigger is
+                                          AutoTrigger (AutoTrigger2), 0 or
+                                          1 (its Trigger switch is read
+                                          before the inputs held).
                       setraw INPUT VALUE  The same with the raw value.
                       get INPUT           The raw value the game reads now.
                       release INPUT|all   Gives the input back to its device.
@@ -2184,6 +2188,30 @@ All settings are case sensitive.
                     See OutputsWithLF, OutputsTCPPort and
                     OutputsUDPBroadcastPort settings when using 'net' option.
                     Can only be set in the 'Global' section.
+
+                    What is sent: the cabinet lamps (LampStart, LampView1-4,
+                    LampLeader, and RawLamps, the lamp port's byte; Model 1's
+                    games write theirs to the I/O board, Virtua Racing's VR1-4
+                    buttons light LampView1-4), the drive board's commands
+                    (RawDrive), and for some Model 1 and Model 2 games what
+                    they keep in RAM, read once a frame:
+                      - Credits       the credits the game shows (most
+                                      racing games start at the first credit
+                                      and send none).
+                      - P1_Ammo, P2_Ammo   the bullets left in the gun
+                                      (Virtua Cop, Virtua Cop 2, The House
+                                      of the Dead).
+                      - P1_Life, P2_Life   the lives left, or Rail Chase 2's
+                                      life bar (208 when full).
+                      - P1_CtmRecoil, P2_CtmRecoil   1 while the gun fires:
+                                      3 frames at each shot (the ammo
+                                      dropping), or the gun's motor the game
+                                      drives (Gunblade NY, Behind Enemy
+                                      Lines).
+                      - P1_Damaged, P2_Damaged   1 for 10 frames when the
+                                      player is hit (the life dropping).
+                    The in-game menu's 'Outputs and network' page lists what
+                    the running game sends, with each meaning.
 
     ----------------
 

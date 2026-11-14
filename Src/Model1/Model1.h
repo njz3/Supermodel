@@ -57,6 +57,7 @@
 #include "Model1/Model1Tilemap.h"
 #include "Model1/I8251.h"
 #include "Model2/Model2DriveBoard.h"
+#include "Model1/Model1Outputs.h"
 #include "Graphics/Model1Render.h"
 #include "Game.h"
 #include "Util/NewConfig.h"
@@ -193,6 +194,7 @@ private:
   std::unique_ptr<CDriveBoard> m_wheelBoard;
   std::vector<uint8_t>  m_wheelBoardROM;
   bool                  m_driveOutputs = false;   // the game has a drive board: its commands go to the outputs
+  CGameStateOutputs     m_stateOutputs{ FindModel1RAMOutputs };  // the credits... the game keeps in RAM (Model1Outputs.cpp)
   std::vector<uint8_t>  m_dsbProgram;     // its Z80 program and MPEG data (the board keeps pointers)
   std::vector<uint8_t>  m_dsbMPEG;
   CModel1Render         *m_render = nullptr;

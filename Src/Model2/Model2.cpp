@@ -1025,6 +1025,7 @@ void CModel2::IOWrite(unsigned offset, uint8_t data)
       m_outputs->SetValue(OutputLampView4, !!(data & 0x40));
       m_outputs->SetValue(OutputLampLeader, !!(data & 0x80));
       m_outputs->SetValue(OutputRawLamps, data);
+      m_stateOutputs.Lamps(m_game, m_outputs, data);   // the guns' motors of some games
     }
     break;
   case 0x08:
@@ -2696,6 +2697,7 @@ void CModel2::RunFrame(void)
     m_wheelBoard->RunFrame();
   if (m_billBoard)
     m_billBoard->RunFrame();
+  m_stateOutputs.Update(m_game, m_outputs, [this](uint32_t addr) { return Read8(addr); });
 
   BuildVideoFrame();
   m_frameNumber++;
