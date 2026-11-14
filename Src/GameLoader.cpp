@@ -1246,7 +1246,8 @@ bool GameLoader::Load(Game *game, ROMSet *rom_set, const std::string &zipfilenam
 }
 
 // The files of the game's optional regions (drive boards' programs, which MAME's sets lack) not in the zip archives:
-// looked for as loose files in the folder of the zip, by name, checked by their CRC32. MAME's zips need not be changed
+// looked for as loose files in the folder of the zip, by their CRC32 whatever their names (epr-18261.bin or .ic9), or
+// by name for a file Games.xml gives no CRC32 for. MAME's zips need not be changed
 void GameLoader::AddLooseFiles(ZipArchive *zip, const std::string &game_name, const std::string &folder) const
 {
   auto it = m_game_info_by_game.find(game_name);
@@ -1256,6 +1257,41 @@ void GameLoader::AddLooseFiles(ZipArchive *zip, const std::string &game_name, co
   auto regions = by_game.find(game_name);
   if (regions == by_game.end())
     return;
+
+  // The folder's loose files (not archives, at most 4 MB), their CRC32 worked out once, when one is needed
+  struct Loose
+  {
+    std::string path;
+    std::string name;   // lower case
+    uint32_t crc = 0;
+    std::vector<char> data;
+  };
+  std::vector<Loose> loose;
+  bool scanned = false;
+  auto scan = [&]()
+  {
+    if (scanned)
+      return;
+    scanned = true;
+    std::error_code ec;
+    for (std::filesystem::directory_iterator d(folder.empty() ? "." : folder, ec), end; !ec && d != end; d.increment(ec))
+    {
+      if (!d->is_regular_file(ec) || d->file_size(ec) > 4 * 1024 * 1024)
+        continue;
+      std::string name = Util::ToLower(d->path().filename().string());
+      std::string ext = Util::ToLower(d->path().extension().string());
+      if (ext == ".zip" || ext == ".7z" || ext == ".ini" || ext == ".txt" || ext == ".xml")
+        continue;
+      std::ifstream in(d->path(), std::ios::binary);
+      Loose l;
+      l.path = d->path().string();
+      l.name = name;
+      l.data.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+      l.crc = uint32_t(crc32(0, reinterpret_cast<const Bytef *>(l.data.data()), uInt(l.data.size())));
+      loose.push_back(std::move(l));
+    }
+  };
+
   for (auto &v: regions->second)
   {
     if (v.second->required)
@@ -1264,26 +1300,26 @@ void GameLoader::AddLooseFiles(ZipArchive *zip, const std::string &game_name, co
     {
       if (FileExistsInZipArchive(file, *zip))
         continue;
-      std::string path = folder + file->filename;
-      std::error_code ec;
-      if (!std::filesystem::is_regular_file(path, ec))
-        continue;
-      std::ifstream in(path, std::ios::binary);
-      std::vector<char> data((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-      uint32_t crc = uint32_t(crc32(0, reinterpret_cast<const Bytef *>(data.data()), uInt(data.size())));
-      if (file->has_crc32 && crc != file->crc32)
+      scan();
+      const Loose *found = nullptr;
+      for (const Loose &l: loose)
       {
-        ErrorLog("'%s' is not the expected file (CRC32 0x%08x, not 0x%08x): not used.", path.c_str(), crc, file->crc32);
-        continue;
+        if (file->has_crc32 ? l.crc == file->crc32 : l.name == file->filename)
+        {
+          found = &l;
+          break;
+        }
       }
-      ZippedFile &zipped = zip->files_by_crc[crc];
+      if (!found)
+        continue;
+      ZippedFile &zipped = zip->files_by_crc[found->crc];
       zipped.zf = nullptr;
-      zipped.zipfilename = path;
+      zipped.zipfilename = found->path;
       zipped.filename = file->filename;
-      zipped.uncompressed_size = uint32_t(data.size());
-      zipped.crc32 = crc;
-      zipped.loose_path = path;
-      InfoLog("'%s' read from the file beside the ROM set, '%s'.", file->filename.c_str(), path.c_str());
+      zipped.uncompressed_size = uint32_t(found->data.size());
+      zipped.crc32 = found->crc;
+      zipped.loose_path = found->path;
+      InfoLog("'%s' read from the file beside the ROM set, '%s'.", file->filename.c_str(), found->path.c_str());
     }
   }
 }
