@@ -465,7 +465,7 @@ void CDriveBoard::Reset()
     m_z80CTC.Reset();
 
     // Configure options (cannot be done in Init() because command line settings weren't yet parsed)
-    SetForceFeedbackStrength(m_config["ForceFeedbackStrength"].ValueAsDefault<unsigned>(5));
+    SetForceFeedbackStrength(m_config["ForceFeedbackStrength"].ValueAsDefault<unsigned>(1));
 
     // Enable only if attached -- **this is the only place this flag should ever be cleared**
     if (m_attached)

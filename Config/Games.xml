@@ -367,6 +367,7 @@
     </identity>
     <hardware>
       <platform>Sega Model 1</platform>
+      <drive_board>Wheel</drive_board>
       <inputs>
         <input type="common" />
         <input type="vehicle" />
@@ -439,6 +440,10 @@
         <file offset="0xC00000" name="mpr-14896.32" crc32="0x382091DC" />
         <file offset="0xC00002" name="mpr-14897.33" crc32="0x74873195" />
       </region>
+      <!-- EPR-15111, the drive board's program: in no MAME set (BackForceFeeder's docs have it) -->
+      <region name="driveboard_program" stride="1" chunk_size="1" required="false">
+        <file offset="0" name="epr-15111.12.bin" crc32="0x45C02763" />
+      </region>
     </roms>
   </game>
 
@@ -453,6 +458,7 @@
     </identity>
     <hardware>
       <platform>Sega Model 1</platform>
+      <drive_board>Wheel</drive_board>
       <inputs>
         <input type="common" />
         <input type="vehicle" />

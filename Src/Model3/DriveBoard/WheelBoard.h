@@ -171,6 +171,18 @@ public:
 
   void ResendForceFeedback(void);
 
+  /*
+   * SimulateWithoutROM(crc):
+   *
+   * The board's program is known (its CRC32) but its ROM is missing: it is
+   * simulated, whatever SimulateDriveBoard says. Only EPR-18261 for now (the
+   * Model 2 Indy 500 boards: MAME's sets lack it but for stcc). Call before
+   * Reset(); Init() still needs a ROM buffer (0x10000 bytes, any content).
+   */
+  void SimulateWithoutROM(uint32_t crc);
+
+  static constexpr uint32_t EPR18261_CRC32 = 0x0C7FAC58;
+
 protected:
   void Disable(void);
 
@@ -194,6 +206,7 @@ private:
   UINT8 m_uncenterVal2;   // Vibration, second byte: sub-registers FC 2 (low nibble) and 3 (high nibble)
 
   bool m_twoPowerOutputs; // EPR-18261: ports 2A and 2E are two motor powers, not a servo board register and value
+  uint32_t m_romlessCrc;  // SimulateWithoutROM: the program simulated, its ROM missing; 0 the ROM is there
   UINT8 m_servoGain;      // Servo board torque gain (register FB), 0-127
 
   // What the board asks for, sent to the wheel once a frame

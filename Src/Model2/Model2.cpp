@@ -3250,15 +3250,37 @@ Result CModel2::Init(const Game &game, const ROMSet &rom_set)
   if (game.driveboard_type == Game::DRIVE_BOARD_WHEEL && m_config["ForceFeedback"].ValueAsDefault<bool>(false))
   {
     ROM rom = rom_set.get_rom("driveboard_program");
-    if (rom.size)
+    // 2B/2C (Indy 500, Touring Car, Over Rev, Super GT 24h): EPR-18261, Model 3's board (Le Mans 24 has the same
+    // program), simulated when the ROM is missing (MAME's sets have it for stcc only)
+    bool epr18261 = m_model2b || m_model2c;
+    // Daytona USA's and Sega Rally's programs, simulated too without their ROM
+    const std::string &family = game.parent.empty() ? game.name : game.parent;
+    uint32_t clutchProgram = family == "daytona" ? EPR16488A_CRC32 : family == "srallyc" ? EPR17891_CRC32 : 0;
+    if (rom.size || epr18261 || clutchProgram)
     {
       m_wheelBoardROM.assign(0x10000, 0xFF);
-      rom.CopyTo(m_wheelBoardROM.data(), m_wheelBoardROM.size());
-      // 2B/2C (Indy 500, Touring Car, Over Rev, Super GT 24h): EPR-18261
-      if (m_model2b || m_model2c)
-        m_wheelBoard = std::make_unique<CModel2DirectDriveBoard>(m_config);
+      if (rom.size)
+        rom.CopyTo(m_wheelBoardROM.data(), m_wheelBoardROM.size());
+      if (epr18261)
+      {
+        auto board = std::make_unique<CWheelBoard>(m_config);
+        if (!rom.size)
+        {
+          board->SimulateWithoutROM(CWheelBoard::EPR18261_CRC32);
+          InfoLog("Drive board ROM (EPR-18261) missing: its program is simulated.");
+        }
+        m_wheelBoard = std::move(board);
+      }
       else
-        m_wheelBoard = std::make_unique<CModel2DriveBoard>(m_config);
+      {
+        auto board = std::make_unique<CModel2DriveBoard>(m_config);
+        if (!rom.size)
+        {
+          board->SimulateWithoutROM(clutchProgram);
+          InfoLog("Drive board ROM (%s) missing: its program is simulated.", family == "daytona" ? "EPR-16488A" : "EPR-17891");
+        }
+        m_wheelBoard = std::move(board);
+      }
       if (m_wheelBoard->Init(m_wheelBoardROM.data()) != Result::OKAY)
         m_wheelBoard.reset();
       else

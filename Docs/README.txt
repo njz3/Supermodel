@@ -677,7 +677,25 @@ Force feedback is presently supported in 'Scud Race' (including 'Scud Race
 Plus'), 'Daytona USA 2' (both editions), and 'Sega Rally 2' on Windows only. To
 enable it, use the '-force-feedback' option.
 
-Drive board ROMs are required.  They first appear in the MAME 0.143u6 ROM
+The Model 1 and Model 2 racing games have it too, from their drive boards'
+programs, emulated or simulated (the same program's logic, interrupt by
+interrupt; from sm2-emu's boards and BackForceFeeder's annotated EPROM
+listings): Virtua Racing and Virtua Formula (EPR-15111, in no MAME set: else
+simulated), Daytona USA (EPR-16488A), Sega Rally Championship (EPR-17891), Indy
+500, Sega Touring Car Championship, Over Rev and Super GT 24h (EPR-18261, the
+same board as Le Mans 24's on Model 3; MAME's sets have it for stcc only).  The
+Daytona USA and Sega Rally boards calibrate at power-up by driving the wheel
+one way then the other (8 to 85 seconds): a force feedback wheel that cannot
+move then (held, or not playing the effects) makes the board give up, and no
+force comes until the game is reset.  Virtua Racing's board is set (DIP switch
+4 ON) not to calibrate.  Virtua Racing sends its board nothing with CABINET TYPE
+STANDARD (TEST, GAME SYSTEM): a blank NVRAM in Supermodel gets the game's own
+factory settings, which are not STANDARD, so nothing needs changing.
+
+Drive board ROMs are optional: without one, the game runs without its drive
+board, or for the Model 1 and Model 2 programs with the board simulated (see
+'-simulate-driveboard').  They can be in the game's ZIP file or beside it in the
+ROM folder (see 'Running Games').  They first appear in the MAME 0.143u6 ROM
 catalog and at the time of this writing, have not yet widely proliferated.
 
     Game            Drive Board ROM File    Size        Checksum (CRC32)
@@ -1665,10 +1683,20 @@ not.  All options are case sensitive.
                         EPR-20985   Daytona USA 2
                         EPR-20512   Sega Rally 2
                         EPR-18261   Le Mans 24 (CABINET TYPE TWIN-NORMAL),
-                                    the Model 2 drive board of Indy 500
+                                    the Model 2 drive board of Indy 500,
+                                    Sega Touring Car Championship, Over Rev
+                                    and Super GT 24h
                         EPR-21119   Star Wars Trilogy (joystick)
+                        EPR-16488A  Daytona USA (Model 2)
+                        EPR-17891   Sega Rally Championship (Model 2)
+                        EPR-15111   Virtua Racing (Model 1)
 
-                    The billboard is still emulated.  The drive board's ROM is needed either way.  A
+                    The billboard is still emulated.  The Model 3 programs
+                    read their tables from the drive board's ROM, which they
+                    need either way.  The Model 1 and Model 2 programs do not:
+                    without the ROM (MAME's sets have none of them but stcc's
+                    EPR-18261; Virtua Racing's EPR-15111 is in no MAME set),
+                    they are simulated whatever this option says.  A
                     save state keeps the mode it was made in; a save state of
                     an emulated drive board loads in the simulated mode too.
 
@@ -1999,6 +2027,36 @@ All settings are case sensitive.
                     (the default behavior).  Equivalent to the
                     '-simulate-driveboard' and '-emulate-driveboard' command
                     line options.
+
+    ----------------
+
+    Name:           ForceFeedbackStrength
+
+    Argument:       Integer, 1 to 8 (1 by default).
+
+    Description:    The drive board's strength DIP switches, as an operator
+                    sets them on a cabinet: 1 all OFF, as the boards leave the
+                    factory (and as sm2-emu has them), 8 the most.  Each
+                    board's program adds them to every force it works out
+                    (Model 3's servo boards' programs: bits 2-4 of DIP 1;
+                    EPR-18261: 0 to 7; Daytona USA and Virtua Racing: 0 to 28
+                    of 63; Sega Rally: 0 to 7).  Read when the board starts.
+                    It was 5 by default before November 2026.  Set in the
+                    settings menu's Force feedback page.
+
+    ----------------
+
+    Name:           PanelSpring
+
+    Argument:       Integer, 0 to 100 (percent; 20 by default).
+
+    Description:    The light centring spring of the Daytona USA, Sega Rally
+                    and Virtua Racing panels, whose drive boards drive the
+                    wheel through a clutch and make up for that spring: in
+                    percent of Sega Rally's strongest torque, played as a
+                    centring effect while the board is running.  The other
+                    panels have none.  Set in the settings menu's Force
+                    feedback page (sm2-emu's wheel_panel_spring).
 
     ----------------
 

@@ -71,6 +71,7 @@
 #include "Model2/Model2Comm.h"
 #include "Model2/Sega315_5838.h"
 #include "Model2/Model2DriveBoard.h"
+#include "Model3/DriveBoard/WheelBoard.h"
 #include "Model3/BillBoard.h"
 #include "Model3/Crypto.h"
 #include "Model1/I8251.h"
@@ -91,6 +92,9 @@ class CDSB;
 class CModel2: public IEmulator, public II960Bus, public IMB86233Bus, public ISHARCBus, public IMB86235Bus
 {
 public:
+  // The racing games' wheel drive board, if any (its effects sent again when the force feedback settings change)
+  CDriveBoard *GetDriveBoard(void) { return m_wheelBoard.get(); }
+
   // IEmulator
   void SaveState(CBlockFile *SaveState) override;
   void LoadState(CBlockFile *SaveState) override;
@@ -368,8 +372,8 @@ private:
   uint8_t   m_lightgunMux = 0;                           // MAME's m_lightgun_mux (serial channel 2)
   // The racing games' wheel drive board (force feedback), when its ROM is
   // there and force feedback is on: Daytona's and Sega Rally's
-  // (CModel2DriveBoard), or the 2B/2C games' EPR-18261 board
-  // (CModel2DirectDriveBoard). All answer on port D (Daytona: IN2)
+  // (CModel2DriveBoard), or the 2B/2C games' EPR-18261 board (Model 3's
+  // CWheelBoard, simulated without its ROM). All answer on port D (Daytona: IN2)
   std::unique_ptr<CDriveBoard> m_wheelBoard;
   std::vector<uint8_t> m_wheelBoardROM;
   bool      m_driveOutputs = false;                      // the game has a drive board: its commands go to the outputs

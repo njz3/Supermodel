@@ -40,8 +40,12 @@
 
 // EPR-18261, the program of the Model 2 Indy 500 drive board. Le Mans 24 uses it with its cabinet type STANDARD
 // (with the cabinet type LE MANS, it uses Scud Race's EPR-19338A). It drives a motor with two powers, one per way,
-// instead of the registers of a servo board, and reads the wheel on ADC channel 1
-static constexpr uint32_t EPR18261_CRC32 = 0x0C7FAC58;
+// instead of the registers of a servo board, and reads the wheel on ADC channel 1 (EPR18261_CRC32, WheelBoard.h)
+
+void CWheelBoard::SimulateWithoutROM(uint32_t crc)
+{
+  m_romlessCrc = crc;
+}
 
 Game::DriveBoardType CWheelBoard::GetType(void) const
 {
@@ -208,7 +212,8 @@ void CWheelBoard::Disable(void)
 void CWheelBoard::Reset(void)
 {
   // Before CDriveBoard::Reset(), which sets the strength DIP switches
-  m_twoPowerOutputs = crc32(0, m_rom, 0x10000) == EPR18261_CRC32;
+  uint32_t crc = m_romlessCrc != 0 ? m_romlessCrc : uint32_t(crc32(0, m_rom, 0x10000));
+  m_twoPowerOutputs = crc == EPR18261_CRC32;
 
   CDriveBoard::Reset();
 
@@ -242,8 +247,7 @@ void CWheelBoard::Reset(void)
 
   // SimulateDriveBoard: the program's logic instead of its Z80, for the programs simulated (EPR-18261 here, the
   // Model 3 ones in ServoProgramSim); the others are emulated
-  bool simulate = m_config["SimulateDriveBoard"].ValueAsDefault<bool>(false);
-  uint32_t crc = crc32(0, m_rom, 0x10000);
+  bool simulate = m_romlessCrc != 0 || m_config["SimulateDriveBoard"].ValueAsDefault<bool>(false);
   m_servoSim.reset();
   m_servoNmiAcc = 0;
   m_servoNextNmi = 1876648;
@@ -1246,6 +1250,7 @@ CWheelBoard::CWheelBoard(const Util::Config::Node &config)
   m_uncenterVal2 = 0;
 
   m_twoPowerOutputs = false;
+  m_romlessCrc = 0;
   m_servoGain = 0x7F;
   m_constForce = 0;
   m_vibrate = 0;

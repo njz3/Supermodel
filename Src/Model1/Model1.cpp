@@ -710,6 +710,8 @@ void CModel1::WriteWord(uint32_t addr, uint16_t data, uint16_t mask)
         if (m_logIO)
           DebugLog("DPRAM write %03X = %02X (PC=%06X)\n", (addr & 0xFFF) >> 1, data & 0xFF, m_v60.GetPPC());
         m_dpram[(addr & 0xFFF) >> 1] = (uint8_t) data;
+        if (((addr & 0xFFF) >> 1) == 0x11)
+          DriveCommand((uint8_t) data);
       }
     }
     else if (addr >= 0xC40000 && addr < 0xC40004)
@@ -805,6 +807,35 @@ void CModel1::CIOBus::Write16(UINT32 addr, UINT16 data)
 /******************************************************************************
  Inputs (I/O board simulation)
 ******************************************************************************/
+
+// The drive board command (Virtua Racing): dual port RAM byte 11, which the I/O
+// board puts out on its port E at every exchange while byte 12's bit 0 is
+// clear (the game sets it at boot for CABINET TYPE STANDARD, which has no
+// motor: port E is then an input). For the emulated board and for a client
+// driving a real one (m2ffb, as sm2-emu names Model 1's too)
+void CModel1::DriveCommand(uint8_t cmd)
+{
+  if (!m_driveOutputs || (m_dpram[0x12] & 1))
+    return;
+  if (m_wheelBoard)
+    m_wheelBoard->Write(cmd);
+  if (m_outputs)
+  {
+    m_outputs->SetValue(OutputRawDrive, cmd);
+    m_outputs->SetValue(OutputM2ffb, cmd);
+  }
+}
+
+// What the game reads on IN2 from its drive board: a real board's reply, from
+// the outputs' client (BackForceFeeder: m2ffb_rx), while that client is
+// connected; else the emulated board's; else the port as without one
+uint8_t CModel1::DriveBoardReply(uint8_t noWheelBoard)
+{
+  uint8_t reply;
+  if (m_driveOutputs && m_outputs && m_outputs->GetDriveBoardReply(reply))
+    return reply;
+  return m_wheelBoard ? m_wheelBoard->Read() : noWheelBoard;
+}
 
 // The I/O board BIOS copies the analog channels to dual port RAM 0-7 and the
 // three digital ports (active low) to 8-10
@@ -944,7 +975,7 @@ void CModel1::UpdateInputs(void)
     m_dpram[i] = an[i];
   m_dpram[8] = (uint8_t) ~in0;
   m_dpram[9] = (uint8_t) ~in1;
-  m_dpram[10] = (uint8_t) ~in2;
+  m_dpram[10] = DriveBoardReply((uint8_t) ~in2);   // the drive board answers on IN2 (Virtua Racing)
 
   // After a reset, the real board's Z80 BIOS takes a while before it reports
   // ready. Games depend on it: the first thing Virtua Fighter does after the
@@ -1305,6 +1336,8 @@ void CModel1::RunFrame(void)
 
   if (m_soundBoard)
     m_soundBoard->RunFrame();
+  if (m_wheelBoard)
+    m_wheelBoard->RunFrame();
 
   RenderFrame();
 }
@@ -1372,6 +1405,8 @@ void CModel1::Reset(void)
   m_tiles.Reset();
   if (m_soundBoard)
     m_soundBoard->Reset();
+  if (m_wheelBoard)
+    m_wheelBoard->Reset();
 
   DebugLog("Model 1 reset\n");
 }
@@ -1442,6 +1477,8 @@ void CModel1::SaveState(CBlockFile *SaveState)
   m_uart.SaveState(SaveState, "Model 1 UART");
   if (m_soundBoard)
     m_soundBoard->SaveState(SaveState);
+  if (m_wheelBoard)
+    m_wheelBoard->SaveState(SaveState);
 }
 
 void CModel1::LoadState(CBlockFile *SaveState)
@@ -1527,6 +1564,9 @@ void CModel1::LoadState(CBlockFile *SaveState)
   m_uart.LoadState(SaveState, "Model 1 UART");
   if (m_soundBoard)
     m_soundBoard->LoadState(SaveState);
+  // (a state made without the board leaves it running as it is)
+  if (m_wheelBoard && Result::OKAY == SaveState->FindBlock("DriveBoard.2"))
+    m_wheelBoard->LoadState(SaveState);
 }
 
 // NVRAM: RAM A (battery backed) and the dual port RAM area where the I/O
@@ -1742,6 +1782,34 @@ Result CModel1::Init(const Game &game, const ROMSet &rom_set)
       if (Result::OKAY != m_dsb->Init(m_dsbProgram.data(), m_dsbMPEG.data()))
         return Result::FAIL;
       m_soundBoard->AttachDSB(m_dsb.get());
+    }
+  }
+  // Virtua Racing's drive board (EPR-15111), if force feedback is on: its program emulated if its ROM is there (in no
+  // MAME set), else simulated
+  m_wheelBoard.reset();
+  m_driveOutputs = game.driveboard_type == Game::DRIVE_BOARD_WHEEL;
+  if (m_driveOutputs && m_config["ForceFeedback"].ValueAsDefault<bool>(false))
+  {
+    ROM rom = rom_set.get_rom("driveboard_program");
+    {
+      m_wheelBoardROM.assign(0x10000, 0xFF);
+      auto board = std::make_unique<CModel2DriveBoard>(m_config);
+      if (rom.size)
+        rom.CopyTo(m_wheelBoardROM.data(), m_wheelBoardROM.size());
+      else
+      {
+        board->SimulateWithoutROM(EPR15111_CRC32);
+        InfoLog("Drive board ROM (EPR-15111) missing: its program is simulated.");
+      }
+      m_wheelBoard = std::move(board);
+      if (m_wheelBoard->Init(m_wheelBoardROM.data()) != Result::OKAY)
+        m_wheelBoard.reset();
+      else
+      {
+        m_wheelBoard->AttachInputs(m_inputs, game.inputs);
+        if (m_outputs)
+          m_wheelBoard->AttachOutputs(m_outputs);
+      }
     }
   }
   m_uart.OnRxRdy = [this](bool) { SoundReady(); };

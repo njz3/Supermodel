@@ -56,6 +56,7 @@
 #include "Model1/Model1Geometrizer.h"
 #include "Model1/Model1Tilemap.h"
 #include "Model1/I8251.h"
+#include "Model2/Model2DriveBoard.h"
 #include "Graphics/Model1Render.h"
 #include "Game.h"
 #include "Util/NewConfig.h"
@@ -72,6 +73,9 @@ class CDSB;
 class CModel1: public IEmulator, public IBus, public IMB86233Bus
 {
 public:
+  // Virtua Racing's drive board, if any (its effects sent again after a pause or a settings change)
+  CDriveBoard *GetDriveBoard(void) { return m_wheelBoard.get(); }
+
   // IEmulator
   void SaveState(CBlockFile *SaveState) override;
   void LoadState(CBlockFile *SaveState) override;
@@ -161,6 +165,8 @@ private:
   void RunLine(void);
   void RunTimers(int v60Cycles);
   void UpdateInputs(void);
+  void DriveCommand(uint8_t cmd);
+  uint8_t DriveBoardReply(uint8_t noWheelBoard);
   void BuildVideoFrame(void);
   void CompareGeometry(const std::vector<Model1::CGeometry::PolyRecord> (&simulated)[2]);
 
@@ -182,6 +188,11 @@ private:
   CI8251                m_uart;
   std::unique_ptr<CModel1SoundBoard> m_soundBoard;
   std::unique_ptr<CDSB>   m_dsb;          // MPEG music board (Star Wars Arcade)
+  // Virtua Racing's drive board (EPR-15111, the board before Daytona's), when force feedback is on: on the I/O board's
+  // port E (dual port RAM byte 11) and D (byte 0A, IN2)
+  std::unique_ptr<CDriveBoard> m_wheelBoard;
+  std::vector<uint8_t>  m_wheelBoardROM;
+  bool                  m_driveOutputs = false;   // the game has a drive board: its commands go to the outputs
   std::vector<uint8_t>  m_dsbProgram;     // its Z80 program and MPEG data (the board keeps pointers)
   std::vector<uint8_t>  m_dsbMPEG;
   CModel1Render         *m_render = nullptr;
