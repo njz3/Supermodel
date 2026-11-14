@@ -230,6 +230,23 @@ Result CBlockFile::FindBlock(const std::string &name)
   return Result::FAIL;
 }
 
+bool CBlockFile::Complete(void)
+{
+  if (mode != 'r')
+    return false;
+  // The blocks must follow each other up to the end of the file exactly: a truncated file cuts its last one short
+  long int curPos = 0;
+  while (curPos < fileSize)
+  {
+    uint32_t block_length = 0;
+    fseek(fp, curPos, SEEK_SET);
+    if (fread(&block_length, sizeof(block_length), 1, fp) != 1 || block_length < 12 || block_length > uint32_t(fileSize - curPos))
+      return false;
+    curPos += block_length;
+  }
+  return curPos == fileSize;
+}
+
 Result CBlockFile::Create(const std::string &file, const std::string &headerName, const std::string &comment)
 {
   fp = fopen(file.c_str(), "wb");

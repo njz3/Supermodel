@@ -857,6 +857,13 @@ static bool LoadState(IEmulator *Emu, std::string file_path = std::string())
     return false;
   }
 
+  // For an agent, a truncated state is refused rather than loaded in part (its client would run a half-loaded game)
+  if (Agent::Enabled() && !SaveState.Complete())
+  {
+    ErrorLog("'%s' is truncated or not a save state file.", file_path.c_str());
+    return false;
+  }
+
   if (Result::OKAY != SaveState.FindBlock("Supermodel Save State"))
   {
     ErrorLog("'%s' does not appear to be a valid save state file.", file_path.c_str());
@@ -1476,8 +1483,12 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
   Emu->Reset();
 
   // Load initial save state if requested
-  if (!initialState.empty())
-    LoadState(Emu, initialState);
+  if (!initialState.empty() && !LoadState(Emu, initialState) && Agent::Enabled())
+  {
+    // An agent's client would otherwise run the game from power-on, unaware: stop before 'ready' (it reads EOF)
+    ErrorLog("Agent mode: the initial state '%s' could not be loaded.", initialState.c_str());
+    goto QuitError;
+  }
 
   // The racing games' telemetry (TelemetryPort, TelemetryForza; the agent's tel command)
   Telemetry::Service().Init(s_runtime_config, Emu, Agent::Enabled());

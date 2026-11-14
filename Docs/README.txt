@@ -1441,7 +1441,12 @@ not.  All options are case sensitive.
                     given.  Everything Supermodel prints goes to its
                     standard error; its standard output carries the protocol:
                     one command a line, one answer.  Once the game is loaded,
-                    Supermodel writes 'ready GAME WIDTH HEIGHT', then answers:
+                    Supermodel writes 'ready GAME WIDTH HEIGHT', then answers.
+                    A state given with '-load-state' that cannot be loaded
+                    (missing, truncated, another version's) stops Supermodel
+                    with exit code 1 before 'ready': the program reads the
+                    end of the output instead of a game run from power-on.
+                    The commands:
 
                       step [N]            Runs N frames (1 by default).
                                           Answer: 'ok FRAME' followed by the

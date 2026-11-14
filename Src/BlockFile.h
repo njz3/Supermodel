@@ -178,6 +178,15 @@ public:
   void NewBlock(const std::string &name, const std::string &comment);
 
   /*
+   * Complete():
+   *
+   * For a file opened for reading: whether its blocks follow each other up
+   * to its end exactly, false for a truncated file. Moves the file pointer
+   * (FindBlock() puts it back).
+   */
+  bool Complete(void);
+
+  /*
    * Create(file, headerName, comment):
    *
    * Opens a block file for writing and creates the header block. This  
