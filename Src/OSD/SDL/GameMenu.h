@@ -23,7 +23,8 @@
  * GameMenu.h
  *
  * The in-game menu (UIMenu, Tab by default), with the pages of linuxloader's
- * and windowsloader's: its Display page, the internal resolution, AspectRatio
+ * and windowsloader's, in windowsloader's order: Game, Controls, Display,
+ * Sound, Force feedback, Emulation, Outputs and network, About. Its Display page, the internal resolution, AspectRatio
  * and its companions, the display mode and the resolution, applied from the
  * next frame on; its Controls page, the devices, each with a page binding the
  * game's inputs to its own (as Flycast's), BackgroundInput and the force
@@ -58,8 +59,9 @@ namespace GameMenu
   enum class Action
   {
     None,
-    Save,           // into the settings file in use
-    SaveForGame     // into the game's own file (<game>.ini: a copy of the common file the first time)
+    Save,           // for all games: into the common file (Supermodel.ini), which this game's own file no longer overrides
+    SaveForGame,    // for this game alone: the settings that differ from the common ones, into <game>.ini
+    UseCommon       // this game's own file removed: the common settings from the next start
   };
 
   enum class Page
@@ -67,7 +69,11 @@ namespace GameMenu
     Display,
     Controls,
     Game,
-    Outputs
+    Outputs,        // with the network
+    Sound,
+    ForceFeedback,
+    Emulation,
+    About
   };
 
   // What the settings changed ask of the host (TakeChanges)
@@ -88,6 +94,8 @@ namespace GameMenu
   void SetOutputs(COutputs *outputs);
   // The inputs the Controls page binds (nullptr: none)
   void SetInputs(CInputs *inputs);
+  // The log file, shown by the About page
+  void SetLogFile(const std::string &path);
   // The size the renderers draw at now, shown by the Display page
   void SetRenderSize(unsigned width, unsigned height);
   // The outputs table, as linuxloader shows it: what the game sends on the outputs (the network's and the Windows
@@ -106,7 +114,7 @@ namespace GameMenu
   bool ProcessEvents();
 
   // Draws it over the frame, before the buffers are swapped, the inputs polled. The settings it changes are set in
-  // config
+  // config. settingsFile: the common file; gameFile: the game has its own (<game>.ini beside it)
   void Draw(Util::Config::Node &config, const std::string &title, const std::string &settingsFile, bool gameFile);
 
   unsigned TakeChanges();         // the Change flags of the settings changed since the last call

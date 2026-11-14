@@ -153,7 +153,11 @@ static std::string s_logFilePath = Util::Format() << FileSystemPath::GetPath(Fil
 // The settings file read: the common one above, or the game's own (<game>.ini beside it), which s_configFilePath then
 // names (with a write directory, there even when it was read from the usual place)
 static std::string s_settingsReadFrom;
-static bool s_gameSettingsFile = false;
+static bool s_gameSettingsFile = false;   // <game>.ini exists: this game's differences from the common settings
+static std::string s_gameSettingsPath;    // where it is written (beside the common file)
+// The settings without <game>.ini: the defaults, the common file, its section for the game, the command line (as text,
+// a copy: what this game's own file is compared with)
+static std::map<std::string, std::string> s_commonValues;
 // A write directory that cannot be written (ResolveWriteDirectory): why, logged once the log is open; the directory,
 // shown over the game when it starts; and the settings file read instead of its copy there, the usual one (empty: the
 // settings are read from s_configFilePath)
@@ -1186,6 +1190,49 @@ static void ApplyForceFeedbackSettings(CInputs *Inputs)
 }
 
 /*
+ * DriveBoardOf(Emu):
+ *
+ * The machine's drive board (Model 1 Virtua Racing, Model 2 racing games,
+ * Model 3), or null.
+ */
+static CDriveBoard *DriveBoardOf(IEmulator *Emu)
+{
+  if (CModel3 *model3 = dynamic_cast<CModel3 *>(Emu))
+    return model3->GetDriveBoard();
+  if (CModel2 *model2 = dynamic_cast<CModel2 *>(Emu))
+    return model2->GetDriveBoard();
+  if (CModel1 *model1 = dynamic_cast<CModel1 *>(Emu))
+    return model1->GetDriveBoard();
+  return nullptr;
+}
+
+/*
+ * StopForceFeedback(Inputs, game):
+ * PauseForceFeedback(Emu, Inputs, game, paused):
+ *
+ * The effects stopped on every input that plays them. Paused (the pause key,
+ * the in-game menu), the frames that would change them no longer run: a push
+ * would go on all the pause, so they stop; resumed, the drive board's are
+ * played again from scratch.
+ */
+static void StopForceFeedback(CInputs *Inputs, const Game &game)
+{
+  for (const std::shared_ptr<CInput> &input : Inputs->GetGameInputs(game))
+  {
+    if (input->HasForceFeedback())
+      input->SendForceFeedbackCmd({ FFStop, 0.0f });
+  }
+}
+
+static void PauseForceFeedback(IEmulator *Emu, CInputs *Inputs, const Game &game, bool paused)
+{
+  if (paused)
+    StopForceFeedback(Inputs, game);
+  else if (CDriveBoard *board = DriveBoardOf(Emu))
+    board->ResendForceFeedback();
+}
+
+/*
  * ApplyWindowSettings():
  *
  * The in-game menu changed FullScreen, BorderlessFullScreen, Stretch,
@@ -1223,7 +1270,8 @@ static Result ApplyWindowSettings()
 
 // Sets values in an INI file and keeps all the rest (comments, layout): each in the game's section when the key is
 // there, else in the global section, added after its last setting when missing
-static bool SetINIFileValues(const std::string &file, const std::string &game, const std::vector<std::pair<std::string, std::string>> &values)
+static bool SetINIFileValues(const std::string &file, const std::string &game, const std::vector<std::pair<std::string, std::string>> &values,
+                             const std::vector<std::string> &remove = {})
 {
   std::string text;
   {
@@ -1310,28 +1358,23 @@ static bool SetINIFileValues(const std::string &file, const std::string &game, c
     lines.insert(lines.begin() + at, { assignment, false, true, false });
   }
 
+  // The keys removed: from the global section and the game's
+  lines.erase(std::remove_if(lines.begin(), lines.end(), [&](const Line &line)
+  {
+    return !line.header && (line.global || line.game) && std::find(remove.begin(), remove.end(), keyOf(line.text)) != remove.end();
+  }), lines.end());
+
   std::ofstream out(file, std::ios::binary | std::ios::trunc);
   for (const Line &line : lines)
     out << line.text << newline;
   return bool(out);
 }
 
-// The in-game menu's Save buttons: its settings written into the settings file in use, or into the game's own file
-// (forGame), made the first time as a copy of the file read, so with all its other settings, and used from then on
+// The in-game menu's Save buttons (as hikaruloader's): for all games, its settings written into the common file
+// (Supermodel.ini), which this game's own file then no longer overrides; for this game alone (forGame), only those that
+// differ from the common settings, into <game>.ini beside it, a layer over the common file read after it
 static bool SaveMenuSettings(const std::string &game, bool forGame)
 {
-  std::error_code ec;
-  if (forGame && !s_gameSettingsFile)
-  {
-    s_configFilePath = FileSystemPath::GetWritePath(FileSystemPath::Config) + game + ".ini";
-    s_gameSettingsFile = true;
-  }
-
-  // Not there yet: first a copy of what was read (the common file, or with a write directory the usual place's)
-  if (!std::filesystem::exists(s_configFilePath, ec) && s_settingsReadFrom != s_configFilePath && std::filesystem::exists(s_settingsReadFrom, ec))
-    std::filesystem::copy_file(s_settingsReadFrom, s_configFilePath, ec);
-  s_settingsReadFrom = s_configFilePath;
-
   std::vector<std::pair<std::string, std::string>> values;
   auto boolean = [](const char *key) { return std::make_pair(std::string(key), std::string(s_runtime_config[key].ValueAs<bool>() ? "true" : "false")); };
   auto number = [](const char *key) { return std::make_pair(std::string(key), std::to_string(s_runtime_config[key].ValueAsDefault<unsigned>(0))); };
@@ -1354,6 +1397,17 @@ static bool SaveMenuSettings(const std::string &game, bool forGame)
   values.push_back(boolean("BackgroundInput"));
   values.push_back(boolean("ForceFeedback"));
   values.push_back(boolean("SimulateDriveBoard"));
+  values.push_back(number("PanelSpring"));
+  values.push_back(number("ForceFeedbackStrength"));
+  // The Sound, Emulation and network pages'
+  auto text = [](const char *key) { return std::make_pair(std::string(key), s_runtime_config[key].ValueAs<std::string>()); };
+  for (const char *key : { "SoundVolume", "MusicVolume", "NbSoundChannels", "PowerPCFrequency", "PortIn", "PortOut" })
+    values.push_back(number(key));
+  for (const char *key : { "FlipStereo", "EmulateSound", "EmulateDSB", "New3DEngine", "QuadRendering", "HighLevelGeometrizer",
+                           "MultiThreaded", "GPUMultiThreaded", "Network", "SimulateNet" })
+    values.push_back(boolean(key));
+  for (const char *key : { "BalanceLeftRight", "BalanceFrontRear", "AddressOut" })
+    values.push_back(text(key));
   values.emplace_back("ForceFeedbackDevice", s_runtime_config["ForceFeedbackDevice"].ValueAsDefault<std::string>(""));
   values.push_back(number("ForceFeedbackGain"));
   values.push_back(boolean("ForceFeedbackInvert"));
@@ -1370,12 +1424,82 @@ static bool SaveMenuSettings(const std::string &game, bool forGame)
     values.push_back(boolean("XInputStereoVibration"));
   for (const std::string &key : GameMenu::ChangedBindings())  // the Controls page's
     values.emplace_back(key, s_runtime_config[key].ValueAs<std::string>());
+
+  // A value as the common settings have it, read as the value saved is (a number, a boolean, text)
+  auto sameAsCommon = [](const std::string &key, const std::string &value)
+  {
+    auto common = s_commonValues.find(key);
+    if (common == s_commonValues.end())
+      return false;
+    const std::string &was = common->second;
+    if (was == value)
+      return true;
+    char *end1 = nullptr, *end2 = nullptr;
+    double a = strtod(was.c_str(), &end1), b = strtod(value.c_str(), &end2);
+    if (end1 != was.c_str() && *end1 == '\0' && end2 != value.c_str() && *end2 == '\0')
+      return a == b;
+    auto boolean = [](const std::string &v) { std::string l = Util::ToLower(v); return l == "true" || l == "1" ? 1 : l == "false" || l == "0" ? 0 : -1; };
+    return boolean(was) >= 0 && boolean(was) == boolean(value);
+  };
+
+  std::error_code ec;
+  if (forGame)
+  {
+    std::vector<std::pair<std::string, std::string>> differ;
+    std::vector<std::string> same;
+    for (const auto &[key, value] : values)
+    {
+      if (sameAsCommon(key, value))
+        same.push_back(key);
+      else
+        differ.emplace_back(key, value);
+    }
+    if (!std::filesystem::exists(s_gameSettingsPath, ec))
+      std::ofstream(s_gameSettingsPath, std::ios::binary) << "; " << game << "'s own settings: those that differ from Supermodel.ini's\r\n[ Global ]\r\n";
+    if (!SetINIFileValues(s_gameSettingsPath, game, differ, same))
+    {
+      ErrorLog("Unable to save the settings to '%s'.", s_gameSettingsPath.c_str());
+      return false;
+    }
+    s_gameSettingsFile = true;
+    InfoLog("Saved the in-game menu's settings that differ from the common ones (%u) to '%s'.", unsigned(differ.size()), s_gameSettingsPath.c_str());
+    return true;
+  }
+
   if (!SetINIFileValues(s_configFilePath, game, values))
   {
     ErrorLog("Unable to save the settings to '%s'.", s_configFilePath.c_str());
     return false;
   }
+  // The common settings now: this game's file no longer overrides them
+  std::vector<std::string> keys;
+  for (const auto &[key, value] : values)
+  {
+    s_commonValues[key] = value;
+    keys.push_back(key);
+  }
+  if (s_gameSettingsFile && std::filesystem::exists(s_gameSettingsPath, ec))
+    SetINIFileValues(s_gameSettingsPath, game, {}, keys);
   InfoLog("Saved the in-game menu's settings to '%s'.", s_configFilePath.c_str());
+  return true;
+}
+
+// The in-game menu's "Common settings" button: this game's own file removed, the common settings used from the next start
+static bool UseCommonSettings(void)
+{
+  std::error_code ec;
+  if (!std::filesystem::exists(s_gameSettingsPath, ec))
+  {
+    s_gameSettingsFile = false;
+    return true;
+  }
+  if (!std::filesystem::remove(s_gameSettingsPath, ec))
+  {
+    ErrorLog("Unable to remove '%s'.", s_gameSettingsPath.c_str());
+    return false;
+  }
+  s_gameSettingsFile = false;
+  InfoLog("Removed '%s': this game uses the common settings from the next start.", s_gameSettingsPath.c_str());
   return true;
 }
 
@@ -1415,6 +1539,7 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
   SDL_SetWindowTitle(s_window, baseTitleStr);
   s_gameTitle = baseTitleStr;
   GameMenu::SetGame(game, FileSystemPath::GetReadPath(FileSystemPath::Config, "GameNotes.txt"));
+  GameMenu::SetLogFile(s_logFilePath);
   GameMenu::SetInputs(Inputs);
   // A write directory that cannot be written, said over the game for 20 s too, in the words of Flycast's notification
   if (!s_writeDirUnusable.empty())
@@ -1529,8 +1654,10 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
           return Result::OKAY == InitRenderers(Emu, superAA, Render2D, Render3D, upscaleMode, false) ? "ok" : "err renderers";
         }
         if (verb == "save" || verb == "savegame")
-          return (SaveMenuSettings(game.name, verb == "savegame") ? "ok " : "err ") + s_configFilePath;
-        return "err menu open|close|set KEY VALUE|save|savegame";
+          return (SaveMenuSettings(game.name, verb == "savegame") ? "ok " : "err ") + (verb == "savegame" ? s_gameSettingsPath : s_configFilePath);
+        if (verb == "common")
+          return (UseCommonSettings() ? "ok " : "err ") + s_gameSettingsPath;
+        return "err menu open|close|set KEY VALUE|save|savegame|common";
       });
     quit = true;
   }
@@ -1629,22 +1756,23 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
         Inputs->GetInputSystem()->ApplySettings();
       if (changes & GameMenu::ChangeForceFeedback)
       {
-        // The effects stopped where they played, routed as now set, then the drive board's played again from scratch
-        for (const std::shared_ptr<CInput> &input : Inputs->GetGameInputs(game))
-        {
-          if (input->HasForceFeedback())
-            input->SendForceFeedbackCmd({ FFStop, 0.0f });
-        }
+        // The effects stopped where they played and routed as now set; the drive board's are played again from scratch
+        // when the game goes on (the menu pauses it)
+        StopForceFeedback(Inputs, game);
         ApplyForceFeedbackSettings(Inputs);
-        CModel3 *model3 = dynamic_cast<CModel3 *>(Emu);
-        if (model3 != nullptr && model3->GetDriveBoard() != nullptr)
-          model3->GetDriveBoard()->ResendForceFeedback();
       }
       GameMenu::Action action = GameMenu::TakeAction();
       if (action != GameMenu::Action::None)
       {
-        bool saved = SaveMenuSettings(game.name, action == GameMenu::Action::SaveForGame);
-        GameMenu::SetStatus((saved ? "Saved to " : "Unable to save to ") + s_configFilePath);
+        bool saved = action == GameMenu::Action::UseCommon ? UseCommonSettings() :
+                     SaveMenuSettings(game.name, action == GameMenu::Action::SaveForGame);
+        if (action == GameMenu::Action::UseCommon)
+          GameMenu::SetStatus(saved ? "This game's own settings removed: the common ones from the next start" : "Unable to remove " + s_gameSettingsPath);
+        else
+        {
+          const std::string &file = action == GameMenu::Action::SaveForGame ? s_gameSettingsPath : s_configFilePath;
+          GameMenu::SetStatus((saved ? "Saved to " : "Unable to save to ") + file);
+        }
       }
       if (GameMenu::CloseRequested() || (Inputs->uiMenu->Pressed() && !GameMenu::IsCapturing()))
       {
@@ -1656,6 +1784,7 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
           paused = false;
           Emu->ResumeThreads();
           SetAudioEnabled(true);
+          PauseForceFeedback(Emu, Inputs, game, false);
         }
       }
     }
@@ -1707,6 +1836,7 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
         SetAudioEnabled(true);
         SDL_SetWindowTitle(s_window, baseTitleStr);
       }
+      PauseForceFeedback(Emu, Inputs, game, paused);
 
       // Send paused value as output
       if (Outputs != NULL)
@@ -1808,6 +1938,7 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
           paused = true;
           Emu->PauseThreads();
           SetAudioEnabled(false);
+          PauseForceFeedback(Emu, Inputs, game, true);
         }
         Inputs->GetInputSystem()->SetPollConsumesEvents(false);
       }
@@ -2254,6 +2385,11 @@ Util::Config::Node DefaultConfig()
   config.Set("ForceFeedback", false, "ForceFeedback");
   // The drive board's program run by its Z80 (emulated), or its logic (simulated: EPR-18261 so far)
   config.Set("SimulateDriveBoard", false, "ForceFeedback");
+  // The light centring spring of the Daytona USA, Sega Rally and Virtua Racing panels (their boards drive a clutch), in
+  // % of Sega Rally's strongest torque; the other panels have none
+  config.Set("PanelSpring", 20u, "ForceFeedback", 0u, 100u);
+  // The drive boards' strength DIP switches, 1 (all OFF, as the boards leave the factory) to 8
+  config.Set("ForceFeedbackStrength", 1u, "ForceFeedback", 1u, 8u);
   // The joystick that plays the effects (a joystick's name; empty: the joysticks the inputs are bound to), their
   // strength in % and the constant force inverted. Set in the in-game menu's Controls page, or with --set
   // ForceFeedback.FFB_DEVICE, FFB_STRENGTH and FFB_INVERT (linuxloader's names); not shown by the launcher
@@ -3303,22 +3439,37 @@ int main(int argc, char **argv)
         return 1;
       FileSystemPath::SetGame(game.name);   // with a write directory, the folder of the game's files
 
-      // The game's own settings file (<game>.ini beside Supermodel.ini), read instead of the common one when it
-      // exists: a complete file, not a layer over it. Saved where the common one is (the write directory, if any)
+      Util::Config::MergeINISections(&config4, config3, fileConfig[game.name]);   // apply game-specific config
+
+      // The common settings, the command line's included (its values are not this game's own)
+      {
+        Util::Config::Node common("Global");
+        Util::Config::MergeINISections(&common, config4, cmd_line.config);
+        Agent::AdjustConfig(common);   // and the agent mode's (as below)
+        for (auto it = common.begin(); it != common.end(); ++it)
+        {
+          if (it->IsLeaf() && it->Exists())
+            s_commonValues[it->Key()] = it->ValueAs<std::string>();
+        }
+      }
+
+      // The game's own settings file (<game>.ini beside Supermodel.ini), as hikaruloader's: the settings that differ
+      // for this game, read over the common ones (an older complete copy of the common file works the same). Saved
+      // where the common one is (the write directory, if any)
       std::string gameSettings = FileSystemPath::GetReadPath(FileSystemPath::Config, game.name + ".ini");
+      s_gameSettingsPath = FileSystemPath::GetWritePath(FileSystemPath::Config) + game.name + ".ini";
       std::error_code ec;
       if (std::filesystem::exists(gameSettings, ec))
       {
-        fileConfig = Util::Config::Node("Global");
-        Util::Config::FromINIFile(&fileConfig, gameSettings);
-        Util::Config::MergeINISections(&fileConfigWithDefaults, DefaultConfig(), fileConfig);
-        Util::Config::MergeINISections(&config3, fileConfigWithDefaults, cmd_line.config);
+        Util::Config::Node gameConfig("Global"), layered("Global"), layeredGame("Global");
+        Util::Config::FromINIFile(&gameConfig, gameSettings);
+        Util::Config::MergeINISections(&layered, config4, gameConfig);
+        Util::Config::MergeINISections(&layeredGame, layered, gameConfig[game.name]);
+        config4 = layeredGame;
         s_settingsReadFrom = gameSettings;
-        s_configFilePath = FileSystemPath::GetWritePath(FileSystemPath::Config) + game.name + ".ini";
         s_gameSettingsFile = true;
-        InfoLog("Settings read from '%s', this game's own file.", gameSettings.c_str());
+        InfoLog("Settings read from '%s' over the common ones: this game's own.", gameSettings.c_str());
       }
-      Util::Config::MergeINISections(&config4, config3, fileConfig[game.name]);   // apply game-specific config
     }
     else
       config4 = config3;

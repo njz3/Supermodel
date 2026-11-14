@@ -59,10 +59,13 @@
  *                       AspectRatio other than ORIGINAL, the image in its
  *                       frame, and the in-game menu if shown. "ok" or "err".
  *   menu open|close     Shows the in-game menu over the next frames, or not.
- *   menu page display|controls|game|outputs  Shows that page of it. "ok".
+ *   menu page game|controls|display|sound|ffb|emulation|outputs|about
+ *                       Shows that page of it. "ok".
  *   menu set KEY VALUE  Changes one of its settings, applied from the next
  *                       frame on. "ok" or "err".
- *   menu save|savegame  Its Save buttons: "ok FILE" or "err FILE".
+ *   menu save|savegame|common  Its buttons: Save for all games, Save for this
+ *                       game alone (the settings that differ), Common settings
+ *                       (this game's file removed). "ok FILE" or "err FILE".
  *   save PATH           Saves a state. "ok" or "err".
  *   load PATH           Loads a state. "ok" or "err".
  *   ffb                 The force feedback commands sent since the last call,
@@ -730,12 +733,23 @@ namespace Agent
           GameMenu::Close();
           Reply("ok");
         }
-        else if (what == "page display" || what == "page controls" || what == "page game" || what == "page outputs")
+        else if (what.compare(0, 5, "page ") == 0)
         {
-          GameMenu::SelectPage(what == "page game" ? GameMenu::Page::Game :
-                               what == "page outputs" ? GameMenu::Page::Outputs :
-                               what == "page controls" ? GameMenu::Page::Controls : GameMenu::Page::Display);
-          Reply("ok");
+          static const std::pair<const char *, GameMenu::Page> kPages[] = {
+            { "game", GameMenu::Page::Game }, { "controls", GameMenu::Page::Controls },
+            { "display", GameMenu::Page::Display }, { "sound", GameMenu::Page::Sound },
+            { "ffb", GameMenu::Page::ForceFeedback }, { "emulation", GameMenu::Page::Emulation },
+            { "outputs", GameMenu::Page::Outputs }, { "about", GameMenu::Page::About } };
+          bool found = false;
+          for (const auto &[name, page] : kPages)
+          {
+            if (what.substr(5) == name)
+            {
+              GameMenu::SelectPage(page);
+              found = true;
+            }
+          }
+          Reply(found ? "ok" : "err unknown page");
         }
         else
           Reply("%s", menu(what).c_str());

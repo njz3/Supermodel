@@ -300,8 +300,13 @@ the image at its proportions, the top and bottom curved onto the edges:
 During a game, the settings menu (Tab) changes these settings, applied at once,
 and saves them in the settings file in use, or with 'Save for this game' in the
 game's own settings file (see 'The Configuration File').  The game is paused
-while the menu is open; Escape or Tab closes it.  Its pages follow those of the
-other emulators of the cabinets' front-end (linuxloader, windowsloader).
+while the menu is open, and the wheel's force feedback stops until it closes (as
+with the pause key); Escape or Tab closes it.  Its pages follow those of the
+other emulators of the cabinets' front-end (linuxloader, windowsloader,
+hikaruloader), in windowsloader's order: Game, Controls, Display, Sound, Force
+feedback, Emulation, Outputs and network, About.  The pages scroll above the
+Save buttons, which stay in view.  A setting read only when a game starts says
+"Takes effect at the next start." under it.
 
 Its 'Display' page also has the internal resolution: the size the image is drawn
 at, fitted at its shape, then scaled into the frame (InternalWidth and
@@ -322,14 +327,24 @@ stays.  'Reset...' sets the device's bindings back to Supermodel's defaults.
 The page also has the BackgroundInput setting.  The bindings are saved with the
 other settings, as 'Input...' lines.
 
-Its force feedback part has the ForceFeedback and SimulateDriveBoard settings
+Its 'Force feedback' page has the ForceFeedback and SimulateDriveBoard settings
 (from the next start), the device that plays the effects (ForceFeedbackDevice:
 automatic, the joysticks the steering is bound to, or one of the joysticks with
 force feedback, e.g., a Microsoft wheel playing them while the steering is read
 from vJoy), their strength and direction (ForceFeedbackGain,
 ForceFeedbackInvert), what the game asks now (constant force, spring, friction,
 damper, vibration) and the limits per effect of the input system in use.  These
-apply at once: the effects stop where they played and start again as set.
+apply when the menu closes: the effects stop where they played and start again
+as set.  Its 'Drive board' part has the board's strength switches
+(ForceFeedbackStrength, from the next start) and PanelSpring.
+
+Its 'Sound' page has the sound and music volumes (SoundVolume, MusicVolume) and
+FlipStereo, applied at once, and, from the next start, the channels, the
+balances and whether the sound and music boards are emulated.  Its 'Emulation'
+page has, from the next start, Model 3's PowerPCFrequency, New3DEngine and
+QuadRendering, Model 1's and Model 2's HighLevelGeometrizer, MultiThreaded,
+GPUMultiThreaded and SimulateDriveBoard.  Its 'About' page gives the version,
+the licence, the libraries used and the log file.
 
 The menu's 'Game' page describes the game running (title, ROM set, hardware,
 drive and network boards) and shows its notes from Config/GameNotes.txt: how to
@@ -337,11 +352,13 @@ change the region, special modes, cabinet setup (see 'Game-Specific Comments and
 Tips').  The file is plain text, read each time the menu opens, and its format
 is explained at its top; Page Up and Page Down scroll long notes.
 
-Its 'Outputs' page lists what the game sends on the outputs (-outputs=net or
+Its 'Outputs and network' page lists what the game sends on the outputs (-outputs=net or
 win): each name, its type, its meaning and the last value sent, such as the
 cabinet lamps the game lights and its drive board's command bytes.  The same
 list, without values, is under the Outputs settings in the Misc tab of the
-configuration window (Supermodel started without arguments).
+configuration window (Supermodel started without arguments).  Below, the network
+board's settings (Network, SimulateNet, PortIn, PortOut, AddressOut), from the
+next start.
 
 By default, Supermodel limits the frame rate to 60 frames per second.  This has
 no impact on performance except when the frame rate exceeds 60 FPS on fast
@@ -2072,7 +2089,7 @@ All settings are case sensitive.
                     feedback.  Automatic, or that joystick not connected at
                     the start: the joysticks the steering (or the analog
                     joystick, the ski) is bound to.  Set in the settings
-                    menu's Controls page, or with --set
+                    menu's Force feedback page, or with --set
                     ForceFeedback.FFB_DEVICE.
 
     ----------------
@@ -2086,7 +2103,7 @@ All settings are case sensitive.
                     of what the game asks (the limits per effect, such as
                     DirectInputSelfCenterMax, apply after it), and the
                     constant force's direction inverted.  Set in the settings
-                    menu's Controls page, or with --set
+                    menu's Force feedback page, or with --set
                     ForceFeedback.FFB_STRENGTH and FFB_INVERT.
 
     ----------------

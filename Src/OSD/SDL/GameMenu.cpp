@@ -33,6 +33,7 @@
 #include "GameMenu.h"
 #include "Game.h"
 #include "Main.h"
+#include "Version.h"
 #include "OSD/Outputs.h"
 #include "Graphics/AspectRatio.h"
 #include "Inputs/Inputs.h"
@@ -72,13 +73,15 @@ namespace GameMenu
     Action s_action = Action::None;
     std::string s_status;
     int s_cursor = SDL_ENABLE;    // the mouse cursor's visibility before it opened
+    bool s_ownControllers = false;  // SDL's game controller subsystem started for the menu
     bool s_selectPage = false;
 
     // A notification over the game (Notify): shown for its time from its first frame
     std::string s_noticeTitle, s_noticeText;
     float s_noticeSeconds = 0.0f;
     Uint64 s_noticeStart = 0;     // SDL_GetTicks64() at its first frame, 0 before
-    Page s_page = Page::Display;
+    Page s_page = Page::Game;
+    std::string s_logFile;        // the About page's
 
     // The Display page
     struct Size
@@ -102,6 +105,7 @@ namespace GameMenu
     bool s_mappingOpen = false;
     bool s_mappingClose = false;                // Escape closes it
     bool s_capturing = false;
+    bool s_captureAdd = false;    // Add: the input read joins the device's ones instead of replacing them
     std::shared_ptr<CInput> s_captureInput;
     std::vector<std::string> s_changedBindings;
 
@@ -231,6 +235,11 @@ namespace GameMenu
     s_inputs = inputs;
   }
 
+  void SetLogFile(const std::string &path)
+  {
+    s_logFile = path;
+  }
+
   void SetRenderSize(unsigned width, unsigned height)
   {
     s_renderWidth = width;
@@ -301,7 +310,7 @@ namespace GameMenu
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO &io = ImGui::GetIO();
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_NavEnableGamepad;
     io.IniFilename = nullptr;
     io.Fonts->AddFontDefaultVector();
     if (!ImGui_ImplSDL2_InitForOpenGL(window, SDL_GL_GetCurrentContext()))
@@ -388,6 +397,11 @@ namespace GameMenu
 
     s_cursor = SDL_ShowCursor(SDL_QUERY);
     SDL_ShowCursor(SDL_ENABLE);
+    // A gamepad drives the menu as hikaruloader's (D-pad, A, B; LB and RB change page): SDL's game controllers, opened
+    // by ImGui's backend while the menu is open only (the input system may be DirectInput, which keeps the wheels)
+    if (SDL_WasInit(SDL_INIT_GAMECONTROLLER) == 0 && SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER) == 0)
+      s_ownControllers = true;
+    ImGui_ImplSDL2_SetGamepadMode(ImGui_ImplSDL2_GamepadMode_AutoAll);
     s_open = true;
     s_closeRequested = false;
     s_status.clear();
@@ -411,6 +425,12 @@ namespace GameMenu
     s_mappingRequest = false;
     s_open = false;
     SDL_ShowCursor(s_cursor);
+    ImGui_ImplSDL2_SetGamepadMode(ImGui_ImplSDL2_GamepadMode_Manual, nullptr, 0);   // closes the gamepads it opened
+    if (s_ownControllers)
+    {
+      SDL_QuitSubSystem(SDL_INIT_GAMECONTROLLER);
+      s_ownControllers = false;
+    }
   }
 
   bool IsOpen()
@@ -932,8 +952,9 @@ namespace GameMenu
     s_status = "Bindings changed: Save keeps them";
   }
 
-  static void StartCapture(const std::shared_ptr<CInput> &input)
+  static void StartCapture(const std::shared_ptr<CInput> &input, bool add = false)
   {
+    s_captureAdd = add;
     unsigned flags = s_device.kind == Device::Kind::Keyboard ? READ_KEYBOARD :
                      s_device.kind == Device::Kind::Mouse ? READ_MOUSE : READ_JOYSTICK;
     s_inputs->GetInputSystem()->BeginMappingRead(flags, s_device.index, (input->flags & INPUT_FLAGS_AXIS) != 0);
@@ -947,26 +968,38 @@ namespace GameMenu
     std::string mapping;
     if (!s_capturing || !s_inputs || !s_inputs->GetInputSystem()->ContinueMappingRead(&mapping))
       return;
-    std::vector<std::string> tokens = DeviceTokens(s_device, s_captureInput->GetMapping(), false);
-    tokens.push_back(mapping);
+    std::vector<std::string> tokens = s_captureAdd ? SplitBinding(s_captureInput->GetMapping())
+                                                   : DeviceTokens(s_device, s_captureInput->GetMapping(), false);
+    if (std::find(tokens.begin(), tokens.end(), mapping) == tokens.end())
+      tokens.push_back(mapping);
     SetBinding(config, *s_captureInput, JoinBinding(tokens));
     EndCapture();
+  }
+
+  // An input's default binding to the device (Supermodel's defaults, built once)
+  static std::vector<std::string> DefaultTokens(const CInput &input)
+  {
+    static const Util::Config::Node defaults = DefaultConfig();
+    const Util::Config::Node *node = defaults.TryGet(std::string("Input") + input.id);
+    return DeviceTokens(s_device, node ? node->ValueAs<std::string>() : "NONE", true);
+  }
+
+  // An input's binding to the device back to the default, the other devices' kept
+  static void ResetInput(Util::Config::Node &config, CInput &input)
+  {
+    std::vector<std::string> tokens = DeviceTokens(s_device, input.GetMapping(), false);
+    for (const std::string &token : DefaultTokens(input))
+      tokens.push_back(token);
+    std::string mapping = JoinBinding(tokens);
+    if (mapping != input.GetMapping())
+      SetBinding(config, input, mapping);
   }
 
   // The device's bindings back to Supermodel's defaults, for the game's inputs
   static void ResetDevice(Util::Config::Node &config)
   {
-    const Util::Config::Node defaults = DefaultConfig();
     for (const std::shared_ptr<CInput> &input : s_inputs->GetGameInputs(s_game))
-    {
-      const Util::Config::Node *node = defaults.TryGet(std::string("Input") + input->id);
-      std::vector<std::string> tokens = DeviceTokens(s_device, input->GetMapping(), false);
-      for (const std::string &token : DeviceTokens(s_device, node ? node->ValueAs<std::string>() : "NONE", true))
-        tokens.push_back(token);
-      std::string mapping = JoinBinding(tokens);
-      if (mapping != input->GetMapping())
-        SetBinding(config, *input, mapping);
-    }
+      ResetInput(config, *input);
   }
 
   // The game's inputs and their bindings to the device, under a title bar per group of controls
@@ -988,7 +1021,9 @@ namespace GameMenu
           ImGui::TableSetupColumn("##input", ImGuiTableColumnFlags_WidthStretch, 0.34f);
           ImGui::TableSetupColumn("##binding", ImGuiTableColumnFlags_WidthStretch, 0.30f);
           ImGui::TableSetupColumn("##value", ImGuiTableColumnFlags_WidthStretch, 0.22f);
-          ImGui::TableSetupColumn("##buttons", ImGuiTableColumnFlags_WidthFixed);
+          ImGui::TableSetupColumn("##buttons", ImGuiTableColumnFlags_WidthFixed,
+                                  ImGui::CalcTextSize("MapAddUnmapDefault").x + ImGui::GetStyle().FramePadding.x * 8.0f +
+                                  ImGui::GetStyle().ItemSpacing.x * 3.0f);
         }
       }
       if (!tableOpen)
@@ -1024,14 +1059,28 @@ namespace GameMenu
       ImGui::BeginDisabled(axisOnKeyboard);
       if (ImGui::Button("Map"))
         StartCapture(input);
+      ImGui::SetItemTooltip(axisOnKeyboard ? "A whole axis: the keyboard has an input for each direction"
+                                           : "The input pressed replaces the device's ones");
+      ImGui::SameLine();
+      if (ImGui::Button("Add"))
+        StartCapture(input, true);
+      ImGui::SetItemTooltip("The input pressed is added: either one works");
       ImGui::EndDisabled();
-      if (axisOnKeyboard)
-        ImGui::SetItemTooltip("A whole axis: the keyboard has an input for each direction");
       ImGui::SameLine();
       ImGui::BeginDisabled(tokens.empty());
       if (ImGui::Button("Unmap"))
         SetBinding(config, *input, JoinBinding(DeviceTokens(s_device, input->GetMapping(), false)));
       ImGui::EndDisabled();
+      ImGui::SameLine();
+      const std::vector<std::string> defaults = DefaultTokens(*input);
+      ImGui::BeginDisabled(defaults == tokens);
+      if (ImGui::Button("Default"))
+        ResetInput(config, *input);
+      ImGui::EndDisabled();
+      std::string defaultText;
+      for (const std::string &token : defaults)
+        defaultText += (defaultText.empty() ? "" : ", ") + Describe(token);
+      ImGui::SetItemTooltip("Default: %s", defaultText.empty() ? "none" : defaultText.c_str());
       ImGui::PopID();
     }
     if (tableOpen)
@@ -1301,7 +1350,7 @@ namespace GameMenu
     {
       ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, 0.6f);
       ImGui::TableSetupColumn("In the settings", ImGuiTableColumnFlags_WidthStretch, 0.4f);
-      ImGui::TableSetupColumn("##map", ImGuiTableColumnFlags_WidthFixed);
+      ImGui::TableSetupColumn("##map", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("Map").x + ImGui::GetStyle().FramePadding.x * 2.0f);
       ImGui::TableHeadersRow();
       int i = 0;
       for (const Device &device : Devices(system))
@@ -1330,6 +1379,37 @@ namespace GameMenu
       ImGui::TextDisabled("No joystick connected.");
     Wrapped("Map: the game's inputs, each bound to the device's own; what other devices are bound to stays.");
 
+    // As hikaruloader's: each of the game's controls, its value now as the game reads it
+    Header("What the game receives");
+    if (ImGui::BeginTable("##received", 3, ImGuiTableFlags_SizingStretchProp))
+    {
+      ImGui::TableSetupColumn("##input", ImGuiTableColumnFlags_WidthStretch, 0.45f);
+      ImGui::TableSetupColumn("##text", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("Gear 0").x);
+      ImGui::TableSetupColumn("##value", ImGuiTableColumnFlags_WidthStretch, 0.45f);
+      for (const std::shared_ptr<CInput> &input : s_inputs->GetGameInputs(s_game))
+      {
+        ImGui::PushID(input->id);
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextUnformatted(input->label);
+        ImGui::TableSetColumnIndex(1);
+        if (auto *button = dynamic_cast<CSwitchInput *>(input.get()))
+          ImGui::TextUnformatted(input->value != button->GetOffValue() ? "ON" : "OFF");
+        else if (dynamic_cast<CGearShift4Input *>(input.get()))
+          ImGui::Text("%u", unsigned(input->value));
+        else if (dynamic_cast<CAxisInput *>(input.get()) || dynamic_cast<CAnalogInput *>(input.get()))
+          ImGui::Text("%02XH", unsigned(input->value) & 0xFFFF);
+        else
+          ImGui::Text("%u", unsigned(input->value));
+        ImGui::TableSetColumnIndex(2);
+        if (dynamic_cast<CGearShift4Input *>(input.get()) == nullptr)
+          DrawValue(*input);
+        ImGui::PopID();
+      }
+      ImGui::EndTable();
+    }
+    Wrapped("The values the game reads now, from all the devices (as its input test shows them: 80H a centred wheel).");
+
     Header("Options");
     bool background = config["BackgroundInput"].ValueAsDefault<bool>(false);
     if (ImGui::Checkbox("Read the controllers in the background", &background))
@@ -1341,8 +1421,167 @@ namespace GameMenu
             "(input systems dinput, xinput and rawinput; with sdl and sdlgamepad they always are).");
     ImGui::TextDisabled("Input system: %s (changed in the launcher, from the next start)", config["InputSystem"].ValueAsDefault<std::string>("").c_str());
 
-    DrawForceFeedback(config, system);
     DrawMappingPage(config);
+  }
+
+  // A setting read at start-up only: the standard line under it (as hikaruloader's restartNote)
+  static void NextStart()
+  {
+    ImGui::TextDisabled("Takes effect at the next start.");
+  }
+
+  static bool SettingCheck(Util::Config::Node &config, const char *key, const char *label, bool fallback, unsigned change = 0)
+  {
+    bool value = config[key].ValueAsDefault<bool>(fallback);
+    if (!ImGui::Checkbox(label, &value))
+      return false;
+    config.Set(key, value);
+    s_changes |= change;
+    return true;
+  }
+
+  static bool SettingSlider(Util::Config::Node &config, const char *key, const char *label, int fallback, int min, int max,
+                     const char *format, unsigned change = 0)
+  {
+    int value = std::clamp(config[key].ValueAsDefault<int>(fallback), min, max);
+    if (!ImGui::SliderInt(label, &value, min, max, format))
+      return false;
+    config.Set(key, value);
+    s_changes |= change;
+    return true;
+  }
+
+  // The force feedback (linuxloader's section) and the drive board's own settings, as on a cabinet
+  static void DrawForceFeedbackPage(Util::Config::Node &config)
+  {
+    if (s_inputs == nullptr)
+    {
+      ImGui::TextDisabled("No inputs: no force feedback.");
+      return;
+    }
+    DrawForceFeedback(config, *s_inputs->GetInputSystem());
+
+    Header("Drive board");
+    SettingSlider(config, "ForceFeedbackStrength", "Strength switches", 1, 1, 8, "%d");
+    Wrapped("The board's strength DIP switches, as an operator sets them: 1 all OFF (as the boards leave the factory), "
+            "8 the most. The board adds them to every force its program works out.");
+    NextStart();
+    SettingSlider(config, "PanelSpring", "Panel spring", 20, 0, 100, "%d %%", ChangeForceFeedback);
+    Wrapped("Daytona USA, Sega Rally and Virtua Racing only: their panels have a light centring spring, which their "
+            "drive boards make up for. In percent of Sega Rally's strongest torque.");
+  }
+
+  static void DrawSoundPage(Util::Config::Node &config)
+  {
+    Header("Volume");
+    SettingSlider(config, "SoundVolume", "Sound", 100, 0, 200, "%d %%");
+    SettingSlider(config, "MusicVolume", "Music", 100, 0, 200, "%d %%");
+    Wrapped("Music: the MPEG music board's (Model 3's Digital Sound Board, Star Wars Arcade's). Both change at once, "
+            "as with the volume keys.");
+    SettingCheck(config, "FlipStereo", "Swap left and right", false);
+
+    Header("Output");
+    static const int kChannels[] = { 1, 2, 4 };
+    static const char *const kChannelNames[] = { "Mono", "Stereo", "Quad (4 channels)" };
+    int channels = config["NbSoundChannels"].ValueAsDefault<int>(4), choice = 2;
+    for (int i = 0; i < 3; i++)
+    {
+      if (kChannels[i] == channels)
+        choice = i;
+    }
+    if (ImGui::Combo("Channels", &choice, kChannelNames, 3))
+      config.Set("NbSoundChannels", kChannels[choice]);
+    float lr = config["BalanceLeftRight"].ValueAsDefault<float>(0.0f);
+    float fr = config["BalanceFrontRear"].ValueAsDefault<float>(0.0f);
+    if (ImGui::SliderFloat("Balance left / right", &lr, -100.0f, 100.0f, "%.0f %%"))
+      config.Set("BalanceLeftRight", lr);
+    if (ImGui::SliderFloat("Balance front / rear", &fr, -100.0f, 100.0f, "%.0f %%"))
+      config.Set("BalanceFrontRear", fr);
+    NextStart();
+
+    Header("Emulation");
+    SettingCheck(config, "EmulateSound", "Emulate the sound board", true);
+    SettingCheck(config, "EmulateDSB", "Emulate the music board (Digital Sound Board)", true);
+    NextStart();
+  }
+
+  static void DrawEmulationPage(Util::Config::Node &config)
+  {
+    Header("Model 3");
+    int mhz = int(std::min(config["PowerPCFrequency"].ValueAsDefault<unsigned>(0), 200u));
+    if (ImGui::SliderInt("PowerPC frequency", &mhz, 0, 200, mhz == 0 ? "Auto" : "%d MHz"))
+      config.Set("PowerPCFrequency", unsigned(mhz));
+    Wrapped("Auto: the frequency of the game's stepping. Higher is closer to the boards' speed in some games (fewer "
+            "slowdowns) and needs a faster PC.");
+    SettingCheck(config, "New3DEngine", "New 3D engine", true);
+    ImGui::SameLine();
+    SettingCheck(config, "QuadRendering", "Quad rendering", true);
+    NextStart();
+
+    Header("Model 1 and Model 2");
+    SettingCheck(config, "HighLevelGeometrizer", "Simulate the geometrizer", true);
+    Wrapped("Off: the video board's DSPs run their own programs (slower; the reference for comparisons).");
+    NextStart();
+
+    Header("Threads");
+    SettingCheck(config, "MultiThreaded", "Run the boards in several threads", true);
+    SettingCheck(config, "GPUMultiThreaded", "Prepare the 3D in another thread", true);
+    NextStart();
+
+    Header("Drive board");
+    SettingCheck(config, "SimulateDriveBoard", "Simulate the drive board", false);
+    Wrapped("Its program's logic instead of its Z80 running the program. Without the board's ROM, a program that is "
+            "simulated always is (Indy 500's EPR-18261, missing from MAME's sets).");
+    NextStart();
+  }
+
+  static void DrawNetworkSection(Util::Config::Node &config)
+  {
+    Header("Network (linked cabinets)");
+    SettingCheck(config, "Network", "Network board", false);
+    ImGui::SameLine();
+    SettingCheck(config, "SimulateNet", "Simulated", true);
+    ImGui::BeginDisabled(!config["Network"].ValueAsDefault<bool>(false));
+    int in = int(config["PortIn"].ValueAsDefault<unsigned>(1970));
+    int out = int(config["PortOut"].ValueAsDefault<unsigned>(1971));
+    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 8.0f);
+    if (ImGui::InputInt("Port in", &in, 0))
+      config.Set("PortIn", unsigned(std::clamp(in, 1, 65535)));
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 8.0f);
+    if (ImGui::InputInt("Port out", &out, 0))
+      config.Set("PortOut", unsigned(std::clamp(out, 1, 65535)));
+    char address[64];
+    snprintf(address, sizeof(address), "%s", config["AddressOut"].ValueAsDefault<std::string>("127.0.0.1").c_str());
+    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12.0f);
+    if (ImGui::InputText("Next cabinet's address", address, sizeof(address)))
+      config.Set<std::string>("AddressOut", address);
+    ImGui::EndDisabled();
+    Wrapped("The network board that links cabinets: each sends to the next one's address and port in, the last to the "
+            "first.");
+    NextStart();
+  }
+
+  static void DrawAboutPage()
+  {
+    ImGui::Text("Supermodel FFB Edition %s", SupermodelVersion().c_str());
+    ImGui::TextUnformatted("A Sega Model 1, 2 and 3 arcade emulator.");
+    Wrapped("Copyright 2003-2026 The Supermodel Team. GNU General Public License, version 3 or later.");
+    ImGui::Spacing();
+    Wrapped("This edition (njz3's fork): force feedback with the drive boards emulated or simulated, outputs, linked "
+            "cabinets, agent mode, this menu (as windowsloader's, linuxloader's and hikaruloader's).");
+    Header("With");
+    ImGui::BulletText("SDL2, SDL2_net (zlib licence)");
+    ImGui::BulletText("Dear ImGui, Omar Cornut (MIT)");
+    ImGui::BulletText("zlib, Jean-loup Gailly and Mark Adler");
+    ImGui::BulletText("Musashi 68000 core, Karl Stenerud");
+    ImGui::BulletText("MAME's work on the Model 1 and 2 boards (BSD-3-Clause)");
+    Header("Files");
+    if (!s_logFile.empty())
+      ImGui::TextDisabled("Log: %s", s_logFile.c_str());
+    if (!s_notesFile.empty())
+      ImGui::TextDisabled("Game notes: %s", s_notesFile.c_str());
+    ImGui::TextDisabled("The settings file in use is shown under the pages.");
   }
 
   void Draw(Util::Config::Node &config, const std::string &title, const std::string &settingsFile, bool gameFile)
@@ -1357,55 +1596,85 @@ namespace GameMenu
     Scale(ImGui::GetIO().DisplaySize.y);
     ImGui::NewFrame();
 
-    // A fixed width, for the Game page's text to wrap in
+    // As windowsloader's: a fixed size in the middle of the window, the pages scrolling above the buttons, which stay in
+    // view (hikaruloader's footer)
     const ImGuiIO &io = ImGui::GetIO();
-    float width = std::min(ImGui::GetFontSize() * 40.0f, io.DisplaySize.x * 0.9f);
+    float width = std::min(std::max(ImGui::GetFontSize() * 50.0f, io.DisplaySize.x * 0.72f), io.DisplaySize.x * 0.96f);
+    float height = std::min(std::max(ImGui::GetFontSize() * 24.0f, io.DisplaySize.y * 0.8f), io.DisplaySize.y * 0.96f);
     ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-    ImGui::SetNextWindowSizeConstraints(ImVec2(width, 0.0f), ImVec2(width, io.DisplaySize.y * 0.9f));
+    ImGui::SetNextWindowSize(ImVec2(width, height), ImGuiCond_Always);
     ImGui::SetNextWindowBgAlpha(0.92f);
-    ImGui::Begin("Settings", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+    ImGui::Begin("Settings", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings);
     ImGui::TextWrapped("%s", title.c_str());
 
-    bool selectDisplay = s_selectPage && s_page == Page::Display;
-    bool selectControls = s_selectPage && s_page == Page::Controls;
-    bool selectGame = s_selectPage && s_page == Page::Game;
-    bool selectOutputs = s_selectPage && s_page == Page::Outputs;
+    // The tab asked for (SelectPage), the others as the user clicks them
+    Page select = s_page;
+    bool selecting = s_selectPage;
     s_selectPage = false;
-    if (ImGui::BeginTabBar("Pages"))
+    const ImGuiStyle &style = ImGui::GetStyle();
+    float footer = ImGui::GetFrameHeightWithSpacing() + ImGui::GetTextLineHeightWithSpacing() + style.ItemSpacing.y * 2.0f;
+    if (!s_status.empty())
+      footer += ImGui::GetTextLineHeightWithSpacing();
+    ImGui::BeginChild("##pages", ImVec2(0.0f, -footer));
+    if (ImGui::BeginTabBar("Pages", ImGuiTabBarFlags_FittingPolicyScroll))
     {
-      if (ImGui::BeginTabItem("Display", nullptr, selectDisplay ? ImGuiTabItemFlags_SetSelected : 0))
+      struct Tab
       {
-        DrawDisplayPage(config);
+        const char *name;
+        Page page;
+      };
+      static const Tab kTabs[] = { { "Game", Page::Game }, { "Controls", Page::Controls }, { "Display", Page::Display },
+                                   { "Sound", Page::Sound }, { "Force feedback", Page::ForceFeedback },
+                                   { "Emulation", Page::Emulation }, { "Outputs and network", Page::Outputs },
+                                   { "About", Page::About } };
+      bool controls = false;
+      for (const Tab &tab : kTabs)
+      {
+        if (!ImGui::BeginTabItem(tab.name, nullptr, selecting && select == tab.page ? ImGuiTabItemFlags_SetSelected : 0))
+          continue;
+        s_page = tab.page;
+        ImGui::BeginChild("##page");
+        switch (tab.page)
+        {
+        case Page::Game:          DrawGamePage(); break;
+        case Page::Controls:      DrawControlsPage(config); controls = true; break;
+        case Page::Display:       DrawDisplayPage(config); break;
+        case Page::Sound:         DrawSoundPage(config); break;
+        case Page::ForceFeedback: DrawForceFeedbackPage(config); break;
+        case Page::Emulation:     DrawEmulationPage(config); break;
+        case Page::Outputs:       DrawOutputsPage(config); DrawNetworkSection(config); break;
+        case Page::About:         DrawAboutPage(); break;
+        }
+        ImGui::EndChild();
         ImGui::EndTabItem();
       }
-      if (ImGui::BeginTabItem("Controls", nullptr, selectControls ? ImGuiTabItemFlags_SetSelected : 0))
-      {
-        DrawControlsPage(config);
-        ImGui::EndTabItem();
-      }
-      else
+      if (!controls)
         s_mappingOpen = false;
-      if (ImGui::BeginTabItem("Game", nullptr, selectGame ? ImGuiTabItemFlags_SetSelected : 0))
-      {
-        DrawGamePage();
-        ImGui::EndTabItem();
-      }
-      if (ImGui::BeginTabItem("Outputs", nullptr, selectOutputs ? ImGuiTabItemFlags_SetSelected : 0))
-      {
-        DrawOutputsPage(config);
-        ImGui::EndTabItem();
-      }
       ImGui::EndTabBar();
     }
+    ImGui::EndChild();
 
-    // Saving
+    // Saving, as hikaruloader's: for all games, for this game alone (what differs), or back to the common settings
     ImGui::Separator();
-    ImGui::TextDisabled("Settings file: %s%s", settingsFile.c_str(), gameFile ? " (this game's own)" : "");
-    if (ImGui::Button("Save"))
+    std::string gameIni = s_game.name + ".ini";
+    if (gameFile)
+      ImGui::TextDisabled("Settings: %s, and %s for this game's own", settingsFile.c_str(), gameIni.c_str());
+    else
+      ImGui::TextDisabled("Settings: %s", settingsFile.c_str());
+    if (ImGui::Button("Save for all games"))
       s_action = Action::Save;
+    ImGui::SetItemTooltip("Into %s. This game's own file, if any, no longer overrides these settings.", settingsFile.c_str());
     ImGui::SameLine();
-    if (ImGui::Button("Save for this game"))
+    std::string alone = "Save for " + s_game.name + " alone";
+    if (ImGui::Button(alone.c_str()))
       s_action = Action::SaveForGame;
+    ImGui::SetItemTooltip("Only the settings that differ from the common ones, into %s beside it.", gameIni.c_str());
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!gameFile);
+    if (ImGui::Button("Common settings"))
+      s_action = Action::UseCommon;
+    ImGui::EndDisabled();
+    ImGui::SetItemTooltip("Removes %s: this game uses the common settings from the next start.", gameIni.c_str());
     ImGui::SameLine();
     if (ImGui::Button("Close"))
       s_closeRequested = true;

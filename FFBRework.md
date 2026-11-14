@@ -677,6 +677,76 @@ circuit de Daytona). Son des 63 jeux parents et de Power Edition contre ec80873,
 Star Wars Arcade (musique en jeu, niveau ×4) et Virtua Cop 2 (plus de son en jeu), comme attendu. Wing War ne démarre
 dans aucune des deux versions (`315-5711.bin` défectueux dans le zip local). Le link n'est pas touché par ces commits.
 
+### 2.22 La fusion d'upstream 2806f14 : paramètres de texture du Model 2 (14 novembre)
+
+Un commit, aucun conflit (451efbe) : la commande 06 du géométriseur simulé (paramètres de texture) prend un numéro
+d'entrée et non plus un décalage en octets (explosions de Gunblade NY). Attract des 36 jeux Model 2 parents, 8 captures
+de l'image 900 à 9000, avant et après : identique pour 33 jeux. House of the Dead ne démarre pas (le `hotd.zip` local
+ne contient que hotdo et hotdp). Fighting Vipers change entre les images 6000 et 7600 environ (scène « VICTORY
+STREAK », sol et personnages plus sombres), Sonic Championship un peu vers 7200. L'émulation est déterministe (deux
+passes identiques). Avec le vrai programme du géométriseur 2B (`HighLevelGeometrizer=0`) comme référence, Fighting
+Vipers s'écarte en moyenne de 10 à 14 avant la fusion et de 0,2 après : le correctif répare aussi ce jeu. Script :
+`video_cmp.py` (résultats `video_cmp_451efbe.jsonl`) et `fv_lle.py` dans le scratchpad de la session.
+
+### 2.23 Le retour de force Model 1 et Model 2 repris de sm2-emu (Keisho), émulé ou simulé (14 novembre)
+
+À la demande du propriétaire (auteur du retour de force Model 1/2 de sm2-emu, devenu Keisho : PR #7, #20 à #24 et la
+simulation EPR-15111) : son code repris dans Supermodel, avec le choix émulé (le Z80 sur l'EPROM) ou simulé (la logique
+du programme). Les fichiers de Keisho sont à plus de 90 % de lui (daytona_board, indy_board, vr_board) ; rien de
+Daniel Martin n'est repris (drive_command.cpp, wheel_ffb.cpp), donc pas de clause de la section 7 de Keisho.
+
+- **Model 2B/2C (EPR-18261)** : Indy 500, Touring Car, Over Rev, Super GT passent sur `CWheelBoard` du Model 3 (même
+  carte que Le Mans 24 TWIN-NORMAL) : deux puissances, frein moteur, 63 = pleine force, DIP de force effectif.
+  `CModel2DirectDriveBoard` d'upstream (FULL = 16, pas de frein) est supprimée. Sans l'EPROM (zips MAME sauf stcc), la
+  carte est simulée d'office (`SimulateWithoutROM`).
+- **Daytona et Sega Rally (`CModel2DriveBoard`)** : sortie refaite. À chaque interruption le sens et la puissance ; par
+  trame le couple moyen, le frein de l'embrayage (sans sens) contre la vitesse du volant, et le hachage de Sega Rally
+  (11-17) en vibration (écart moyen au couple quand il s'inverse au moins deux fois dans la trame ; une rampe de Daytona
+  ne compte pas). Ressort du panneau : `PanelSpring` (20 % du couple maximal de Sega Rally par défaut, le
+  `wheel_panel_spring` de sm2-emu), joué en effet de centrage.
+- **Simulations** (`Src/Model2/ClutchProgramSim.cpp/.h`, `IClutchProgram`, `SimulateDriveBoard` ou ROM absente) :
+  écrites d'après les spécifications `pkg/autopilot_data/tools_driveboard/spec_16488a.md`, `spec_17891.md`,
+  `spec_15111.md` (listings annotés de BFF), vérifiées contre le Z80 de Supermodel à l'interruption près (banc
+  `scratchpad/clutchsim`) : EPR-17891 0 différence sur 780 000 interruptions ; EPR-16488A 0 différence (sauf le DIP 4 ON,
+  centre à 00, interruptions perdues : pas notre réglage) ; EPR-15111 99,6-99,98 % de l'octet moteur (le moteur est
+  calculé dans des tâches coopératives : les cycles sont comptés par chemin), réponse exacte. Dans Supermodel, une
+  interruption à cheval sur deux trames lit la commande et le volant de la trame suivante : `SimulateFrame` reporte
+  l'interruption dont la lecture tombe après la fin de la trame (délais mesurés avec `SUPERMODEL_DRIVEBOARD_COMPARE`,
+  qui fait tourner la simulation à côté du Z80 émulé sur les entrées qu'il a lues : 16488A volant 275 cycles, commande
+  853 ; 17891 155 et 1165 ; 15111 1190 et 150 ; avec ces entrées, 0 différence de l'octet moteur sur 140 000
+  interruptions pour 16488A et 17891, 36 pour 15111) et compte le dépassement des trames émulées (4,3 cycles). Résultat,
+  volant scripté, émulé contre simulé, 9 000 trames : Daytona et Sega Rally corrélation 1,000 (1,1 et 1,6 % de trames
+  différentes, écart moyen 0,0002), Virtua Racing 0,998 (2 %, 0,0008). Script `scratchpad/simemu/simemu6.py`.
+- **Virtua Racing (Model 1)** : commande sur l'octet 11 de la RAM double port (si l'octet 12 bit 0 est à 0, soit tout
+  CABINET TYPE sauf STANDARD), réponse sur l'octet 0A (IN2), sorties RawDrive et m2ffb. EPR-15111 sur
+  `CModel2DriveBoard` : DSW1 au port 25, DSW2 au 26 (interrupteur 4 ON des deux côtés : pas de calibration, sinon le
+  siège 2 sans volant bloque le siège 1 une minute), siège 2 neutre. `vr` et `vformula` ont `drive_board Wheel` et la
+  région optionnelle `epr-15111.12.bin`. Une NVRAM vierge n'a pas besoin du patch UPRIGHT de Keisho : le jeu écrit ses
+  propres réglages d'usine, pas STANDARD (vérifié : 01, 03, 07, 28, 3x, 46/36, 5F/6F arrivent à la carte) ; Keisho le
+  fait parce qu'il part du 93c45.bin de MAME, qui dit STANDARD.
+- **Pause et menu** : le retour de force s'arrête en pause et menu ouvert, reprend à la sortie (`ResendForceFeedback`,
+  Model 1/2/3).
+- **ForceFeedbackStrength** : 1 par défaut partout (interrupteurs OFF, l'usine, comme sm2-emu ; décision du propriétaire),
+  au lieu de 5.
+
+Essai volant simulé (`ffb_review.py`) : daytona, srallyc, stcc, indy500 donnent des forces, aucune ne sature ; indy500
+(ROM absente) n'en avait aucune avant.
+
+Reste : la calibration de Daytona et Sega Rally sur un vrai volant PC (elle doit le faire bouger), la sensation, VR sur
+borne.
+
+### 2.24 Menu Tab comme windowsloader, sauvegarde par jeu comme hikaruloader ; sets MAME fusionnés (14 novembre)
+
+- Pages dans l'ordre de windowsloader : Game, Controls, Display, Sound, Force feedback, Emulation, Outputs and network,
+  About ; pages qui défilent au-dessus des boutons ; « Takes effect at the next start. » sous les réglages lus au
+  lancement. Repris de hikaruloader (demande du propriétaire) : `<jeu>.ini` devient une couche de différences
+  au-dessus de `Supermodel.ini` (Save for all games / Save for <set> alone / Common settings ; un ancien fichier complet
+  marche pareil), la section « What the game receives », la navigation à la manette (SDL game controllers ouverts
+  seulement menu ouvert), les boutons Add et Default des assignations. Mode agent : `menu page …`, `menu common`.
+- Sets MAME fusionnés (demande d'Image borne pour un seul dossier MameRoms) : la 899dda6 charge déjà le parent par
+  défaut. Ajouté : un clone dont le zip n'existe pas est cherché dans le zip de son parent ; une ROM optionnelle absente
+  des zips (EPROM de carte de direction) est lue comme fichier libre à côté, vérifiée par CRC32.
+
 ## 3. Les essais
 
 ### 3.1 Le banc
