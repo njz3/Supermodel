@@ -938,6 +938,10 @@ To change the region, enter Test mode and perform the following series of short
 (press and release) and long (press and hold for 4-5 seconds) Service button
 presses: 4 short, 2 long, 2 short, 1 long.
 
+The ROMs hold a fifth course, FOREST, complete but in no menu.  The 'Game' page
+of the settings menu (Tab) adds it to the practice's course selection (the
+ForestCourse setting of the '[ srally2 ]' section).
+
 
 Ski Champ
 ---------
@@ -2308,6 +2312,26 @@ All settings are case sensitive.
                     the default, sends none.  Can only be set in the 'Global'
                     section; '-telemetry-forza=<host:port>' on the command
                     line.
+
+    ----------------
+
+    Name:           ForestCourse
+
+    Argument:       Boolean value (true or false). Default is false.
+
+    Description:    Sega Rally 2 (srally2) only, in its section, '[ srally2 ]':
+                    adds FOREST, a complete course of the game's that no menu
+                    shows, as a fifth panel of the practice's course
+                    selection.  Turned on or off on the 'Game' page of the
+                    settings menu (Tab), which saves it in that section at
+                    once; it takes effect at the next course selection (the
+                    game's own program is given back when turned off).  The
+                    panel's photo is built in; a 256x128 BMP file,
+                    Config/srally2_forest.bmp, replaces it if there.  The
+                    practice's rival drives FOREST's own line (the ROMs held
+                    a copy of MOUNTAIN's route there).  The title shown at
+                    the race's start and the music remain MOUNTAIN's.
+                    Linked cabinets choosing FOREST all need it on.
 
     ----------------
 

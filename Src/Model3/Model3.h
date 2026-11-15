@@ -48,6 +48,8 @@
 #include "Util/NewConfig.h"
 #include "Graphics/SuperAA.h"
 #include "OSD/Thread.h"
+#include "Model3/Srally2Forest.h"
+#include <memory>
 
 /*
  * FrameTimings
@@ -97,6 +99,8 @@ public:
   const Game &GetGame(void) const override;
   void AttachRenderers(IRender2D *Render2DPtr, IRender3D *Render3DPtr, SuperAA *superAA) override;
   Result Init(const Game &game, const ROMSet &rom_set) override;
+  std::vector<GamePatch> GetGamePatches(void) const override;
+  bool SetGamePatch(const std::string &key, bool enable) override;
   // For Scripting tweaks
   Util::Config::Node& GetConfig() { return this->m_config; }
   // The drive board's reply the game read last (register 0x0C), whether it came from the outputs' client (a real
@@ -328,6 +332,7 @@ private:
   C93C46      EEPROM;         // 93C46 EEPROM
   CTileGen    TileGen;        // Sega 2D tile generator
   CReal3D     GPU;            // Real3D graphics hardware
+  std::unique_ptr<CSrally2Forest> m_forest;  // Sega Rally 2's FOREST course (a game patch), if srally2
   CSoundBoard SoundBoard;     // Sound board
   CDSB        *DSB;           // Digital Sound Board (type determined dynamically at load time)
   CDriveBoard *DriveBoard;    // Drive board

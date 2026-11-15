@@ -408,6 +408,7 @@ xcopy /D /Y "$(ProjectDir)..\Assets\*" "$(TargetDir)Assets"</Command>
     <ClCompile Include="..\Src\Model3\NetBoard.cpp" />
     <ClCompile Include="..\Src\Model3\NetBoardLink.cpp" />
     <ClCompile Include="..\Src\Model3\SimNetBoard.cpp" />
+    <ClCompile Include="..\Src\Model3\Srally2Forest.cpp" />
     <ClCompile Include="..\Src\Network\NetServer.cpp" />
     <ClCompile Include="..\Src\Network\TCPConnection.cpp" />
     <ClCompile Include="..\Src\OSD\ConsoleInput.cpp" />
@@ -630,6 +631,8 @@ xcopy /D /Y "$(ProjectDir)..\Assets\*" "$(TargetDir)Assets"</Command>
     <ClInclude Include="..\Src\Model3\NetBoard.h" />
     <ClInclude Include="..\Src\Model3\NetBoardLink.h" />
     <ClInclude Include="..\Src\Model3\SimNetBoard.h" />
+    <ClInclude Include="..\Src\Model3\Srally2Forest.h" />
+    <ClInclude Include="..\Src\Model3\Srally2ForestPhoto.h" />
     <ClInclude Include="..\Src\Network\NetProtocol.h" />
     <ClInclude Include="..\Src\Network\NetServer.h" />
     <ClInclude Include="..\Src\Network\TCPConnection.h" />

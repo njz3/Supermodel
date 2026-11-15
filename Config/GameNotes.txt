@@ -211,6 +211,13 @@ In Test mode, press Service short and long (held 4 to 5 seconds): 4 short,
 Starting a game before any 3D graphics show (during the Sega logo, for
 instance) can cause problems.
 
+## FOREST, the hidden course
+The ROMs hold a fifth course, FOREST, complete but in no menu. The game patch
+above (ForestCourse in the [ srally2 ] section) adds it as a fifth panel of
+the practice's course selection, its rival on FOREST's own line. The title at
+the race's start and the music remain MOUNTAIN's; the practice's time hardly
+runs out there.
+
 ## Secrets
 - Sega Rally 1 cars (Toyota Celica GT-Four, Lancia Delta HF Integrale): at
   the car select, press View and pull the handbrake together. Only once the

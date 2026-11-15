@@ -747,6 +747,42 @@ borne.
   défaut. Ajouté : un clone dont le zip n'existe pas est cherché dans le zip de son parent ; une ROM optionnelle absente
   des zips (EPROM de carte de direction) est lue comme fichier libre à côté, vérifiée par CRC32.
 
+### 2.25 Sega Rally 2 : le circuit caché FOREST dans la sélection des circuits (15 novembre)
+
+Demande du propriétaire (signalé sur Gamoover) : le programme de `srally2` (EPR-20632 à 20635) a une table de huit
+circuits, 0 DESERT_OLD, 1 FOREST, 2 MOUNTAIN, 3 DESERT, 4 RIVIERA, 5 SWEDISH (Snowy), 6 et 7 INVALID ; FOREST est
+complet mais aucun menu n'y mène (Practice : index du carrousel → 3 2 4 5, Championship : 3 2 5 4).
+
+- `Src/Model3/Srally2Forest.cpp` : patch du jeu (réglage `ForestCourse` de la section `[ srally2 ]`, case de la page
+  Game du menu Tab, enregistrée tout de suite dans cette section ; mode agent `menu patch ForestCourse on|off`). Le
+  programme est patché en RAM une fois copié depuis la CROM (ROM intactes), hors de la sélection des circuits, et
+  rendu quand on décoche : carrousel de 5 panneaux (pas 2π/5, espacement 1/5, index modulo 5, intro à 5 panneaux),
+  tables déplacées dans les noms de debug `RND_*` (drapeaux de surbrillance, index → circuit 3 2 4 5 1, modèles des
+  panneaux), vote des bornes en link sur 5 circuits (le programme efface 5 compteurs mais masquait l'index à 0-3).
+- Panneau FOREST : copies des modèles du panneau MOUNTAIN à la fin de la VROM (zéros), photo et titre redirigés vers la
+  texture des lauriers CHAMPIONSHIP (page 1, x 1024), que la sélection des circuits n'affiche pas. Cette texture est
+  remplacée pendant la sélection (états de menu 5 à 7 en Practice) par des surcouches de textures de `CReal3D`
+  (mipmaps compris, ce que le jeu y écrit pendant ce temps gardé de côté, rendu à la sortie, sauvegardes d'état sans
+  elles). Titre « HIDDEN / FOREST » dessiné par le code (police de traits) ; photo embarquée (demande du
+  propriétaire) : une image d'une course sur FOREST dans Supermodel, 256x128, `Src/Model3/Srally2ForestPhoto.h` ;
+  un BMP 256x128 `Config/srally2_forest.bmp` la remplace s'il existe.
+- Vérifié en mode agent : les 5 index mènent à 3 2 4 5 1, la course FOREST se joue, les lauriers et
+  leurs mipmaps sont identiques avant et après la sélection, décoché le programme d'origine revient.
+- Le concurrent de la Practice (16 novembre, demande du propriétaire : « les concurrents sont là ? ») : il suivait la
+  trajectoire de MOUNTAIN et quittait le sol de FOREST au bout de 12 s (altitude jusqu'à 13 000). Les trajectoires
+  des voitures du jeu : 500 points (x, y, z, cap) tous les 10 m, une par circuit dans la table du programme en
+  0x1353DC (par numéro de circuit), celle de FOREST (0x139A10 de sa banque, fenêtre 1) étant une copie de celle de
+  MOUNTAIN, et la longueur à laquelle l'index revient à 0 (0x0EE100, par circuit) recopiée aussi (342 points : le
+  concurrent repartait vers le départ à 3,4 km). Aucune trajectoire propre à FOREST dans les ROM ; mais son tracé y
+  est, deux fois (lignes du programme, 4,2 km, `0x0DE258` et `0x0CF1E0`). Le patch écrit dans la banque de FOREST une
+  trajectoire tirée de la ligne `0x0DE258` (tour fermé de 4256 m, 426 points, 0,55 m au-dessus, cap -atan2(dx, dz)),
+  rendue décoché, et la longueur 426 avec le programme. Vérifié : le concurrent suit FOREST (4 m de la ligne, altitude
+  2 à 23 m), boucle ses tours (93 s), se voit et se double ; MOUNTAIN inchangé. Le retour de force est là (EPR-20512
+  émulée : en course sur FOREST autant d'effets que sur DESERT, force moyenne 0,17 à 0,24, max 0,63).
+- Reste : l'écran-titre (image CGM 0xFF14991C de la table des manches) et la musique (0x187) de FOREST sont ceux de
+  MOUNTAIN ; le chrono de la Practice y reste à 99 (temps restant jusqu'à ~980 s : sa table d'événements, 0x0E5090,
+  est vide).
+
 ## 3. Les essais
 
 ### 3.1 Le banc

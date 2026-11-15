@@ -1939,7 +1939,11 @@ void CModel3::SaveState(CBlockFile *SaveState)
   SCSI.SaveState(SaveState);
   EEPROM.SaveState(SaveState);
   TileGen.SaveState(SaveState);
+  if (m_forest)
+    m_forest->BeforeSaveState();   // texture RAM as the game has it
   GPU.SaveState(SaveState);
+  if (m_forest)
+    m_forest->AfterSaveState();
   SoundBoard.SaveState(SaveState);  // also saves DSB state
   DriveBoard->SaveState(SaveState);
   BillBoard->SaveState(SaveState);
@@ -2048,6 +2052,8 @@ void CModel3::RunFrame(void)
     if (!m_gpuMultiThreaded)
     {
       RunMainBoardFrame();
+      if (m_forest)
+        m_forest->Frame();
       SyncGPUs();
     }
 
@@ -2072,7 +2078,11 @@ void CModel3::RunFrame(void)
 
     // If multi-threading GPU, then sync GPUs last while PPC main board thread is waiting
     if (m_gpuMultiThreaded)
+    {
+      if (m_forest)
+        m_forest->Frame();
       SyncGPUs();
+    }
 
     if (NetBoard->IsRunning() && m_config["SimulateNet"].ValueAs<bool>())
         RunNetBoardFrame();
@@ -2081,6 +2091,8 @@ void CModel3::RunFrame(void)
   {
     // If not multi-threaded, then just process and render a single frame for PPC main board, sound board and drive board in turn in this thread
     RunMainBoardFrame();
+    if (m_forest)
+      m_forest->Frame();
     SyncGPUs();
     RenderFrame();
     RunSoundBoardFrame();
@@ -2734,6 +2746,33 @@ const Game &CModel3::GetGame() const
   return m_game;
 }
 
+std::vector<IEmulator::GamePatch> CModel3::GetGamePatches() const
+{
+  std::vector<GamePatch> patches;
+  if (m_forest)
+  {
+    GamePatch patch;
+    patch.key = CSrally2Forest::kSetting;
+    patch.label = "FOREST, the hidden fifth course";
+    patch.description = "A fifth panel in the practice's course selection: FOREST, a complete course of the game's that no menu "
+                        "shows, with its rival on FOREST's own line. From the next course selection (the game's own program "
+                        "is given back when turned off). Its title at the race's start and its music stay MOUNTAIN's.";
+    patch.enabled = m_forest->Enabled();
+    patches.push_back(patch);
+  }
+  return patches;
+}
+
+bool CModel3::SetGamePatch(const std::string &key, bool enable)
+{
+  if (m_forest && key == CSrally2Forest::kSetting)
+  {
+    m_forest->SetEnabled(enable);
+    return true;
+  }
+  return false;
+}
+
 void CModel3::AttachRenderers(IRender2D *Render2DPtr, IRender3D *Render3DPtr, SuperAA *superAA)
 {
   TileGen.AttachRenderer(dynamic_cast<CRender2D *>(Render2DPtr));
@@ -2876,6 +2915,14 @@ Result CModel3::Init(const Game &game, const ROMSet &rom_set)
   Util::FlipEndian32(crom, 8*0x100000 + 128*0x100000);
   Util::FlipEndian16(soundROM, 512*1024);
   Util::FlipEndian16(sampleROM, 16*0x100000);
+
+  // Sega Rally 2's FOREST course (a game patch, the ForestCourse setting of the game's section)
+  m_forest.reset();
+  if (CSrally2Forest::Supports(game, crom))
+  {
+    m_forest = std::make_unique<CSrally2Forest>(ram, crom, vrom, GPU, FileSystemPath::GetWritePath(FileSystemPath::Config) + "srally2_forest.bmp");
+    m_forest->SetEnabled(m_config[CSrally2Forest::kSetting].ValueAsDefault<bool>(false));
+  }
 
   // Configure CPU and PCI bridge
   PPC_CONFIG  ppc_config;

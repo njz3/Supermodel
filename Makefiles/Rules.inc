@@ -228,6 +228,7 @@ SRC_FILES = \
 	Src/Model3/NetBoard.cpp \
 	Src/Model3/NetBoardLink.cpp \
 	Src/Model3/SimNetBoard.cpp \
+	Src/Model3/Srally2Forest.cpp \
 	$(PLATFORM_SRC_FILES)
 
 ifeq (,$(findstring -DSUPERMODEL_OSX,$(PLATFORM_CXXFLAGS)))

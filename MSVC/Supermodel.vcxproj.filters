@@ -611,6 +611,9 @@
     <ClCompile Include="..\Src\Model3\SimNetBoard.cpp">
       <Filter>Source Files\Model3</Filter>
     </ClCompile>
+    <ClCompile Include="..\Src\Model3\Srally2Forest.cpp">
+      <Filter>Source Files\Model3</Filter>
+    </ClCompile>
     <ClCompile Include="..\Src\OSD\SDL\Crosshair.cpp">
       <Filter>Source Files\OSD\SDL</Filter>
     </ClCompile>
@@ -1112,6 +1115,12 @@
       <Filter>Header Files\Model3</Filter>
     </ClInclude>
     <ClInclude Include="..\Src\Model3\SimNetBoard.h">
+      <Filter>Header Files\Model3</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Src\Model3\Srally2Forest.h">
+      <Filter>Header Files\Model3</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Src\Model3\Srally2ForestPhoto.h">
       <Filter>Header Files\Model3</Filter>
     </ClInclude>
     <ClInclude Include="..\Src\Network\NetProtocol.h">
