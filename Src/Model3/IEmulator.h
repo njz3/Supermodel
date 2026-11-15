@@ -28,6 +28,10 @@
 #ifndef INCLUDED_IEMULATOR_H
 #define INCLUDED_IEMULATOR_H
 
+#include <cstdint>
+#include <string>
+#include <vector>
+
 class CBlockFile;
 struct Game;
 struct ROMSet;
@@ -187,6 +191,33 @@ public:
    * Flags that any paused threads should resume running.
    */
   virtual bool ResumeThreads(void) = 0;
+
+  /*
+   * GamePatch, GetGamePatches(void), SetGamePatch(key, enable):
+   *
+   * The patches the emulator offers for the game loaded (changes to the
+   * game's program and data that bring back what its ROMs hold but its menus
+   * do not show), each turned on or off by a setting of the game's section
+   * (its key), at start-up and from the in-game menu. Set from the menu: from
+   * the next frame, as the patch allows (see each).
+   */
+  struct GamePatch
+  {
+    std::string key;            // the setting (in the game's section)
+    std::string label;          // its check box
+    std::string description;    // what it does, when it takes effect
+    bool enabled = false;
+  };
+  virtual std::vector<GamePatch> GetGamePatches(void) const
+  {
+    return {};
+  }
+  virtual bool SetGamePatch(const std::string &key, bool enable)
+  {
+    (void)key;
+    (void)enable;
+    return false;
+  }
 
   /*
    * ~IEmulator(void):

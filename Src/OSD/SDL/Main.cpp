@@ -1269,9 +1269,11 @@ static Result ApplyWindowSettings()
 ******************************************************************************/
 
 // Sets values in an INI file and keeps all the rest (comments, layout): each in the game's section when the key is
-// there, else in the global section, added after its last setting when missing
+// there, else in the global section, added after its last setting when missing. gameSection: in the game's section
+// only (a setting of this ROM set's alone, as the game patches), added after its last setting, the section added at the
+// end of the file when missing
 static bool SetINIFileValues(const std::string &file, const std::string &game, const std::vector<std::pair<std::string, std::string>> &values,
-                             const std::vector<std::string> &remove = {})
+                             const std::vector<std::string> &remove = {}, bool gameSection = false)
 {
   std::string text;
   {
@@ -1326,7 +1328,7 @@ static bool SetINIFileValues(const std::string &file, const std::string &game, c
   {
     std::string assignment = key + " = " + value;
     int found = -1;
-    for (int pass = 0; pass < 2 && found < 0; pass++)
+    for (int pass = 0; pass < (gameSection ? 1 : 2) && found < 0; pass++)
     {
       for (size_t i = 0; i < lines.size() && found < 0; i++)
       {
@@ -1337,6 +1339,30 @@ static bool SetINIFileValues(const std::string &file, const std::string &game, c
     if (found >= 0)
     {
       lines[found].text = assignment;
+      continue;
+    }
+
+    if (gameSection)
+    {
+      // After the game's section's last setting, else after its header; the section added at the end when missing
+      int header = -1, last = -1;
+      for (size_t i = 0; i < lines.size(); i++)
+      {
+        if (lines[i].header && lines[i].game && header < 0)
+          header = int(i);
+        if (header >= 0 && lines[i].header && !lines[i].game)
+          break;
+        if (header >= 0 && !lines[i].header && !keyOf(lines[i].text).empty())
+          last = int(i);
+      }
+      if (header < 0)
+      {
+        if (!lines.empty() && !Util::TrimWhiteSpace(lines.back().text).empty())
+          lines.push_back({ "", false, false, false });
+        lines.push_back({ "[ " + game + " ]", true, false, true });
+        header = int(lines.size()) - 1;
+      }
+      lines.insert(lines.begin() + (last >= 0 ? last : header) + 1, { assignment, false, false, true });
       continue;
     }
 
@@ -1541,6 +1567,7 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
   GameMenu::SetGame(game, FileSystemPath::GetReadPath(FileSystemPath::Config, "GameNotes.txt"));
   GameMenu::SetLogFile(s_logFilePath);
   GameMenu::SetInputs(Inputs);
+  GameMenu::SetEmulator(Emu);
   // A write directory that cannot be written, said over the game for 20 s too, in the words of Flycast's notification
   if (!s_writeDirUnusable.empty())
     GameMenu::Notify("Cannot write to the write folder", s_writeDirUnusable +
@@ -1657,7 +1684,16 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
           return (SaveMenuSettings(game.name, verb == "savegame") ? "ok " : "err ") + (verb == "savegame" ? s_gameSettingsPath : s_configFilePath);
         if (verb == "common")
           return (UseCommonSettings() ? "ok " : "err ") + s_gameSettingsPath;
-        return "err menu open|close|set KEY VALUE|save|savegame|common";
+        if (verb == "patch" && !key.empty())
+        {
+          // A game patch turned on or off and saved in the game's section, as the Game page's check box does
+          bool on = value == "on" || value == "true" || value == "1";
+          if (!Emu->SetGamePatch(key, on))
+            return "err no such game patch";
+          s_runtime_config.Set(key, on);
+          return (SetINIFileValues(s_configFilePath, game.name, { { key, on ? "true" : "false" } }, {}, true) ? "ok " : "err ") + s_configFilePath;
+        }
+        return "err menu open|close|set KEY VALUE|save|savegame|common|patch KEY on|off";
       });
     quit = true;
   }
@@ -1760,6 +1796,15 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
         // when the game goes on (the menu pauses it)
         StopForceFeedback(Inputs, game);
         ApplyForceFeedbackSettings(Inputs);
+      }
+      // The game patches turned on or off: saved at once in the game's section of the common file
+      for (const auto &[key, on] : GameMenu::TakePatchChanges())
+      {
+        bool saved = SetINIFileValues(s_configFilePath, game.name, { { key, on ? "true" : "false" } }, {}, true);
+        if (saved)
+          InfoLog("%s = %s saved in the [ %s ] section of '%s'.", key.c_str(), on ? "true" : "false", game.name.c_str(), s_configFilePath.c_str());
+        GameMenu::SetStatus(saved ? key + (on ? " = true" : " = false") + " saved in [ " + game.name + " ] of " + s_configFilePath :
+                                    "Unable to save to " + s_configFilePath);
       }
       GameMenu::Action action = GameMenu::TakeAction();
       if (action != GameMenu::Action::None)

@@ -455,6 +455,55 @@ public:
    */
   void AttachRenderer(IRender3D *Render3DPtr);
 
+  /*
+   * Texture overlays: textures of the game's replaced for a while by the
+   * emulator's own (a game patch's: see Model3/Srally2Forest.cpp). Their
+   * texels are written into texture RAM and the game's own kept aside; what
+   * the game uploads into them meanwhile goes to the copy kept aside, so that
+   * hiding them gives back the game's textures as it last wrote them.
+   * Rectangles are in texture RAM coordinates (2048x2048, page 1 from y=1024),
+   * one per mipmap level (MakeTextureOverlays).
+   */
+  struct TextureOverlay
+  {
+    unsigned level = 0;
+    unsigned x = 0, y = 0, width = 0, height = 0;
+    std::vector<uint16_t> texels;   // the emulator's, row after row
+    std::vector<uint16_t> saved;    // the game's, while shown
+  };
+
+  /*
+   * MakeTextureOverlays(x, y, page, width, height, texels):
+   *
+   * The overlays of a texture and of its mipmaps, as UploadTexture places a
+   * texture uploaded with its mipmaps: x, y (0-1023) and page as the
+   * polygons' headers give them, texels in texture RAM's format (T1RGB5 or
+   * any 16-bit format whose 5-bit fields can be averaged), row after row.
+   */
+  static std::vector<TextureOverlay> MakeTextureOverlays(unsigned x, unsigned y, unsigned page, unsigned width,
+                                                         unsigned height, const std::vector<uint16_t> &texels);
+
+  /*
+   * ShowTextureOverlays(overlays):
+   * HideTextureOverlays(restore):
+   * TextureOverlaysShown():
+   *
+   * Shows overlays (any shown before are hidden first), hides them (restore:
+   * the game's texels written back; false after a state was loaded, texture
+   * RAM being the state's then).
+   */
+  void ShowTextureOverlays(std::vector<TextureOverlay> overlays);
+  void HideTextureOverlays(bool restore = true);
+  bool TextureOverlaysShown(void) const { return !m_overlays.empty(); }
+
+  /*
+   * ReadTexels(x, y, width, height, out):
+   *
+   * Texture RAM's texels in a rectangle (the game's, overlays included),
+   * row after row.
+   */
+  void ReadTexels(unsigned x, unsigned y, unsigned width, unsigned height, uint16_t *out) const;
+
 
   /*
    * Init(vromPtr, BusObjectPtr, IRQObjectPtr, dmaIRQBit, hwConfig):
@@ -523,6 +572,9 @@ private:
   void      StoreTexture(unsigned level, unsigned xPos, unsigned yPos, unsigned width, unsigned height, const uint16_t *texData, bool sixteenBit, bool writeLSB, bool writeMSB, uint32_t &texDataOffset);
 
   void      UploadTexture(uint32_t header, const uint16_t *texData);
+  void      SignalTextureUpload(unsigned level, unsigned x, unsigned y, unsigned width, unsigned height);
+  void      WriteTexels(unsigned x, unsigned y, unsigned width, unsigned height, const uint16_t *texels);
+  void      OverlayOver(unsigned x, unsigned y, unsigned width, unsigned height);
   uint32_t  UpdateSnapshots(bool copyWhole);
   uint32_t  UpdateSnapshot(bool copyWhole, uint8_t *src, uint8_t *dst, unsigned size, uint8_t *dirty);
   void      SyncBufferedMem(UpdateBlock* updateBlock, uint32_t* updateBuffer, uint32_t* dst, uint32_t dstWords, uint8_t* dirty);
@@ -596,6 +648,9 @@ private:
   // Queued texture uploads
   std::vector<QueuedUploadTextures> queuedUploadTextures;
   std::vector<QueuedUploadTextures> queuedUploadTexturesRO;  // Read-only copy of queue
+
+  // Texture overlays shown
+  std::vector<TextureOverlay> m_overlays;
 
   // Big endian bus object for DMA memory access
   IBus  *Bus = nullptr;

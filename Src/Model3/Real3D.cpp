@@ -333,6 +333,7 @@ void CReal3D::LoadState(CBlockFile *SaveState)
   }
 
   SaveState->Read(memoryPool, m_layout.sizeRW);
+  m_overlays.clear();   // texture RAM as the state has it (saved without overlays: see CModel3::SaveState)
 
   // If multi-threaded, update read-only snapshots too
   if (m_gpuMultiThreaded)
@@ -745,21 +746,149 @@ void CReal3D::StoreTexture(unsigned level, unsigned xPos, unsigned yPos, unsigne
     }
   }
 
+  // An overlay shown there keeps what the game wrote aside, its own texels in texture RAM
+  if (!m_overlays.empty())
+    OverlayOver(xPos, yPos, width, height);
+
   // Signal to renderer that textures have changed
   // TO-DO: mipmaps? What if a game writes non-mipmap textures to mipmap area?
+  SignalTextureUpload(level, xPos, yPos, width, height);
+}
+
+void CReal3D::SignalTextureUpload(unsigned level, unsigned x, unsigned y, unsigned width, unsigned height)
+{
   if (m_gpuMultiThreaded)
   {
     // If multi-threaded, then queue calls to UploadTextures for render thread to perform at beginning of next frame
     QueuedUploadTextures upl;
     upl.level = level;
-    upl.x = xPos;
-    upl.y = yPos;
+    upl.x = x;
+    upl.y = y;
     upl.width = width;
     upl.height = height;
     queuedUploadTextures.push_back(upl);
   }
-  else
-    Render3D->UploadTextures(level, xPos, yPos, width, height);
+  else if (Render3D)
+    Render3D->UploadTextures(level, x, y, width, height);
+}
+
+void CReal3D::WriteTexels(unsigned x, unsigned y, unsigned width, unsigned height, const uint16_t *texels)
+{
+  for (unsigned row = 0; row < height; row++)
+  {
+    uint32_t destOffset = (y + row) * 2048 + x;
+    for (unsigned col = 0; col < width; col++, destOffset++)
+    {
+      if (m_gpuMultiThreaded)
+        MARK_DIRTY(textureRAMDirty, destOffset * 2);
+      textureRAM[destOffset] = *texels++;
+    }
+  }
+}
+
+void CReal3D::ReadTexels(unsigned x, unsigned y, unsigned width, unsigned height, uint16_t *out) const
+{
+  for (unsigned row = 0; row < height; row++)
+  {
+    const uint16_t *src = &textureRAM[(y + row) * 2048 + x];
+    std::copy(src, src + width, out);
+    out += width;
+  }
+}
+
+// After the game wrote a rectangle: its texels under an overlay kept aside, the overlay's written back
+void CReal3D::OverlayOver(unsigned x, unsigned y, unsigned width, unsigned height)
+{
+  for (TextureOverlay &o : m_overlays)
+  {
+    unsigned x0 = std::max(x, o.x), x1 = std::min(x + width, o.x + o.width);
+    unsigned y0 = std::max(y, o.y), y1 = std::min(y + height, o.y + o.height);
+    for (unsigned row = y0; row < y1; row++)
+    {
+      for (unsigned col = x0; col < x1; col++)
+      {
+        uint32_t destOffset = row * 2048 + col;
+        size_t i = size_t(row - o.y) * o.width + (col - o.x);
+        o.saved[i] = textureRAM[destOffset];
+        textureRAM[destOffset] = o.texels[i];
+      }
+    }
+  }
+}
+
+std::vector<CReal3D::TextureOverlay> CReal3D::MakeTextureOverlays(unsigned x, unsigned y, unsigned page, unsigned width,
+                                                                  unsigned height, const std::vector<uint16_t> &texels)
+{
+  std::vector<TextureOverlay> overlays;
+  TextureOverlay base;
+  base.level = 0;
+  base.x = x;
+  base.y = y + page * 1024;
+  base.width = width;
+  base.height = height;
+  base.texels = texels;
+  overlays.push_back(base);
+
+  // The mipmaps where UploadTexture puts them, each the average of 2x2 texels of the level above (field by field: the
+  // three 5-bit colour fields, the top bit kept if most of the four have it)
+  for (int i = 1; width >= 4 && height >= 4; i++)
+  {
+    const TextureOverlay &above = overlays.back();
+    TextureOverlay mip;
+    mip.level = unsigned(i);
+    mip.x = unsigned(mipXBase[i]) + x / unsigned(mipDivisor[i]);
+    mip.y = unsigned(mipYBase[i]) + y / unsigned(mipDivisor[i]) + page * 1024;
+    width /= 2;
+    height /= 2;
+    mip.width = width;
+    mip.height = height;
+    mip.texels.resize(size_t(width) * height);
+    for (unsigned row = 0; row < height; row++)
+    {
+      for (unsigned col = 0; col < width; col++)
+      {
+        const uint16_t t[4] = { above.texels[(2 * row) * above.width + 2 * col], above.texels[(2 * row) * above.width + 2 * col + 1],
+                                above.texels[(2 * row + 1) * above.width + 2 * col], above.texels[(2 * row + 1) * above.width + 2 * col + 1] };
+        unsigned r = 0, g = 0, b = 0, top = 0;
+        for (uint16_t v : t)
+        {
+          r += (v >> 10) & 31;
+          g += (v >> 5) & 31;
+          b += v & 31;
+          top += v >> 15;
+        }
+        mip.texels[size_t(row) * width + col] = uint16_t(((top >= 2) << 15) | (((r + 2) / 4) << 10) | (((g + 2) / 4) << 5) | ((b + 2) / 4));
+      }
+    }
+    overlays.push_back(std::move(mip));
+  }
+  return overlays;
+}
+
+void CReal3D::ShowTextureOverlays(std::vector<TextureOverlay> overlays)
+{
+  HideTextureOverlays();
+  for (TextureOverlay &o : overlays)
+  {
+    o.saved.resize(o.texels.size());
+    ReadTexels(o.x, o.y, o.width, o.height, o.saved.data());
+    WriteTexels(o.x, o.y, o.width, o.height, o.texels.data());
+    SignalTextureUpload(o.level, o.x, o.y, o.width, o.height);
+  }
+  m_overlays = std::move(overlays);
+}
+
+void CReal3D::HideTextureOverlays(bool restore)
+{
+  if (restore)
+  {
+    for (const TextureOverlay &o : m_overlays)
+    {
+      WriteTexels(o.x, o.y, o.width, o.height, o.saved.data());
+      SignalTextureUpload(o.level, o.x, o.y, o.width, o.height);
+    }
+  }
+  m_overlays.clear();
 }
 
 /*
@@ -1267,6 +1396,7 @@ void CReal3D::Reset(void)
 
   queuedUploadTextures.clear();
   queuedUploadTexturesRO.clear();
+  m_overlays.clear();   // texture RAM cleared below
 
   fifoIdx = 0;
   m_vromTextureFIFOIdx = 0;

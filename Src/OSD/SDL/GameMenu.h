@@ -30,8 +30,9 @@
  * game's inputs to its own (as Flycast's), BackgroundInput and the force
  * feedback (the device that plays it, its strength). Both saved in
  * the settings file in use or in the game's own file. Its Game page: the game's
- * description and its notes from Config/GameNotes.txt (region change codes,
- * special modes, cabinet setup). Its Outputs page: what the game sends on the
+ * description, the game patches the emulator offers for it (each a setting of
+ * the game's section, saved there at once), and its notes from
+ * Config/GameNotes.txt (region change codes, special modes, cabinet setup). Its Outputs page: what the game sends on the
  * outputs, with the values sent so far. The game is paused while it is open.
  */
 
@@ -51,6 +52,7 @@ namespace Util
 }
 
 struct Game;
+class IEmulator;
 class COutputs;
 class CInputs;
 
@@ -94,6 +96,10 @@ namespace GameMenu
   void SetOutputs(COutputs *outputs);
   // The inputs the Controls page binds (nullptr: none)
   void SetInputs(CInputs *inputs);
+  // The emulator whose game patches the Game page turns on or off (nullptr: none)
+  void SetEmulator(IEmulator *emulator);
+  // The game patches turned on or off since the last call, {setting, on}: the host saves them in the game's section
+  std::vector<std::pair<std::string, bool>> TakePatchChanges();
   // The log file, shown by the About page
   void SetLogFile(const std::string &path);
   // The size the renderers draw at now, shown by the Display page

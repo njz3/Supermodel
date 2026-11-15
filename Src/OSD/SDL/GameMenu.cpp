@@ -42,6 +42,7 @@
 #include "Inputs/Input.h"
 #include "Inputs/InputSystem.h"
 #include "Inputs/InputTypes.h"
+#include "Model3/IEmulator.h"
 #include "Util/NewConfig.h"
 #include "../Pkgs/imgui/imgui.h"
 #include "../Pkgs/imgui/imgui_impl_sdl2.h"
@@ -112,6 +113,8 @@ namespace GameMenu
     std::vector<std::string> s_changedBindings;
 
     // The Game page
+    IEmulator *s_emulator = nullptr;                          // its game patches
+    std::vector<std::pair<std::string, bool>> s_patchChanges;
     std::vector<std::pair<std::string, std::string>> s_info;  // label, value
     std::vector<std::string> s_noteNames;                     // the game's ROM set, then its parent's
     std::string s_notesFile;
@@ -235,6 +238,18 @@ namespace GameMenu
   void SetInputs(CInputs *inputs)
   {
     s_inputs = inputs;
+  }
+
+  void SetEmulator(IEmulator *emulator)
+  {
+    s_emulator = emulator;
+  }
+
+  std::vector<std::pair<std::string, bool>> TakePatchChanges()
+  {
+    std::vector<std::pair<std::string, bool>> changes;
+    changes.swap(s_patchChanges);
+    return changes;
   }
 
   void SetLogFile(const std::string &path)
@@ -705,7 +720,7 @@ namespace GameMenu
     DrawOutputsTable(config, s_game, s_outputs, true);
   }
 
-  static void DrawGamePage()
+  static void DrawGamePage(Util::Config::Node &config)
   {
     if (ImGui::BeginTable("Description", 2, ImGuiTableFlags_SizingFixedFit))
     {
@@ -720,6 +735,31 @@ namespace GameMenu
       ImGui::EndTable();
     }
     ImGui::Spacing();
+
+    // The game patches the emulator offers for this ROM set: each a setting of its own section, saved at once
+    std::vector<IEmulator::GamePatch> patches = s_emulator ? s_emulator->GetGamePatches() : std::vector<IEmulator::GamePatch>();
+    if (!patches.empty())
+    {
+      ImGui::SeparatorText("Game patches");
+      for (IEmulator::GamePatch &patch : patches)
+      {
+        ImGui::PushID(patch.key.c_str());
+        if (ImGui::Checkbox(patch.label.c_str(), &patch.enabled) && s_emulator->SetGamePatch(patch.key, patch.enabled))
+        {
+          config.Set(patch.key, patch.enabled);
+          s_patchChanges.emplace_back(patch.key, patch.enabled);
+        }
+        ImGui::Indent();
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextDisabled("%s", patch.description.c_str());
+        ImGui::PopTextWrapPos();
+        ImGui::Unindent();
+        ImGui::PopID();
+      }
+      ImGui::TextDisabled("Saved at once in the [ %s ] section of the settings file (%s = true or false).", s_game.name.c_str(),
+                          patches.front().key.c_str());
+      ImGui::Spacing();
+    }
     if (s_notes.empty())
     {
       ImGui::TextDisabled("No notes for this game in %s", s_notesFile.c_str());
@@ -1667,7 +1707,7 @@ namespace GameMenu
         ImGui::BeginChild("##page");
         switch (tab.page)
         {
-        case Page::Game:          DrawGamePage(); break;
+        case Page::Game:          DrawGamePage(config); break;
         case Page::Controls:      DrawControlsPage(config); controls = true; break;
         case Page::Display:       DrawDisplayPage(config); break;
         case Page::Sound:         DrawSoundPage(config); break;

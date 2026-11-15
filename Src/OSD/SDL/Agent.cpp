@@ -68,6 +68,8 @@
  *   menu save|savegame|common  Its buttons: Save for all games, Save for this
  *                       game alone (the settings that differ), Common settings
  *                       (this game's file removed). "ok FILE" or "err FILE".
+ *   menu patch KEY on|off  A game patch of its Game page turned on or off and
+ *                       saved in the game's section. "ok FILE" or "err ...".
  *   save PATH           Saves a state. "ok" or "err".
  *   load PATH           Loads a state. "ok" or "err".
  *   ffb                 The force feedback commands sent since the last call,
