@@ -47,6 +47,7 @@
 #include "Main.h"
 #include "Gui.h"
 #include "GameMenu.h"
+#include "OSD/FileSystemPath.h"
 
 #ifdef _WIN32
     #include "../Src/OSD/Windows/DirectInputSystem.h"
@@ -271,6 +272,17 @@ static int InputTextResizeCallback(ImGuiInputTextCallbackData* data)
 // global settings with the game's own section of the config file applied, and only the settings that end up
 // different from the global ones are written to that section.
 // ---------------------------------------------------------------------------------------------------------------
+
+// The Game Options window of a game of the list: the in-game menu's Game page (its description, game patches and notes)
+struct GameOptionsState
+{
+    int request = -1;                           // its button clicked on this row: opened at the next frame
+    int row = -1;                               // the game shown
+    bool appearing = false;                     // its first frame: the notes read again
+    std::string status;                         // where the last change was saved
+    std::string configPath;                     // the settings file, the game patches written into the game's section at once
+    Util::Config::Node* file = nullptr;         // the config file's contents, with those changes, written back at the end
+};
 
 struct PerGameState
 {
@@ -1164,7 +1176,80 @@ static Game GetGame(const std::map<std::string, Game>& games, int selectedGameIn
     return {};
 }
 
-static void GUI(const ImGuiIO& io, Util::Config::Node& globalConfig, const std::map<std::string, Game>& games, const std::map<std::string, std::string>& romZips, int& selectedGameIndex, bool& exit, bool& saveSettings, SDL_Window* window, std::shared_ptr<CInputs>& inputs, KeyBindState& kb, CalibrationState& cal, bool closeRequested, bool& exitPromptOpen, PerGameState& perGame)
+// The Game Options window of the game whose button was clicked: the in-game menu's Game page, where the game patches
+// are turned on or off for the game's section, saved at once as from the in-game menu
+static void DrawGameOptions(const std::map<std::string, Game>& games, GameOptionsState& options)
+{
+    if (options.request >= 0) {
+        options.row = options.request;
+        options.request = -1;
+        options.appearing = true;
+        options.status.clear();
+        GameMenu::SetGame(GetGame(games, options.row), FileSystemPath::GetReadPath(FileSystemPath::Config, "GameNotes.txt"));
+        ImGui::OpenPopup("Game Options");
+    }
+
+    const ImVec2 display = ImGui::GetIO().DisplaySize;
+    ImGui::SetNextWindowSize(ImVec2(display.x * 0.85f, display.y * 0.85f), ImGuiCond_Appearing);
+    ImGui::SetNextWindowPos(ImVec2(display.x * 0.5f, display.y * 0.5f), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    bool open = true;
+    if (!ImGui::BeginPopupModal("Game Options", &open)) {
+        return;
+    }
+
+    const Game game = GetGame(games, options.row);
+
+    // the game's section as the config file has it, with the changes made here
+    Util::Config::Node section(game.name);
+    if (const Util::Config::Node* fileSection = options.file->TryGet(game.name)) {
+        for (const auto& n : *fileSection) {
+            if (n.IsLeaf() && n.Exists()) {
+                section.Set(n.Key(), n.ValueAs<std::string>());
+            }
+        }
+    }
+
+    // the page scrolls above the Close button
+    const float footer = ImGui::GetFrameHeightWithSpacing() + ImGui::GetStyle().ItemSpacing.y;
+    if (ImGui::BeginChild("GamePage", ImVec2(0.0f, -footer))) {
+        GameMenu::DrawGameOptions(section, options.appearing);
+    }
+    ImGui::EndChild();
+    options.appearing = false;
+
+    for (const auto& [key, on] : GameMenu::TakePatchChanges()) {
+        const std::string value = on ? "true" : "false";
+        Util::Config::Node* fileSection = options.file->TryGet(game.name);
+        if (fileSection == nullptr) {
+            fileSection = &options.file->Add(game.name);
+        }
+        fileSection->Set(key, value);
+
+        // into the settings file at once (written whole when it does not exist yet)
+        std::error_code ec;
+        bool saved;
+        if (std::filesystem::exists(options.configPath, ec)) {
+            saved = SetINIGameSetting(options.configPath, game.name, key, value);
+        }
+        else {
+            Util::Config::WriteINIFile(options.configPath, *options.file, TimestampedConfigFileComment("Updated from GUI."));
+            saved = std::filesystem::exists(options.configPath, ec);
+        }
+        options.status = std::string(saved ? "Saved: " : "Could not save in ") + options.configPath + " [ " + game.name + " ] " + key + " = " + value;
+    }
+
+    if (ImGui::Button("Close", ScaledSize(120, 0)) || !open) {
+        ImGui::CloseCurrentPopup();
+    }
+    if (!options.status.empty()) {
+        ImGui::SameLine();
+        ImGui::TextDisabled("%s", options.status.c_str());
+    }
+
+    ImGui::EndPopup();
+}
+
+static void GUI(const ImGuiIO& io, Util::Config::Node& globalConfig, const std::map<std::string, Game>& games, const std::map<std::string, std::string>& romZips, int& selectedGameIndex, bool& exit, bool& saveSettings, SDL_Window* window, std::shared_ptr<CInputs>& inputs, KeyBindState& kb, CalibrationState& cal, bool closeRequested, bool& exitPromptOpen, PerGameState& perGame, GameOptionsState& options)
 {
     ImVec4 clear_color = ImVec4(0.0f, 0.5f, 192/255.f, 1.00f);
 
@@ -1198,13 +1283,16 @@ static void GUI(const ImGuiIO& io, Util::Config::Node& globalConfig, const std::
 
     ImGui::BeginChild("TableRegion", ScaledSize(0.0f, 200.0f), true, ImGuiWindowFlags_HorizontalScrollbar);
 
-    if (ImGui::BeginTable("Games", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit))
+    if (ImGui::BeginTable("Games", 6, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit))
     {
         ImGui::TableSetupColumn("Title");
         ImGui::TableSetupColumn("Rom Name");
-        ImGui::TableSetupColumn("Version");
+        // the version takes what the other columns leave, so the Game Options buttons show in the window as it opens
+        // (a version cut short shows whole in a tooltip)
+        ImGui::TableSetupColumn("Version", ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableSetupColumn("Year");
         ImGui::TableSetupColumn("Hardware");
+        ImGui::TableSetupColumn("");    // the Game Options buttons
 
         ImGui::TableHeadersRow();
 
@@ -1229,7 +1317,8 @@ static void GUI(const ImGuiIO& io, Util::Config::Node& globalConfig, const std::
             ImGui::TableSetColumnIndex(0);
             ImGui::Text("%s", g.second.title.c_str());
             ImGui::TableSetColumnIndex(1);
-            if (ImGui::Selectable(g.second.name.c_str(), selectedGameIndex == row, ImGuiSelectableFlags_SpanAllColumns)) {
+            // the row's Game Options button over it gets its own clicks
+            if (ImGui::Selectable(g.second.name.c_str(), selectedGameIndex == row, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap)) {
                 selectedGameIndex = row;
             }
 
@@ -1238,11 +1327,22 @@ static void GUI(const ImGuiIO& io, Util::Config::Node& globalConfig, const std::
             }
 
             ImGui::TableSetColumnIndex(2);
+            const bool cut = ImGui::CalcTextSize(g.second.version.c_str()).x > ImGui::GetContentRegionAvail().x;
             ImGui::Text("%s", g.second.version.c_str());
+            if (cut) {
+                ImGui::SetItemTooltip("%s", g.second.version.c_str());
+            }
             ImGui::TableSetColumnIndex(3);
             ImGui::Text("%d", g.second.year);
             ImGui::TableSetColumnIndex(4);
             ImGui::Text("%s", Game::SteppingName(g.second.stepping));
+            ImGui::TableSetColumnIndex(5);
+            ImGui::PushID(row);
+            if (ImGui::SmallButton("Game Options")) {
+                selectedGameIndex = row;
+                options.request = row;
+            }
+            ImGui::PopID();
 
             if (!owned) {
                 ImGui::EndDisabled();
@@ -1255,6 +1355,8 @@ static void GUI(const ImGuiIO& io, Util::Config::Node& globalConfig, const std::
     }
 
     ImGui::EndChild();
+
+    DrawGameOptions(games, options);
 
     // draw button options
     DrawButtonOptions(globalConfig, selectedGameIndex, exit, saveSettings, inputs, closeRequested, exitPromptOpen, perGame, GetGame(games, selectedGameIndex));
@@ -1512,6 +1614,9 @@ std::vector<std::string> RunGUI(const std::string& configPath, const Util::Confi
     CalibrationState cal{};
     PerGameState perGame;
     perGame.file = &fullConfig;
+    GameOptionsState gameOptions;
+    gameOptions.configPath = configPath;
+    gameOptions.file = &fullConfig;
     bool exitPromptOpen = false;
     bool exit = false;
     SDL_Event event{};
@@ -1541,7 +1646,7 @@ std::vector<std::string> RunGUI(const std::string& configPath, const Util::Confi
             selectedGame = -1;
         }
 
-        GUI(io, config, games, romZips, selectedGame, exit, saveSettings, window, inputs, kb, cal, closeRequested, exitPromptOpen, perGame);
+        GUI(io, config, games, romZips, selectedGame, exit, saveSettings, window, inputs, kb, cal, closeRequested, exitPromptOpen, perGame, gameOptions);
 
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
 

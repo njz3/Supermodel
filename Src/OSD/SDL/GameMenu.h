@@ -108,6 +108,11 @@ namespace GameMenu
   // messages' names), with the values sent so far if outputs is given. inGame: the in-game menu's Outputs page, else
   // the front-end's Misc tab, where no game runs
   void DrawOutputsTable(const Util::Config::Node &config, const Game &game, COutputs *outputs, bool inGame);
+  // The Game page of the game set by SetGame where no game runs (the front-end's Game Options window): its description,
+  // the game patches offered for its ROM set (GamePatches.h), their settings read from and set in section (the game's
+  // section; the host saves the changes, TakePatchChanges), and its notes, read again when appearing (the window's first
+  // frame)
+  void DrawGameOptions(Util::Config::Node &section, bool appearing);
 
   bool Open(SDL_Window *window);  // false if it cannot be shown
   void SelectPage(Page page);     // shown from the next frame

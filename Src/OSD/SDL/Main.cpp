@@ -1396,6 +1396,11 @@ static bool SetINIFileValues(const std::string &file, const std::string &game, c
   return bool(out);
 }
 
+bool SetINIGameSetting(const std::string &file, const std::string &game, const std::string &key, const std::string &value)
+{
+  return SetINIFileValues(file, game, { { key, value } }, {}, true);
+}
+
 // The in-game menu's Save buttons (as hikaruloader's): for all games, its settings written into the common file
 // (Supermodel.ini), which this game's own file then no longer overrides; for this game alone (forGame), only those that
 // differ from the common settings, into <game>.ini beside it, a layer over the common file read after it

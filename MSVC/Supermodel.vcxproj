@@ -630,6 +630,7 @@ xcopy /D /Y "$(ProjectDir)..\Assets\*" "$(TargetDir)Assets"</Command>
     <ClInclude Include="..\Src\Model3\INetBoard.h" />
     <ClInclude Include="..\Src\Model3\NetBoard.h" />
     <ClInclude Include="..\Src\Model3\NetBoardLink.h" />
+    <ClInclude Include="..\Src\Model3\GamePatches.h" />
     <ClInclude Include="..\Src\Model3\SimNetBoard.h" />
     <ClInclude Include="..\Src\Model3\Srally2Forest.h" />
     <ClInclude Include="..\Src\Model3\Srally2ForestPhoto.h" />

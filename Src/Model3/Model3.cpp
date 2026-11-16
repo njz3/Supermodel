@@ -2748,17 +2748,15 @@ const Game &CModel3::GetGame() const
 
 std::vector<IEmulator::GamePatch> CModel3::GetGamePatches() const
 {
+  // The ROM set's (GamePatches.h), those whose ROMs hold what they change
   std::vector<GamePatch> patches;
-  if (m_forest)
+  for (GamePatch &patch : GamePatchesFor(m_game.name))
   {
-    GamePatch patch;
-    patch.key = CSrally2Forest::kSetting;
-    patch.label = "FOREST, the hidden fifth course";
-    patch.description = "A fifth panel in the practice's course selection: FOREST, a complete course of the game's that no menu "
-                        "shows, with its rival on FOREST's own line. From the next course selection (the game's own program "
-                        "is given back when turned off). Its title at the race's start and its music stay MOUNTAIN's.";
-    patch.enabled = m_forest->Enabled();
-    patches.push_back(patch);
+    if (m_forest && patch.key == CSrally2Forest::kSetting)
+    {
+      patch.enabled = m_forest->Enabled();
+      patches.push_back(patch);
+    }
   }
   return patches;
 }

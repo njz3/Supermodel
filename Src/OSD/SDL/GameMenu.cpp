@@ -42,6 +42,7 @@
 #include "Inputs/Input.h"
 #include "Inputs/InputSystem.h"
 #include "Inputs/InputTypes.h"
+#include "Model3/GamePatches.h"
 #include "Model3/IEmulator.h"
 #include "Util/NewConfig.h"
 #include "../Pkgs/imgui/imgui.h"
@@ -736,15 +737,24 @@ namespace GameMenu
     }
     ImGui::Spacing();
 
-    // The game patches the emulator offers for this ROM set: each a setting of its own section, saved at once
-    std::vector<IEmulator::GamePatch> patches = s_emulator ? s_emulator->GetGamePatches() : std::vector<IEmulator::GamePatch>();
+    // The game patches the emulator offers for this ROM set: each a setting of its own section, saved at once. No
+    // emulator (the front-end's Game Options window): the ROM set's, as its section sets them
+    std::vector<IEmulator::GamePatch> patches;
+    if (s_emulator)
+      patches = s_emulator->GetGamePatches();
+    else
+    {
+      patches = GamePatchesFor(s_game.name);
+      for (IEmulator::GamePatch &patch : patches)
+        patch.enabled = config[patch.key].ValueAsDefault<bool>(false);
+    }
     if (!patches.empty())
     {
       ImGui::SeparatorText("Game patches");
       for (IEmulator::GamePatch &patch : patches)
       {
         ImGui::PushID(patch.key.c_str());
-        if (ImGui::Checkbox(patch.label.c_str(), &patch.enabled) && s_emulator->SetGamePatch(patch.key, patch.enabled))
+        if (ImGui::Checkbox(patch.label.c_str(), &patch.enabled) && (s_emulator == nullptr || s_emulator->SetGamePatch(patch.key, patch.enabled)))
         {
           config.Set(patch.key, patch.enabled);
           s_patchChanges.emplace_back(patch.key, patch.enabled);
@@ -806,6 +816,16 @@ namespace GameMenu
     ImGui::EndChild();
     if (scrolls)
       ImGui::TextDisabled("Page Up / Page Down: scroll the notes");
+  }
+
+  void DrawGameOptions(Util::Config::Node &section, bool appearing)
+  {
+    if (appearing)
+    {
+      s_emulator = nullptr;
+      s_notes = s_notesFile.empty() ? std::vector<Note>() : ReadNotes(s_notesFile, s_noteNames);
+    }
+    DrawGamePage(section);
   }
 
   // --- The Controls page, as linuxloader's (organised as Flycast's): the devices found, each with a page that binds

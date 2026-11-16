@@ -49,6 +49,7 @@
 #include "Graphics/SuperAA.h"
 #include "OSD/Thread.h"
 #include "Model3/Srally2Forest.h"
+#include "Model3/GamePatches.h"
 #include <memory>
 
 /*

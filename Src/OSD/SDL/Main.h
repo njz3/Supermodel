@@ -21,6 +21,12 @@
 #ifndef _MAIN_H_
 #define _MAIN_H_
 
+#include <string>
+
 Util::Config::Node DefaultConfig();
+
+// Sets a setting of a game's section of an INI file (the game patches'), keeping all the rest (comments, layout): the
+// section added at the end of the file when missing
+bool SetINIGameSetting(const std::string &file, const std::string &game, const std::string &key, const std::string &value);
 
 #endif // _MAIN_H_
