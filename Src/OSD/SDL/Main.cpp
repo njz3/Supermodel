@@ -86,6 +86,7 @@
 #include "Util/NewConfig.h"
 #include "Util/ConfigBuilders.h"
 #include "OSD/FileSystemPath.h"
+#include "RomPatches.h"
 #include "GameLoader.h"
 #include "SDLInputSystem.h"
 #include "SDLIncludes.h"
@@ -153,6 +154,35 @@ static std::string s_logFilePath = Util::Format() << FileSystemPath::GetPath(Fil
 // The settings file read: the common one above, or the game's own (<game>.ini beside it), which s_configFilePath then
 // names (with a write directory, there even when it was read from the usual place)
 static std::string s_settingsReadFrom;
+static std::vector<std::string> s_appliedRomPatches;   // the ROM patches the game's ROMs loaded with
+static std::vector<std::string> s_romPatchErrors;      // those turned on but not applied, and why
+static std::string s_romZip;                            // the zip file the game loaded from
+static Util::Config::Node s_commandLineConfig("Global"); // the command line's settings (the ROM patches' too)
+
+// A game's setting before its settings are layered (a ROM patch's, which applies as its ROMs load): the command line's,
+// else its own settings file's (<game>.ini), else its section of Supermodel.ini's
+static std::string EarlyGameSetting(const Util::Config::Node &fileConfig, const Util::Config::Node &cmdLine,
+                                    const std::string &game, const std::string &key)
+{
+  if (const Util::Config::Node *node = cmdLine.TryGet(key); node && node->Exists())
+    return node->ValueAs<std::string>();
+  std::error_code ec;
+  std::string gameSettings = FileSystemPath::GetReadPath(FileSystemPath::Config, game + ".ini");
+  if (std::filesystem::exists(gameSettings, ec))
+  {
+    Util::Config::Node gameConfig("Global");
+    Util::Config::FromINIFile(&gameConfig, gameSettings);
+    if (const Util::Config::Node *section = gameConfig.TryGet(game))
+      if (const Util::Config::Node *node = section->TryGet(key); node && node->Exists())
+        return node->ValueAs<std::string>();
+    if (const Util::Config::Node *node = gameConfig.TryGet(key); node && node->Exists())
+      return node->ValueAs<std::string>();
+  }
+  if (const Util::Config::Node *section = fileConfig.TryGet(game))
+    if (const Util::Config::Node *node = section->TryGet(key); node && node->Exists())
+      return node->ValueAs<std::string>();
+  return "";
+}
 static bool s_gameSettingsFile = false;   // <game>.ini exists: this game's differences from the common settings
 static std::string s_gameSettingsPath;    // where it is written (beside the common file)
 // The settings without <game>.ini: the defaults, the common file, its section for the game, the command line (as text,
@@ -171,6 +201,70 @@ static const std::string &SettingsFileToRead()
 }
 
 static Util::Config::Node s_runtime_config("Global");
+
+// --- ROM patches (RomPatches.h)
+
+std::string RomPatchFolder(const std::string &game)
+{
+  return FileSystemPath::GetPath(FileSystemPath::Assets) + "Patches/" + game;
+}
+
+std::string PatchedRomFolder(const std::string &game)
+{
+  return FileSystemPath::GetWritePath(FileSystemPath::Log) + "PatchedROMs/" + game;
+}
+
+// The game's ROM patches as its settings turn them on (read before the settings are layered: they apply as the ROMs
+// load); nullptr when none is on
+static std::shared_ptr<RomPatches::Patcher> MakeRomPatcher(const Util::Config::Node &fileConfig, const Util::Config::Node &cmdLine,
+                                                           const std::string &game)
+{
+  std::vector<RomPatches::Patch> patches = RomPatches::Read(RomPatchFolder(game));
+  if (patches.empty())
+    return nullptr;
+  FileSystemPath::SetGame(game);   // its settings file's place, with a write directory
+  auto patcher = std::make_shared<RomPatches::Patcher>(patches, [&](const std::string &key)
+  {
+    return EarlyGameSetting(fileConfig, cmdLine, game, key);
+  });
+  return patcher->Empty() && patcher->Errors().empty() ? nullptr : patcher;
+}
+
+// The game's ROM files its patches change, written patched to PatchedRomFolder (the ROMs loaded again, as the game
+// loads them, its patches as its settings files have them)
+bool DumpPatchedROMs(const std::string &zip, const std::string &game, std::string *message)
+{
+  Util::Config::Node fileConfig("Global");
+  const Util::Config::Node &cmdLine = s_commandLineConfig;
+  Util::Config::FromINIFile(&fileConfig, SettingsFileToRead());
+  const Util::Config::Node *xmlNode = s_runtime_config.TryGet("GameXMLFile");
+  std::string xml = xmlNode && xmlNode->Exists() ? xmlNode->ValueAs<std::string>() : s_gameXMLFilePath;
+  std::string folder = PatchedRomFolder(game);
+  GameLoader loader(xml);
+  loader.SetRomPatcher([&](const std::string &gameName)
+  {
+    auto patcher = MakeRomPatcher(fileConfig, cmdLine, gameName);
+    if (patcher)
+      patcher->SetDumpFolder(folder);
+    return patcher;
+  });
+  Game loaded;
+  ROMSet romSet;
+  bool error = loader.Load(&loaded, &romSet, zip, game);
+  auto patcher = loader.RomPatcher();
+  if (error)
+    *message = "Unable to load " + game + " from " + zip;
+  else if (!patcher || patcher->Applied().empty())
+    *message = "No ROM patch of " + game + " is on" + (patcher && !patcher->Errors().empty() ? ": " + patcher->Errors().front() : std::string());
+  else
+  {
+    *message = std::to_string(patcher->Dumped().size()) + " patched files written to " + folder;
+    if (!patcher->Errors().empty())
+      *message += " (" + patcher->Errors().front() + ")";
+  }
+  InfoLog("%s.", message->c_str());
+  return !error && patcher && !patcher->Dumped().empty();
+}
 
 
 /******************************************************************************
@@ -1570,6 +1664,15 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
   SDL_SetWindowTitle(s_window, baseTitleStr);
   s_gameTitle = baseTitleStr;
   GameMenu::SetGame(game, FileSystemPath::GetReadPath(FileSystemPath::Config, "GameNotes.txt"));
+  if (!s_appliedRomPatches.empty())
+  {
+    std::string labels;
+    for (const std::string &label : s_appliedRomPatches)
+      labels += (labels.empty() ? "" : ", ") + label;
+    GameMenu::AddGameInfo("ROM patches", labels);
+  }
+  for (const std::string &error : s_romPatchErrors)
+    GameMenu::AddGameInfo("Not applied", error);
   GameMenu::SetLogFile(s_logFilePath);
   GameMenu::SetInputs(Inputs);
   GameMenu::SetEmulator(Emu);
@@ -1803,13 +1906,20 @@ int Supermodel(const Game &game, ROMSet *rom_set, IEmulator *Emu, CInputs *Input
         ApplyForceFeedbackSettings(Inputs);
       }
       // The game patches turned on or off: saved at once in the game's section of the common file
-      for (const auto &[key, on] : GameMenu::TakePatchChanges())
+      for (const auto &[key, value] : GameMenu::TakePatchChanges())
       {
-        bool saved = SetINIFileValues(s_configFilePath, game.name, { { key, on ? "true" : "false" } }, {}, true);
+        bool saved = SetINIFileValues(s_configFilePath, game.name, { { key, value } }, {}, true);
         if (saved)
-          InfoLog("%s = %s saved in the [ %s ] section of '%s'.", key.c_str(), on ? "true" : "false", game.name.c_str(), s_configFilePath.c_str());
-        GameMenu::SetStatus(saved ? key + (on ? " = true" : " = false") + " saved in [ " + game.name + " ] of " + s_configFilePath :
+          InfoLog("%s = %s saved in the [ %s ] section of '%s'.", key.c_str(), value.c_str(), game.name.c_str(), s_configFilePath.c_str());
+        GameMenu::SetStatus(saved ? key + " = " + value + " saved in [ " + game.name + " ] of " + s_configFilePath :
                                     "Unable to save to " + s_configFilePath);
+      }
+      // "Write the patched ROM files": the ROMs loaded again with the patches as now set
+      if (GameMenu::TakeDumpRequest())
+      {
+        std::string message;
+        DumpPatchedROMs(s_romZip, game.name, &message);
+        GameMenu::SetStatus(message);
       }
       GameMenu::Action action = GameMenu::TakeAction();
       if (action != GameMenu::Action::None)
@@ -2552,6 +2662,7 @@ Util::Config::Node DefaultConfig()
 
   config.Set("DumpMemory", false, "Misc");
   config.Set("DumpTextures", false, "Misc");
+  config.Set("DumpPatchedROMs", false, "Misc");
 
   //
   // Input sensitivity
@@ -2915,6 +3026,8 @@ static void Help(void)
   puts("Debug Options:");
   puts("  -dump-memory            Write memory regions to files on exit");
   puts("  -dump-textures          Write textures to bitmap image files on exit");
+  puts("  -dump-patched-roms      Write the ROM files the game's ROM patches change to");
+  puts("                          PatchedROMs/<ROM set>/, then exit");
 #ifdef SUPERMODEL_DEBUGGER
   puts("  -disable-debugger       Completely disable debugger functionality");
   puts("  -enter-debugger         Enter debugger at start of emulation");
@@ -3136,6 +3249,7 @@ static ParsedCommandLine ParseCommandLine(int argc, char **argv)
 #endif
     { "-dump-memory",         { "DumpMemory",       true } },
     { "-dump-textures",       { "DumpTextures",     true } },
+    { "-dump-patched-roms",   { "DumpPatchedROMs",  true } },
   };
   for (int i = 1; i < argc; i++)
   {
@@ -3485,8 +3599,25 @@ int main(int argc, char **argv)
         PrintGameList(xml_file, loader.GetGames());
         return 0;
       }
+      // The game's ROM patches turned on (Assets/Patches/<ROM set>, Patch_<patch> = true), applied as its ROMs load
+      s_commandLineConfig = cmd_line.config;
+      loader.SetRomPatcher([&](const std::string &gameName) { return MakeRomPatcher(fileConfig, cmd_line.config, gameName); });
       if (loader.Load(&game, &rom_set, *cmd_line.rom_files.begin(), cmd_line.game))
         return 1;
+      s_romZip = *cmd_line.rom_files.begin();
+      if (auto patcher = loader.RomPatcher())
+      {
+        s_appliedRomPatches = patcher->Applied();
+        s_romPatchErrors = patcher->Errors();
+      }
+      // -dump-patched-roms: the patched files written, then nothing more
+      if (const Util::Config::Node *dump = cmd_line.config.TryGet("DumpPatchedROMs"); dump && dump->Exists() && dump->ValueAs<bool>())
+      {
+        std::string message;
+        bool written = DumpPatchedROMs(s_romZip, game.name, &message);
+        printf("%s.\n", message.c_str());
+        return written ? 0 : 1;
+      }
       FileSystemPath::SetGame(game.name);   // with a write directory, the folder of the game's files
 
       Util::Config::MergeINISections(&config4, config3, fileConfig[game.name]);   // apply game-specific config

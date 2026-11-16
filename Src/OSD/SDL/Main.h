@@ -29,4 +29,11 @@ Util::Config::Node DefaultConfig();
 // section added at the end of the file when missing
 bool SetINIGameSetting(const std::string &file, const std::string &game, const std::string &key, const std::string &value);
 
+// ROM patches (RomPatches.h): a game's (Assets/Patches/<ROM set>), where its patched files are written
+// (PatchedROMs/<ROM set>, in the write directory if any), and writing them (the ROMs loaded again from the zip file
+// with the patches its settings turn on): false, and why in *message, when none could be written
+std::string RomPatchFolder(const std::string &game);
+std::string PatchedRomFolder(const std::string &game);
+bool DumpPatchedROMs(const std::string &zip, const std::string &game, std::string *message);
+
 #endif // _MAIN_H_

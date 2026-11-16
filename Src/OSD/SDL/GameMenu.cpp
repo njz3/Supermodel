@@ -44,6 +44,7 @@
 #include "Inputs/InputTypes.h"
 #include "Model3/GamePatches.h"
 #include "Model3/IEmulator.h"
+#include "RomPatches.h"
 #include "Util/NewConfig.h"
 #include "../Pkgs/imgui/imgui.h"
 #include "../Pkgs/imgui/imgui_impl_sdl2.h"
@@ -115,7 +116,9 @@ namespace GameMenu
 
     // The Game page
     IEmulator *s_emulator = nullptr;                          // its game patches
-    std::vector<std::pair<std::string, bool>> s_patchChanges;
+    std::vector<std::pair<std::string, std::string>> s_patchChanges;  // setting, value
+    std::vector<RomPatches::Patch> s_romPatches;              // the game's ROM patches (read with SetGame)
+    bool s_dumpRequested = false;                             // "Write the patched ROM files" clicked
     std::vector<std::pair<std::string, std::string>> s_info;  // label, value
     std::vector<std::string> s_noteNames;                     // the game's ROM set, then its parent's
     std::string s_notesFile;
@@ -229,6 +232,8 @@ namespace GameMenu
     s_notesFile = notesFile;
     s_notes.clear();
     s_game = game;
+    s_romPatches = RomPatches::Read(RomPatchFolder(game.name));
+    s_dumpRequested = false;
   }
 
   void SetOutputs(COutputs *outputs)
@@ -246,11 +251,23 @@ namespace GameMenu
     s_emulator = emulator;
   }
 
-  std::vector<std::pair<std::string, bool>> TakePatchChanges()
+  std::vector<std::pair<std::string, std::string>> TakePatchChanges()
   {
-    std::vector<std::pair<std::string, bool>> changes;
+    std::vector<std::pair<std::string, std::string>> changes;
     changes.swap(s_patchChanges);
     return changes;
+  }
+
+  bool TakeDumpRequest()
+  {
+    bool requested = s_dumpRequested;
+    s_dumpRequested = false;
+    return requested;
+  }
+
+  void AddGameInfo(const std::string &label, const std::string &value)
+  {
+    s_info.push_back({ label, value });
   }
 
   void SetLogFile(const std::string &path)
@@ -721,17 +738,193 @@ namespace GameMenu
     DrawOutputsTable(config, s_game, s_outputs, true);
   }
 
+  // --- The ROM patches (RomPatches.h): each patch on or off, its options (on or off, or one of their values), saved
+  // at once in the game's section; applied as the ROMs load, from the game's next start
+
+  static std::string Setting(const Util::Config::Node &config, const std::string &key)
+  {
+    const Util::Config::Node *node = config.TryGet(key);
+    return node && node->Exists() ? node->ValueAs<std::string>() : std::string();
+  }
+
+  static void SetRomPatchSetting(Util::Config::Node &config, const std::string &key, const std::string &value)
+  {
+    if (Setting(config, key) == value)
+      return;
+    config.Set(key, value);
+    s_patchChanges.emplace_back(key, value);
+  }
+
+  static const RomPatches::Patch *FindRomPatch(const std::string &name)
+  {
+    for (const RomPatches::Patch &patch : s_romPatches)
+    {
+      if (patch.name == name)
+        return &patch;
+    }
+    return nullptr;
+  }
+
+  // A patch turned on: the patches it needs too, those it conflicts with off; turned off: those needing it off too
+  static void SetRomPatchOn(Util::Config::Node &config, const RomPatches::Patch &patch, bool on, int depth = 0)
+  {
+    if (depth > 16)
+      return;
+    SetRomPatchSetting(config, RomPatches::PatchKey(patch), on ? "true" : "false");
+    for (const RomPatches::Patch &other : s_romPatches)
+    {
+      bool needed = std::find(patch.requires.begin(), patch.requires.end(), other.name) != patch.requires.end();
+      bool needs = std::find(other.requires.begin(), other.requires.end(), patch.name) != other.requires.end();
+      bool conflict = std::find(patch.conflicts.begin(), patch.conflicts.end(), other.name) != patch.conflicts.end() ||
+                      std::find(other.conflicts.begin(), other.conflicts.end(), patch.name) != other.conflicts.end();
+      bool otherOn = RomPatches::IsTrue(Setting(config, RomPatches::PatchKey(other)));
+      if (on && needed && !otherOn)
+        SetRomPatchOn(config, other, true, depth + 1);
+      else if (on && conflict && otherOn)
+        SetRomPatchOn(config, other, false, depth + 1);
+      else if (!on && needs && otherOn)
+        SetRomPatchOn(config, other, false, depth + 1);
+    }
+  }
+
+  // An option on or off, the same way within its patch (a choice's options count as on away from their default)
+  static void SetRomOptionOn(Util::Config::Node &config, const RomPatches::Patch &patch, const RomPatches::Option &option,
+                             const std::string &value, int depth = 0)
+  {
+    if (depth > 16)
+      return;
+    SetRomPatchSetting(config, RomPatches::OptionKey(patch, option), value);
+    bool on = option.IsChoice() ? value != option.defaultValue : value == "true";
+    for (const RomPatches::Option &other : patch.options)
+    {
+      bool needed = std::find(option.requires.begin(), option.requires.end(), other.name) != option.requires.end();
+      bool needs = std::find(other.requires.begin(), other.requires.end(), option.name) != other.requires.end();
+      bool conflict = std::find(option.conflicts.begin(), option.conflicts.end(), other.name) != option.conflicts.end() ||
+                      std::find(other.conflicts.begin(), other.conflicts.end(), option.name) != other.conflicts.end();
+      std::string otherValue = RomPatches::OptionValue(other, Setting(config, RomPatches::OptionKey(patch, other)));
+      bool otherOn = other.IsChoice() ? otherValue != other.defaultValue : otherValue == "true";
+      if (other.IsChoice())
+      {
+        if ((!on && needs && otherOn) || (on && conflict && otherOn))
+          SetRomOptionOn(config, patch, other, other.defaultValue, depth + 1);
+        continue;
+      }
+      if (on && needed && !otherOn)
+        SetRomOptionOn(config, patch, other, "true", depth + 1);
+      else if ((on && conflict && otherOn) || (!on && needs && otherOn))
+        SetRomOptionOn(config, patch, other, "false", depth + 1);
+    }
+  }
+
+  static std::string Names(const std::vector<std::string> &names, bool patches)
+  {
+    std::string text;
+    for (const std::string &name : names)
+    {
+      const RomPatches::Patch *patch = patches ? FindRomPatch(name) : nullptr;
+      text += (text.empty() ? "" : ", ") + (patch ? patch->title : name);
+    }
+    return text;
+  }
+
+  static void DrawRomPatches(Util::Config::Node &config)
+  {
+    if (s_romPatches.empty())
+      return;
+    ImGui::SeparatorText("ROM patches");
+    ImGui::PushTextWrapPos(0.0f);
+    for (const RomPatches::Patch &patch : s_romPatches)
+    {
+      ImGui::PushID(patch.name.c_str());
+      if (!patch.error.empty())
+      {
+        ImGui::TextDisabled("%s: %s (%s)", patch.title.c_str(), patch.error.c_str(), patch.path.c_str());
+        ImGui::PopID();
+        continue;
+      }
+      bool on = RomPatches::IsTrue(Setting(config, RomPatches::PatchKey(patch)));
+      if (ImGui::Checkbox(patch.title.c_str(), &on))
+        SetRomPatchOn(config, patch, on);
+      ImGui::Indent();
+      if (!patch.description.empty())
+        ImGui::TextDisabled("%s", patch.description.c_str());
+      if (!patch.requires.empty())
+        ImGui::TextDisabled("Needs: %s", Names(patch.requires, true).c_str());
+      if (!patch.conflicts.empty())
+        ImGui::TextDisabled("Not with: %s", Names(patch.conflicts, true).c_str());
+      ImGui::BeginDisabled(!on);
+      for (const RomPatches::Option &option : patch.options)
+      {
+        ImGui::PushID(option.name.c_str());
+        std::string value = RomPatches::OptionValue(option, Setting(config, RomPatches::OptionKey(patch, option)));
+        if (option.IsChoice())
+        {
+          auto current = std::find_if(option.values.begin(), option.values.end(), [&](const RomPatches::Value &v) { return v.name == value; });
+          ImGui::SetNextItemWidth(ImGui::GetFontSize() * 16);
+          if (ImGui::BeginCombo(option.title.c_str(), current != option.values.end() ? current->title.c_str() : value.c_str()))
+          {
+            for (const RomPatches::Value &v : option.values)
+            {
+              if (ImGui::Selectable(v.title.c_str(), v.name == value))
+                SetRomOptionOn(config, patch, option, v.name);
+              if (!v.description.empty())
+                ImGui::SetItemTooltip("%s", v.description.c_str());
+            }
+            ImGui::EndCombo();
+          }
+          if (current != option.values.end() && !current->description.empty())
+          {
+            ImGui::Indent();
+            ImGui::TextDisabled("%s", current->description.c_str());
+            ImGui::Unindent();
+          }
+        }
+        else
+        {
+          bool optionOn = value == "true";
+          if (ImGui::Checkbox(option.title.c_str(), &optionOn))
+            SetRomOptionOn(config, patch, option, optionOn ? "true" : "false");
+        }
+        ImGui::Indent();
+        if (!option.description.empty())
+          ImGui::TextDisabled("%s", option.description.c_str());
+        if (!option.requires.empty())
+          ImGui::TextDisabled("Needs: %s", Names(option.requires, false).c_str());
+        if (!option.conflicts.empty())
+          ImGui::TextDisabled("Not with: %s", Names(option.conflicts, false).c_str());
+        ImGui::Unindent();
+        ImGui::PopID();
+      }
+      ImGui::EndDisabled();
+      ImGui::Unindent();
+      ImGui::PopID();
+    }
+    ImGui::TextDisabled("The game's ROM files are patched as they load, from its next start (Patch_<patch> = true, its options "
+                        "Patch_<patch>_<option>, in its section). Patches: %s", RomPatchFolder(s_game.name).c_str());
+    if (ImGui::Button("Write the patched ROM files"))
+      s_dumpRequested = true;
+    ImGui::SameLine();
+    ImGui::TextDisabled("the files the patches turned on change, to %s (to program a real board's EPROMs)",
+                        PatchedRomFolder(s_game.name).c_str());
+    ImGui::PopTextWrapPos();
+    ImGui::Spacing();
+  }
+
   static void DrawGamePage(Util::Config::Node &config)
   {
     if (ImGui::BeginTable("Description", 2, ImGuiTableFlags_SizingFixedFit))
     {
+      ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed);
+      ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
       for (const auto &[label, value] : s_info)
       {
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
         ImGui::TextDisabled("%s", label.c_str());
         ImGui::TableNextColumn();
+        ImGui::PushTextWrapPos(0.0f);   // long values (the ROM patches') wrapped
         ImGui::TextUnformatted(value.c_str());
+        ImGui::PopTextWrapPos();
       }
       ImGui::EndTable();
     }
@@ -757,7 +950,7 @@ namespace GameMenu
         if (ImGui::Checkbox(patch.label.c_str(), &patch.enabled) && (s_emulator == nullptr || s_emulator->SetGamePatch(patch.key, patch.enabled)))
         {
           config.Set(patch.key, patch.enabled);
-          s_patchChanges.emplace_back(patch.key, patch.enabled);
+          s_patchChanges.emplace_back(patch.key, patch.enabled ? "true" : "false");
         }
         ImGui::Indent();
         ImGui::PushTextWrapPos(0.0f);
@@ -770,6 +963,8 @@ namespace GameMenu
                           patches.front().key.c_str());
       ImGui::Spacing();
     }
+
+    DrawRomPatches(config);
     if (s_notes.empty())
     {
       ImGui::TextDisabled("No notes for this game in %s", s_notesFile.c_str());

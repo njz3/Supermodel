@@ -1071,6 +1071,8 @@ bool GameLoader::LoadRegion(ROM *rom, const GameLoader::Region::ptr_t &region, c
     std::shared_ptr<uint8_t> tmp;
     uint32_t file_size;
     error |= LoadZippedFile(&tmp, &file_size, file, zip);
+    if (!error && m_rom_patcher)
+      m_rom_patcher->Apply(file->filename, tmp.get(), file_size);
     if (!error)
     {
       uint8_t *dest = rom->data.get();
@@ -1116,6 +1118,16 @@ bool GameLoader::LoadROMs(ROMSet *rom_set, const std::string &game_name, const Z
   // Load up the ROMs
   auto &regions_by_name = IsChildSet(it->second) ? m_regions_by_merged_game.find(game_name)->second : m_regions_by_game.find(game_name)->second;
   LogROMDefinition(game_name, regions_by_name);
+  m_rom_patcher = m_rom_patcher_for ? m_rom_patcher_for(game_name) : nullptr;
+  if (m_rom_patcher)
+  {
+    std::map<std::string, uint32_t> files;
+    for (auto &v: regions_by_name)
+      for (auto &file: v.second->files)
+        if (file->has_crc32)
+          files[file->filename] = file->crc32;
+    m_rom_patcher->Check(files);
+  }
   bool error = false;
   for (auto &v: regions_by_name)
   {

@@ -282,6 +282,7 @@ struct GameOptionsState
     std::string status;                         // where the last change was saved
     std::string configPath;                     // the settings file, the game patches written into the game's section at once
     Util::Config::Node* file = nullptr;         // the config file's contents, with those changes, written back at the end
+    const std::map<std::string, std::string>* romZips = nullptr;   // the games' zip files (the patched ROM files written)
 };
 
 struct PerGameState
@@ -1217,8 +1218,7 @@ static void DrawGameOptions(const std::map<std::string, Game>& games, GameOption
     ImGui::EndChild();
     options.appearing = false;
 
-    for (const auto& [key, on] : GameMenu::TakePatchChanges()) {
-        const std::string value = on ? "true" : "false";
+    for (const auto& [key, value] : GameMenu::TakePatchChanges()) {
         Util::Config::Node* fileSection = options.file->TryGet(game.name);
         if (fileSection == nullptr) {
             fileSection = &options.file->Add(game.name);
@@ -1236,6 +1236,23 @@ static void DrawGameOptions(const std::map<std::string, Game>& games, GameOption
             saved = std::filesystem::exists(options.configPath, ec);
         }
         options.status = std::string(saved ? "Saved: " : "Could not save in ") + options.configPath + " [ " + game.name + " ] " + key + " = " + value;
+    }
+
+    // "Write the patched ROM files": the game's zip file loaded again with its patches as now set
+    if (GameMenu::TakeDumpRequest()) {
+        std::string zip;
+        if (options.romZips != nullptr) {
+            auto it = options.romZips->find(game.name);
+            if (it != options.romZips->end()) {
+                zip = it->second;
+            }
+        }
+        if (zip.empty()) {
+            options.status = "No zip file of " + game.name + " in the ROM folder";
+        }
+        else {
+            DumpPatchedROMs(zip, game.name, &options.status);
+        }
     }
 
     if (ImGui::Button("Close", ScaledSize(120, 0)) || !open) {
@@ -1356,6 +1373,7 @@ static void GUI(const ImGuiIO& io, Util::Config::Node& globalConfig, const std::
 
     ImGui::EndChild();
 
+    options.romZips = &romZips;
     DrawGameOptions(games, options);
 
     // draw button options

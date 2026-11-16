@@ -463,6 +463,7 @@ xcopy /D /Y "$(ProjectDir)..\Assets\*" "$(TargetDir)Assets"</Command>
     <ClCompile Include="..\Src\Util\ByteSwap.cpp" />
     <ClCompile Include="..\Src\Util\ConfigBuilders.cpp" />
     <ClCompile Include="..\Src\Util\Format.cpp" />
+    <ClCompile Include="..\Src\RomPatches.cpp" />
     <ClCompile Include="..\Src\Util\NewConfig.cpp" />
     <ClCompile Include="..\Src\Graphics\AspectRatio.cpp" />
     <ClCompile Include="..\Src\Model3\DriveBoard\ServoProgramSim.cpp" />
@@ -676,6 +677,7 @@ xcopy /D /Y "$(ProjectDir)..\Assets\*" "$(TargetDir)Assets"</Command>
     <ClInclude Include="..\Src\Util\ByteSwap.h" />
     <ClInclude Include="..\Src\Util\ConfigBuilders.h" />
     <ClInclude Include="..\Src\Util\Format.h" />
+    <ClInclude Include="..\Src\RomPatches.h" />
     <ClInclude Include="..\Src\Util\GenericValue.h" />
     <ClInclude Include="..\Src\Util\NewConfig.h" />
     <ClInclude Include="..\Src\Graphics\AspectRatio.h" />

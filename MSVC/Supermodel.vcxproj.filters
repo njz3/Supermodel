@@ -533,6 +533,9 @@
     <ClCompile Include="..\Src\Util\Format.cpp">
       <Filter>Source Files\Util</Filter>
     </ClCompile>
+    <ClCompile Include="..\Src\RomPatches.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="..\Src\Graphics\New3D\R3DFloat.cpp">
       <Filter>Source Files\Graphics\New</Filter>
     </ClCompile>
@@ -1053,6 +1056,9 @@
     </ClInclude>
     <ClInclude Include="..\Src\Util\Format.h">
       <Filter>Header Files\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Src\RomPatches.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\Src\Util\BMPFile.h">
       <Filter>Header Files\Util</Filter>

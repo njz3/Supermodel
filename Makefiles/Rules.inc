@@ -209,6 +209,7 @@ SRC_FILES = \
 	Src/Util/ByteSwap.cpp \
 	Src/Util/ConfigBuilders.cpp \
 	Src/GameLoader.cpp \
+	Src/RomPatches.cpp \
 	Src/Pkgs/tinyxml2.cpp \
 	Src/Pkgs/imgui/imgui.cpp \
 	Src/Pkgs/imgui/imgui_draw.cpp \

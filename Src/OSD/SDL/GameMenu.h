@@ -92,6 +92,8 @@ namespace GameMenu
   // The game the Game page describes, and the file of the notes (read each time the menu opens: see GameNotes.txt
   // for its format)
   void SetGame(const Game &game, const std::string &notesFile);
+  // A line more of the Game page's description (after SetGame)
+  void AddGameInfo(const std::string &label, const std::string &value);
   // The outputs the Outputs page shows the values of (nullptr: none configured)
   void SetOutputs(COutputs *outputs);
   // The inputs the Controls page binds (nullptr: none)
@@ -99,7 +101,9 @@ namespace GameMenu
   // The emulator whose game patches the Game page turns on or off (nullptr: none)
   void SetEmulator(IEmulator *emulator);
   // The game patches turned on or off since the last call, {setting, on}: the host saves them in the game's section
-  std::vector<std::pair<std::string, bool>> TakePatchChanges();
+  std::vector<std::pair<std::string, std::string>> TakePatchChanges();
+  // "Write the patched ROM files" clicked on the Game page (the host writes them: DumpPatchedROMs)
+  bool TakeDumpRequest();
   // The log file, shown by the About page
   void SetLogFile(const std::string &path);
   // The size the renderers draw at now, shown by the Display page
