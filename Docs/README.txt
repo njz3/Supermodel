@@ -2336,8 +2336,10 @@ All settings are case sensitive.
                     weather (SNOWY's falling particles, which its textures
                     have no snowflake for) falls as rain, and the car's
                     reflections (a texture FOREST makes much more opaque) are
-                    made as faint as on the other courses.  The title shown
-                    at the race's start and the music remain MOUNTAIN's.
+                    made as faint as on the other courses.  The race's end
+                    (the staff roll after CLEARED, the ranking) has FOREST's
+                    own shots (the game hung there).  The title shown at the
+                    race's start and the music remain MOUNTAIN's.
                     Linked cabinets choosing FOREST all need it on.
 
     ----------------

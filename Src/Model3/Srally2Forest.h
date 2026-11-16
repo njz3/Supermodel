@@ -71,6 +71,7 @@ private:
   void ShowRace(void);
   bool Sheltered(void);
   void SpreadParticles(void);
+  void WriteEnding(bool write);
   bool LoadPhoto(void);
 
   uint8_t *m_ram;

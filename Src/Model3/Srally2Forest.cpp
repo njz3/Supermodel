@@ -64,6 +64,10 @@
  * faster, but under the rocks of the gorge; the car's reflections (a texture FOREST gives them much more opaque
  * than the other courses' do) are made as faint as on the others.
  *
+ * The race's end: the staff roll after CLEARED reads FOREST's shots from tables
+ * of four courses (the game hanged there); five, FOREST's shots beside its
+ * road and its replay following the car.
+ *
  * The title shown when the race starts remains MOUNTAIN's.
  */
 
@@ -227,6 +231,16 @@ namespace
     { 0x0F25EC, 0x00000000, 0x4E800020, false },  // blr
     { 0x024A10, 0x48048BDD, 0x480CDBA5, false },  // bl 0x6D5EC -> bl 0x0F25B4
     { 0x0ED0E8, 0xBD700000, 0xBD700000, true },   // the particles' speed
+    // The race's end: after CLEARED the staff roll replays the race, its shots from tables by course (0x11664: FOREST
+    // 4) of four entries only (DESERT, MOUNTAIN, SNOWY, RIVIERA), the fifth something else: FOREST's shots read from
+    // address 0 or 0x14, a stack of garbage objects, the PowerPC lost (the game hangs, a black screen). Tables of five
+    // in a free place (kEnding, zero in all races, the staff roll and the attract), their code redirected (lis/addi
+    // pairs), and FOREST's replay cameras in the third table's empty fifth entry (0x13689C)
+    { 0x027E80, 0x3D200013, 0x3D200014, false },  // lis r9, 0x13 -> 0x14: the end shots (4 a course)
+    { 0x027E84, 0x39294940, 0x3929EA40, false },  // addi r9, r9, 0x4940 -> -0x15C0 (0x13EA40)
+    { 0x028CC8, 0x3D200013, 0x3D200014, false },  // lis r9, 0x13 -> 0x14: the staff roll's shots (5 a course)
+    { 0x028CCC, 0x39294F90, 0x3929EA60, false },  // addi r9, r9, 0x4F90 -> -0x15A0 (0x13EA60)
+    { 0x1368AC, 0x00000000, 0x0013ED50, false },  // the replay cameras of course index 4 (FOREST)
   };
 
   // The menus' state (5 the carousel's intro, 6 the selection, 7 the choice made) and the game chosen (1 practice)
@@ -265,6 +279,18 @@ namespace
   // SNOWY's start spread over its height; FOREST's all at one height, a single sheet falling: drops in bursts, then
   // none. Spread here when found so
   constexpr uint32_t kParticles = 0x22B2F4, kParticleSize = 0x18, kParticleCount = 300;
+
+  // The race's end (see kProgram): the tables and FOREST's data, in RAM zero in all races, the staff roll and the
+  // attract (0x13E924, 0x2DC4 bytes). The two tables of five (the four courses' entries as the program has them),
+  // FOREST's end shots (4 records of 0x50 bytes: a camera's x, y, z at 0x18, a flag at 0x3C) and the staff roll's (5),
+  // cameras beside FOREST's road at the lap's points MOUNTAIN's are (13 to 73 %), and its replay cameras (a header of
+  // 12 bytes, records of 0x1C: first and last sector, mode, kind, x, y, z; all FF to end): one, following the car over
+  // the whole lap (mode 3 at 0, 0, 0, as MOUNTAIN's last), FOREST's sector not advancing
+  constexpr uint32_t kEnding = 0x13EA40, kEndingSize = 0x340;
+  constexpr uint32_t kEndShots = kEnding + 0x40, kRollShots = kEnding + 0x180, kReplayCameras = kEnding + 0x310;
+  constexpr uint32_t kEndTable[4] = { 0x134440, 0x134580, 0x1346C0, 0x134800 };
+  constexpr uint32_t kRollTable[4] = { 0x134950, 0x134AE0, 0x134C70, 0x134E00 };
+  constexpr unsigned kEndShotPoints[4] = { 59, 140, 163, 186 }, kRollShotPoints[5] = { 33, 59, 140, 163, 186 };
 
   // The car's reflections, three layers over it (models of the game's own, the texture each course gives them):
   // FOREST gives them a texture of 32x32 (page 1, 928, 832) much more opaque than the other courses', which covers the
@@ -689,6 +715,12 @@ void CSrally2Forest::Frame(void)
     }
   }
 
+  // The race's end's data with the program (cleared with it)
+  if (patched && Ram32(kEnding) != kEndTable[0])
+    WriteEnding(true);
+  else if (!patched && original && Ram32(kEnding) == kEndTable[0])
+    WriteEnding(false);
+
   // During FOREST's races: the rain (the particles' texture offset and speed, none under the rocks) and the
   // reflections' texture
   bool forestRace = patched && Ram32(kMenuState) == kRaceState && Ram32(kCourse) == 1;
@@ -715,6 +747,55 @@ void CSrally2Forest::Frame(void)
     else if (want == Shown::Race)
       ShowRace();
   }
+}
+
+// The race's end's tables and FOREST's data (see kEnding), or zeros
+void CSrally2Forest::WriteEnding(bool write)
+{
+  for (uint32_t a = kEnding; a < kEnding + kEndingSize; a += 4)
+    WriteRam32(a, 0);
+  if (!write)
+    return;
+  auto real = [](uint32_t v) { float f; memcpy(&f, &v, 4); return f; };
+  auto bits = [](float f) { uint32_t v; memcpy(&v, &f, 4); return v; };
+  for (unsigned i = 0; i < 4; i++)
+  {
+    WriteRam32(kEnding + 4 * i, kEndTable[i]);
+    WriteRam32(kEnding + 0x20 + 4 * i, kRollTable[i]);
+  }
+  WriteRam32(kEnding + 0x10, kEndShots);
+  WriteRam32(kEnding + 0x30, kRollShots);
+
+  // A camera 8 m beside the road (to its left), 3 m above it, at a point of FOREST's line
+  auto camera = [&](uint32_t record, unsigned point)
+  {
+    auto at = [&](unsigned i, unsigned k) { uint32_t v; memcpy(&v, m_crom + kLine + 12 * (i % kLinePoints) + 4 * k, 4); return real(v); };
+    float x = at(point, 0), y = at(point, 1), z = at(point, 2);
+    float dx = at(point + 1, 0) - at(point + kLinePoints - 1, 0), dz = at(point + 1, 2) - at(point + kLinePoints - 1, 2);
+    float n = std::sqrt(dx * dx + dz * dz);
+    if (n > 0)
+    {
+      x += -dz / n * 8.0f;
+      z += dx / n * 8.0f;
+    }
+    WriteRam32(record + 0x18, bits(x));
+    WriteRam32(record + 0x1C, bits(y + 3.0f));
+    WriteRam32(record + 0x20, bits(z));
+  };
+  for (unsigned i = 0; i < 4; i++)
+  {
+    camera(kEndShots + 0x50 * i, kEndShotPoints[i]);
+    WriteRam32(kEndShots + 0x50 * i + 0x3C, i < 3 ? 1 : 0);   // as MOUNTAIN's
+  }
+  for (unsigned i = 0; i < 5; i++)
+    camera(kRollShots + 0x50 * i, kRollShotPoints[i]);
+
+  // The replay's camera: sectors 0 to 255, mode 3, following the car; then the end
+  uint32_t record = kReplayCameras + 0xC;
+  WriteRam32(record + 0x04, 255);
+  WriteRam32(record + 0x08, 3);
+  for (uint32_t k = 0; k < 4; k++)
+    WriteRam32(record + 0x1C + 4 * k, 0xFFFFFFFF);
 }
 
 // The particles' heights spread over their box when they are all at one (FOREST's start), the same each time

@@ -812,6 +812,23 @@ complet mais aucun menu n'y mène (Practice : index du carrousel → 3 2 4 5, Ch
   (une nappe qui tombe dans sa boîte de 8 m), celles de SNOWY réparties de -4 à 4 m (300 hauteurs différentes) : le
   jeu ne les répartit pas au départ de FOREST. Le patch les répartit (suite pseudo-aléatoire fixe) quand il les trouve
   toutes à une hauteur pendant une course FOREST.
+- Le jeu plantait à la fin de la course (signalé par le propriétaire) : course Practice de 3 tours finie en mode agent
+  (pilote automatique sur la ligne `0x0DE258`), FINISH puis CLEARED, puis écran noir, la voiture en NaN. Commande agent
+  `pc` ajoutée (PC, LR, r1, r3 du PowerPC entre deux images) : le PowerPC à `0xFFFFFFFC`, r1 à `0xE057FDB8`. Trace
+  temporaire des 4096 dernières instructions : `0x22764` (`stwux r9, r1, r0`, une réservation de pile de r15 x 4)
+  avec r15 lu à l'adresse `0x7FFFFFFF`, que lui passe `0x1C750` : un objet tout en `FF` (`0x1AD424`) dessiné comme
+  valide. Ses données viennent de tables par circuit indexées par `0x11664` (0 DESERT, 1 MOUNTAIN, 2 SNOWY, 3
+  RIVIERA, 4 FOREST) qui n'ont que quatre entrées : les plans de fin (`0x134940`, 4 enregistrements de 0x50 octets,
+  caméra x, y, z en 0x18, drapeau en 0x3C), ceux du générique (`0x134F90`, 5) ; la cinquième y est autre chose (0 et
+  0x14). Les caméras du replay (`0x13689C`, en-tête de 12 octets puis début, fin de secteur, mode, type, x, y, z, fin
+  tout à `FF`) ont une cinquième entrée vide (0).
+- **Changé** : deux tables de cinq dans une zone nulle pendant les courses, le générique et l'attract (`0x13EA40`,
+  vérifié dans les cinq circuits et 80 s de générique et d'attract), le code redirigé (`lis/addi` en `0x27E80` et
+  `0x28CC8`), les plans de FOREST : caméras à 8 m du bord, 3 m au-dessus, aux fractions du tour de celles de MOUNTAIN
+  (points 33, 59, 140, 163, 186, hors du passage sous les rochers) ; son replay : une caméra qui suit la voiture sur
+  tout le tour (mode 3 en 0, 0, 0, comme la dernière de MOUNTAIN), le secteur de FOREST n'avançant pas. Vérifié en
+  mode agent : FINISH, CLEARED, le générique (STAFF...) sur les décors de FOREST, RANKING PRACTICE FOREST, GAME OVER,
+  SEGA, l'attract ; les autres circuits lisent les mêmes pointeurs qu'avant.
 
 ## 3. Les essais
 
