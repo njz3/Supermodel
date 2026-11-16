@@ -91,6 +91,8 @@
  *   ram ADDRESS LENGTH  Memory read by the main CPU (hex address and length,
  *                       at most 1 MB): "ram LENGTH", a new line, the bytes.
  *   mem ADDRESS LENGTH  The same (sm2-emu's name): "mem LENGTH", the bytes.
+ *   pc                  Model 3: where the PowerPC is between two frames (a
+ *                       hang, a loop): "ok PC LR R1 R3" (hex).
  *   poke ADDRESS VALUE [SIZE]  Writes VALUE (hex, SIZE 1, 2 or 4 bytes, 4 by
  *                       default) at ADDRESS through the main CPU's bus: "ok".
  *   frame               "frame N", the number of frames run.
@@ -127,6 +129,7 @@
 #include "Model2/Model2.h"
 #include "Model1/Model1.h"
 #include "Model3/DriveBoard/DriveBoard.h"
+#include "CPU/PowerPC/ppc.h"
 #include "OSD/Outputs.h"
 #include "Util/BMPFile.h"
 #include "Util/NewConfig.h"
@@ -833,6 +836,16 @@ namespace Agent
         for (unsigned i = 0; i < length; i++)
           bytes[i] = bus->Read8(address + i);
         ReplyBytes(command + " " + std::to_string(length), bytes.data(), bytes.size());
+      }
+      else if (command == "pc")
+      {
+        // Model 3: where the PowerPC is between two frames (a hang, a loop): its PC, LR, SP (r1) and r3
+        if (model3 == nullptr)
+        {
+          Reply("err pc: Model 3 only");
+          continue;
+        }
+        Reply("ok %08X %08X %08X %08X", ppc_get_pc(), ppc_get_lr(), ppc_get_gpr(1), ppc_get_gpr(3));
       }
       else if (command == "poke")
       {
