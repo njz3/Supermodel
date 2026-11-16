@@ -815,6 +815,31 @@ and more, are shown during a game on the 'Game' page of the settings menu (Tab),
 from Config/GameNotes.txt.
 
 
+ROM Patches
+-----------
+
+A ROM patch changes a game's ROM files as they load: a hidden course, a fix, a
+translation.  Each is an XML file in Assets/Patches/<ROM set>/ (for example
+Assets/Patches/srally2/forest.xml), with what it does and its options.  The
+'Game' page of the settings menu (Tab), or a game's 'Game Options' button in
+the list of the configuration window, lists the game's patches: each is turned
+on or off there, its options too (on or off, or one of their values), saved at
+once in the game's section of the settings file (Patch_<patch> = true, and
+Patch_<patch>_<option> = true, false or a value), from the game's next start.
+A patch may need another (turned on with it) or not go with one (turned off).
+A patch changes only the files the game's ROMs have (each of its files named
+with its CRC32): with other versions it is not applied, and the 'Game' page
+says why.
+
+'Write the patched ROM files' on that page, or the command line option
+-dump-patched-roms, writes the files the patches turned on change, patched,
+into PatchedROMs/<ROM set>/: to program the EPROMs of a real board (the
+Sega Rally 2 patch changes the four program EPROMs, on sockets).
+
+A patch's format is described in Src/RomPatches.h; Scripts/RomPatches/
+rompatch.py writes one from a game's files and its patched files.
+
+
 Cyber Troopers Virtual-On Oratorio Tangram
 ------------------------------------------
 
@@ -938,11 +963,16 @@ To change the region, enter Test mode and perform the following series of short
 (press and release) and long (press and hold for 4-5 seconds) Service button
 presses: 4 short, 2 long, 2 short, 1 long.
 
-The ROMs hold a fifth course, FOREST, complete but in no menu.  The 'Game' page
-of the settings menu (Tab), or the game's 'Game Options' button in the list of
-the configuration window (Supermodel started without a ROM), adds it to the
-practice's course selection (the ForestCourse setting of the '[ srally2 ]'
-section).
+The ROMs hold a fifth course, FOREST, complete but in no menu.  The ROM patch
+'FOREST, the hidden fifth course' (Assets/Patches/srally2/forest.xml; see ROM
+Patches above) adds it to the practice's course selection, with its clock, its
+rival's road and its race's end; its options: its own panel and title before
+the race, rain, faint reflections on the cars, a fifth championship stage, and
+the music (MOUNTAIN's by default, or another of the game's tracks, some used
+by no course).  It patches the program EPROMs only, so a real board can run it
+too (its MEMORY TEST still says GOOD: each part of the patch keeps the EPROMs'
+CRCs).  The emulator's own patch (the ForestCourse setting) does part of this in
+Supermodel only, and does nothing with the ROM patch on.
 
 
 Ski Champ
