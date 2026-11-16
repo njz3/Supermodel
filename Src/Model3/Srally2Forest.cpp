@@ -241,6 +241,61 @@ namespace
     { 0x028CC8, 0x3D200013, 0x3D200014, false },  // lis r9, 0x13 -> 0x14: the staff roll's shots (5 a course)
     { 0x028CCC, 0x39294F90, 0x3929EA60, false },  // addi r9, r9, 0x4F90 -> -0x15A0 (0x13EA60)
     { 0x1368AC, 0x00000000, 0x0013ED50, false },  // the replay cameras of course index 4 (FOREST)
+    // The practice's time (mode 2; the championship's, mode 0, has FOREST's): 999 s for FOREST at the five
+    // difficulties (0xE62C8 + ((difficulty x 8 + course) x 12) x 4), so its clock never ran. As the other courses: 60 s
+    // at the start, then a credit at each of its checkpoints (sectors 0x2B, 0x8D and the lap's end, 0xE5828 + course x
+    // 0x14), each the time of the section that follows at the average speed MOUNTAIN asks at that difficulty scaled to
+    // 47 m/s at the first (a lap of 91 s; the practice's rival laps in 93 s), in half seconds; then -1
+    { 0x0E62F8, 0x0000EA24, 0x00000E10, false },
+    { 0x0E62FC, 0xFFFFFFFF, 0x000006AE, false },
+    { 0x0E6300, 0x00000000, 0x000007DA, false },
+    { 0x0E6304, 0x00000000, 0x000002EE, false },
+    { 0x0E6308, 0x00000000, 0x000006AE, false },
+    { 0x0E630C, 0x00000000, 0x000007DA, false },
+    { 0x0E6310, 0x00000000, 0x000002EE, false },
+    { 0x0E6314, 0x00000000, 0x000006AE, false },
+    { 0x0E6318, 0x00000000, 0x000007DA, false },
+    { 0x0E631C, 0x00000000, 0xFFFFFFFF, false },
+    { 0x0E6478, 0x0000EA24, 0x00000E10, false },
+    { 0x0E647C, 0xFFFFFFFF, 0x00000690, false },
+    { 0x0E6480, 0x00000000, 0x000007DA, false },
+    { 0x0E6484, 0x00000000, 0x000002EE, false },
+    { 0x0E6488, 0x00000000, 0x00000690, false },
+    { 0x0E648C, 0x00000000, 0x000007DA, false },
+    { 0x0E6490, 0x00000000, 0x000002EE, false },
+    { 0x0E6494, 0x00000000, 0x00000690, false },
+    { 0x0E6498, 0x00000000, 0x000007DA, false },
+    { 0x0E649C, 0x00000000, 0xFFFFFFFF, false },
+    { 0x0E65F8, 0x0000EA24, 0x00000E10, false },
+    { 0x0E65FC, 0xFFFFFFFF, 0x00000654, false },
+    { 0x0E6600, 0x00000000, 0x00000780, false },
+    { 0x0E6604, 0x00000000, 0x000002D0, false },
+    { 0x0E6608, 0x00000000, 0x00000654, false },
+    { 0x0E660C, 0x00000000, 0x00000780, false },
+    { 0x0E6610, 0x00000000, 0x000002D0, false },
+    { 0x0E6614, 0x00000000, 0x00000654, false },
+    { 0x0E6618, 0x00000000, 0x00000780, false },
+    { 0x0E661C, 0x00000000, 0xFFFFFFFF, false },
+    { 0x0E6778, 0x0000EA24, 0x00000E10, false },
+    { 0x0E677C, 0xFFFFFFFF, 0x00000744, false },
+    { 0x0E6780, 0x00000000, 0x000008AC, false },
+    { 0x0E6784, 0x00000000, 0x00000348, false },
+    { 0x0E6788, 0x00000000, 0x00000744, false },
+    { 0x0E678C, 0x00000000, 0x000008AC, false },
+    { 0x0E6790, 0x00000000, 0x00000348, false },
+    { 0x0E6794, 0x00000000, 0x00000744, false },
+    { 0x0E6798, 0x00000000, 0x000008AC, false },
+    { 0x0E679C, 0x00000000, 0xFFFFFFFF, false },
+    { 0x0E68F8, 0x0000EA24, 0x00000E10, false },
+    { 0x0E68FC, 0xFFFFFFFF, 0x000006EA, false },
+    { 0x0E6900, 0x00000000, 0x00000816, false },
+    { 0x0E6904, 0x00000000, 0x0000030C, false },
+    { 0x0E6908, 0x00000000, 0x000006EA, false },
+    { 0x0E690C, 0x00000000, 0x00000816, false },
+    { 0x0E6910, 0x00000000, 0x0000030C, false },
+    { 0x0E6914, 0x00000000, 0x000006EA, false },
+    { 0x0E6918, 0x00000000, 0x00000816, false },
+    { 0x0E691C, 0x00000000, 0xFFFFFFFF, false },
   };
 
   // The menus' state (5 the carousel's intro, 6 the selection, 7 the choice made) and the game chosen (1 practice)
