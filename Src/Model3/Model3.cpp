@@ -1438,6 +1438,8 @@ void CModel3::Write8(UINT32 addr, UINT8 data)
   // RAM (most frequently accessed)
   if (addr < 0x00800000)
   {
+    if (addr - m_watchStart < m_watchLength)
+      RecordWrite(addr, 1, data);
     ram[addr^3] = data;
     return;
   }
@@ -1581,6 +1583,8 @@ void CModel3::Write16(UINT32 addr, UINT16 data)
   // RAM (most frequently accessed)
   if (addr < 0x00800000)
   {
+    if (addr - m_watchStart < m_watchLength)
+      RecordWrite(addr, 2, data);
     *(UINT16 *) &ram[addr^2] = data;
     return;
   }
@@ -1676,6 +1680,8 @@ void CModel3::Write32(UINT32 addr, UINT32 data)
   // RAM (most frequently accessed)
   if (addr<0x00800000)
   {
+    if (addr - m_watchStart < m_watchLength)
+      RecordWrite(addr, 4, data);
     *(UINT32 *) &ram[addr] = data;
     return;
   }
@@ -1895,6 +1901,27 @@ void CModel3::Write32(UINT32 addr, UINT32 data)
     DebugLog("PC=%08X\twrite32: %08X=%08X\n", ppc_get_pc(), addr, data);
     break;
   }
+}
+
+// Agent mode's write watch: the main CPU's writes to RAM in a range, with where they come from
+void CModel3::SetWriteWatch(UINT32 start, UINT32 length)
+{
+  m_watchStart = start;
+  m_watchLength = length;
+  m_writeHits.clear();
+}
+
+std::vector<CModel3::WriteHit> CModel3::TakeWriteHits(void)
+{
+  std::vector<WriteHit> hits;
+  hits.swap(m_writeHits);
+  return hits;
+}
+
+void CModel3::RecordWrite(UINT32 addr, unsigned size, UINT32 data)
+{
+  if (m_writeHits.size() < 4096)
+    m_writeHits.push_back({ ppc_get_pc(), ppc_get_lr(), addr, size, data });
 }
 
 void CModel3::Write64(UINT32 addr, UINT64 data)

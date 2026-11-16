@@ -93,6 +93,10 @@
  *   mem ADDRESS LENGTH  The same (sm2-emu's name): "mem LENGTH", the bytes.
  *   pc                  Model 3: where the PowerPC is between two frames (a
  *                       hang, a loop): "ok PC LR R1 R3" (hex).
+ *   watch ADDRESS LENGTH  Model 3: the main CPU's writes to that range of RAM
+ *                       recorded (hex; LENGTH 0 stops): "ok".
+ *   writes              The writes recorded since (at most 4096): "writes N"
+ *                       then PC:LR:ADDRESS:SIZE:VALUE for each (hex).
  *   poke ADDRESS VALUE [SIZE]  Writes VALUE (hex, SIZE 1, 2 or 4 bytes, 4 by
  *                       default) at ADDRESS through the main CPU's bus: "ok".
  *   frame               "frame N", the number of frames run.
@@ -846,6 +850,38 @@ namespace Agent
           continue;
         }
         Reply("ok %08X %08X %08X %08X", ppc_get_pc(), ppc_get_lr(), ppc_get_gpr(1), ppc_get_gpr(3));
+      }
+      else if (command == "watch")
+      {
+        // Model 3: the main CPU's writes to a range of RAM recorded ("watch ADDRESS LENGTH", hex; LENGTH 0: off)
+        unsigned address = 0, length = 0;
+        in >> std::hex >> address >> length;
+        if (!in || model3 == nullptr)
+        {
+          Reply("err usage: watch ADDRESS LENGTH (hex; Model 3)");
+          continue;
+        }
+        model3->SetWriteWatch(address, length);
+        Reply("ok");
+      }
+      else if (command == "writes")
+      {
+        // The writes recorded since: "writes N PC:LR:ADDRESS:SIZE:VALUE ..." (hex)
+        if (model3 == nullptr)
+        {
+          Reply("err writes: Model 3 only");
+          continue;
+        }
+        std::string text = "writes";
+        std::vector<CModel3::WriteHit> hits = model3->TakeWriteHits();
+        text += " " + std::to_string(hits.size());
+        char item[64];
+        for (const CModel3::WriteHit &hit : hits)
+        {
+          snprintf(item, sizeof(item), " %X:%X:%X:%u:%X", hit.pc, hit.lr, hit.addr, hit.size, hit.data);
+          text += item;
+        }
+        Reply("%s", text.c_str());
       }
       else if (command == "poke")
       {

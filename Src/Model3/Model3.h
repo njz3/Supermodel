@@ -101,6 +101,17 @@ public:
   void AttachRenderers(IRender2D *Render2DPtr, IRender3D *Render3DPtr, SuperAA *superAA) override;
   Result Init(const Game &game, const ROMSet &rom_set) override;
   std::vector<GamePatch> GetGamePatches(void) const override;
+
+  // Agent mode: the main CPU's writes to RAM in [start, start + length) (length 0: none), each with the PowerPC's PC
+  // and LR then (at most 4096 kept until taken)
+  struct WriteHit
+  {
+    UINT32 pc, lr, addr;
+    unsigned size;
+    UINT32 data;
+  };
+  void SetWriteWatch(UINT32 start, UINT32 length);
+  std::vector<WriteHit> TakeWriteHits(void);
   bool SetGamePatch(const std::string &key, bool enable) override;
   // For Scripting tweaks
   Util::Config::Node& GetConfig() { return this->m_config; }
@@ -207,6 +218,10 @@ public:
    * Tresspassers will be shot! ;)
    */
 private:
+  void RecordWrite(UINT32 addr, unsigned size, UINT32 data);
+  UINT32 m_watchStart = 0, m_watchLength = 0;
+  std::vector<WriteHit> m_writeHits;
+
   // Private member functions
   UINT8     ReadInputs(unsigned reg);
   void      WriteInputs(unsigned reg, UINT8 data);
