@@ -1512,6 +1512,8 @@ void CModel3::Write8(UINT32 addr, UINT8 data)
     {
       // Tile generator accesses its RAM as little endian, no adjustment needed here
       ppc_add_cycles(TileGen.BusAccessCycles(ppc_total_cycles(), true, addr < 0xF1100000));
+      if (addr - m_watchStart < m_watchLength)
+        RecordWrite(addr, 1, data);
       TileGen.WriteRAM8(addr&0x1FFFFF, data);
       break;
     }
@@ -1630,6 +1632,8 @@ void CModel3::Write16(UINT32 addr, UINT16 data)
     {
       // Tile generator accesses its RAM as little endian, no adjustment needed here
       ppc_add_cycles(TileGen.BusAccessCycles(ppc_total_cycles(), true, addr < 0xF1100000));
+      if (addr - m_watchStart < m_watchLength)
+        RecordWrite(addr, 2, data);
       TileGen.WriteRAM16(addr&0x1FFFFF, FLIPENDIAN16(data));
     }
     goto Unknown16;
@@ -1716,6 +1720,8 @@ void CModel3::Write32(UINT32 addr, UINT32 data)
 
   // Real3D polygon RAM
   case 0x98:  // 98000000-98400000
+    if (addr - m_watchStart < m_watchLength)
+      RecordWrite(addr, 4, data);
     GPU.WritePolygonRAM(addr&0x3FFFFF,FLIPENDIAN32(data));
     break;
 
@@ -1823,6 +1829,8 @@ void CModel3::Write32(UINT32 addr, UINT32 data)
     if (addr < 0xF1120000)
     {
       // Tile generator accesses its RAM as little endian, must flip for big endian PowerPC
+      if (addr - m_watchStart < m_watchLength)
+        RecordWrite(addr, 4, data);
       data = FLIPENDIAN32(data);
       ppc_add_cycles(TileGen.BusAccessCycles(ppc_total_cycles(), true, addr < 0xF1100000));
       TileGen.WriteRAM32(addr&0x1FFFFF,data);
@@ -1909,6 +1917,14 @@ void CModel3::SetWriteWatch(UINT32 start, UINT32 length)
   m_watchStart = start;
   m_watchLength = length;
   m_writeHits.clear();
+  m_watchBlocks.assign((size_t(length) + 255) / 256, 0);
+}
+
+std::vector<uint8_t> CModel3::TakeWatchBlocks(void)
+{
+  std::vector<uint8_t> blocks(m_watchBlocks.size(), 0);
+  blocks.swap(m_watchBlocks);
+  return blocks;
 }
 
 std::vector<CModel3::WriteHit> CModel3::TakeWriteHits(void)
@@ -1922,6 +1938,9 @@ void CModel3::RecordWrite(UINT32 addr, unsigned size, UINT32 data)
 {
   if (m_writeHits.size() < 4096)
     m_writeHits.push_back({ ppc_get_pc(), ppc_get_lr(), addr, size, data });
+  size_t block = (addr - m_watchStart) / 256;
+  if (block < m_watchBlocks.size())
+    m_watchBlocks[block] = 1;
 }
 
 void CModel3::Write64(UINT32 addr, UINT64 data)

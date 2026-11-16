@@ -93,10 +93,13 @@
  *   mem ADDRESS LENGTH  The same (sm2-emu's name): "mem LENGTH", the bytes.
  *   pc                  Model 3: where the PowerPC is between two frames (a
  *                       hang, a loop): "ok PC LR R1 R3" (hex).
- *   watch ADDRESS LENGTH  Model 3: the main CPU's writes to that range of RAM
- *                       recorded (hex; LENGTH 0 stops): "ok".
+ *   watch ADDRESS LENGTH  Model 3: the main CPU's writes to that range of RAM,
+ *                       or of the tile generator's (0xF1000000 on), recorded
+ *                       (hex; LENGTH 0 stops): "ok".
  *   writes              The writes recorded since (at most 4096): "writes N"
  *                       then PC:LR:ADDRESS:SIZE:VALUE for each (hex).
+ *   blocks              The watched range's blocks of 256 bytes written since
+ *                       (all the writes): "blocks N" then a 0 or 1 for each.
  *   poke ADDRESS VALUE [SIZE]  Writes VALUE (hex, SIZE 1, 2 or 4 bytes, 4 by
  *                       default) at ADDRESS through the main CPU's bus: "ok".
  *   frame               "frame N", the number of frames run.
@@ -881,6 +884,21 @@ namespace Agent
           snprintf(item, sizeof(item), " %X:%X:%X:%u:%X", hit.pc, hit.lr, hit.addr, hit.size, hit.data);
           text += item;
         }
+        Reply("%s", text.c_str());
+      }
+      else if (command == "blocks")
+      {
+        // The watched range's blocks of 256 bytes written since (however many the writes): "blocks N HEX" (a
+        // character per block, 0 or 1)
+        if (model3 == nullptr)
+        {
+          Reply("err blocks: Model 3 only");
+          continue;
+        }
+        std::vector<uint8_t> blocks = model3->TakeWatchBlocks();
+        std::string text = "blocks " + std::to_string(blocks.size()) + " ";
+        for (uint8_t b : blocks)
+          text += b ? '1' : '0';
         Reply("%s", text.c_str());
       }
       else if (command == "poke")

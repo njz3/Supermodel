@@ -102,8 +102,8 @@ public:
   Result Init(const Game &game, const ROMSet &rom_set) override;
   std::vector<GamePatch> GetGamePatches(void) const override;
 
-  // Agent mode: the main CPU's writes to RAM in [start, start + length) (length 0: none), each with the PowerPC's PC
-  // and LR then (at most 4096 kept until taken)
+  // Agent mode: the main CPU's writes to RAM, the tile generator's (0xF1000000 on) or polygon RAM (0x98000000 on) in
+  // [start, start + length) (length 0: none), each with the PowerPC's PC and LR then (at most 4096 kept until taken)
   struct WriteHit
   {
     UINT32 pc, lr, addr;
@@ -112,6 +112,8 @@ public:
   };
   void SetWriteWatch(UINT32 start, UINT32 length);
   std::vector<WriteHit> TakeWriteHits(void);
+  // The range's blocks of 256 bytes written since (1), however many the writes; cleared when taken
+  std::vector<uint8_t> TakeWatchBlocks(void);
   bool SetGamePatch(const std::string &key, bool enable) override;
   // For Scripting tweaks
   Util::Config::Node& GetConfig() { return this->m_config; }
@@ -221,6 +223,7 @@ private:
   void RecordWrite(UINT32 addr, unsigned size, UINT32 data);
   UINT32 m_watchStart = 0, m_watchLength = 0;
   std::vector<WriteHit> m_writeHits;
+  std::vector<uint8_t> m_watchBlocks;
 
   // Private member functions
   UINT8     ReadInputs(unsigned reg);
