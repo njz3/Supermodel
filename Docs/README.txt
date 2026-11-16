@@ -2328,13 +2328,16 @@ All settings are case sensitive.
                     settings menu (Tab), or in the window of the game's 'Game
                     Options' button in the configuration window's list, which
                     save it in that section at once; it takes effect at the
-                    next course selection (the
-                    game's own program is given back when turned off).  The
-                    panel's photo is built in; a 256x128 BMP file,
-                    Config/srally2_forest.bmp, replaces it if there.  The
-                    practice's rival drives FOREST's own line (the ROMs held
-                    a copy of MOUNTAIN's route there).  The title shown at
-                    the race's start and the music remain MOUNTAIN's.
+                    next course selection (the game's own program is given
+                    back when turned off).  The panel's photo is built in; a
+                    256x128 BMP file, Config/srally2_forest.bmp, replaces it
+                    if there.  The practice's rival drives FOREST's own line
+                    (the ROMs held a copy of MOUNTAIN's route there).  FOREST's
+                    weather (SNOWY's falling particles, which its textures
+                    have no snowflake for) falls as rain, and the car's
+                    reflections (a texture FOREST makes much more opaque) are
+                    made as faint as on the other courses.  The title shown
+                    at the race's start and the music remain MOUNTAIN's.
                     Linked cabinets choosing FOREST all need it on.
 
     ----------------

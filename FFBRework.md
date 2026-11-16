@@ -782,6 +782,36 @@ complet mais aucun menu n'y mène (Practice : index du carrousel → 3 2 4 5, Ch
 - Reste : l'écran-titre (image CGM 0xFF14991C de la table des manches) et la musique (0x187) de FOREST sont ceux de
   MOUNTAIN ; le chrono de la Practice y reste à 99 (temps restant jusqu'à ~980 s : sa table d'événements, 0x0E5090,
   est vide).
+- Les reflets et la neige (16 novembre, signalé par le propriétaire : reflets de la voiture faux dès le départ, flocons
+  aux mauvaises textures). Les reflets sont trois couches sur la voiture (modèles dynamiques du jeu en RAM polygones,
+  texture choisie par circuit : DESERT 256x256, MOUNTAIN 128x64 et 128x32, RIVIERA, SNOWY, en RGBA4 d'alpha moyen
+  ~0,1) ; FOREST leur donne une texture de 32x32 (page 1, 928, 832) d'alpha 0,36 qui recouvre la voiture de traînées
+  blanches. Trouvée en peignant des blocs de la mémoire de textures d'un état (77 % des pixels de la voiture changent
+  avec ce bloc), et avec un journal temporaire des textures dessinées par New3D. La météo de FOREST (sa table
+  `0x12FF0C`, type 2 comme SNOWY, intensité croissante le long du tracé ; enregistrements actifs en `0x143628`,
+  `switch` en `0x1CEE0`) fait tomber les particules de SNOWY (modèle VROM `0x714567`, texture page 1, 256, 544) : la
+  banque de FOREST n'a pas de flocon là, mais un coin de bannière Michelin.
+- **Changé** (demande du propriétaire : de la pluie plutôt que des flocons) : pendant les courses FOREST (état de menu
+  17, circuit 1), surcouches de `CReal3D` : la texture des reflets, alpha divisé par 8 (par 3, encore trop visible pour le propriétaire ; refait à chaque écriture du jeu,
+  `MakeAlphaScaleOverlays`), et une goutte RGBA4 (ellipse verticale bleu-gris, mipmaps RGBA4) en page 1, 384, 640, une
+  texture que FOREST n'utilise pas (journal de toutes les textures d'un tour complet : 110 blocs 32x32 libres, mipmaps
+  comprises). Les particules y sont envoyées par un décalage de texture de nœud : une routine dans les noms
+  `RND_C_*` (`0x0F25B4`, appelée à la place de `0x6D5EC` en `0x24A10`) écrit le décalage (`0x8203`, 128 et 96 texels)
+  dans le mot 2 du gabarit de nœud `0x4A9888` autour de l'appel, et le remet à 0 ; le décalage n'est posé que pendant
+  les courses FOREST (SNOWY garde ses flocons), comme la vitesse de chute (`0x0ED0E8`, -0,0586 m par image pour la
+  neige, -0,25 pour la pluie). Vérifié en mode agent : voiture bleue comme sur les autres circuits, gouttes visibles
+  et rapides sur FOREST ; SNOWY, MOUNTAIN et le carrousel (panneau FOREST) inchangés ; décoché, les mots d'origine
+  reviennent (routine, appel, vitesse).
+- Pas de pluie sous les rochers (demande du propriétaire) : le surplomb de la gorge couvre la route du point 105 au
+  point 128 de la ligne `0x0DE258` (captures en roulant). La table météo de FOREST le prévoit (valeur 1 des secteurs
+  100 à 140) mais son secteur n'avance jamais (enregistrements actifs figés sur la 1re entrée tout le tour ; les
+  modifier ne change rien) : ses particules tombent partout pareil. L'appel de dessin de la routine devient un `nop`
+  tant que le point de la ligne le plus proche de la voiture (`0x22449C`) est entre 103 et 130.
+- Des salves de gouttes puis plus rien, un balayage toutes les 2 ou 3 s (signalé par le propriétaire, voiture à
+  l'arrêt) : les 300 particules (`0x22B2F4`, 0x18 octets : x, y, z, vitesses) de FOREST sont toutes à la même hauteur
+  (une nappe qui tombe dans sa boîte de 8 m), celles de SNOWY réparties de -4 à 4 m (300 hauteurs différentes) : le
+  jeu ne les répartit pas au départ de FOREST. Le patch les répartit (suite pseudo-aléatoire fixe) quand il les trouve
+  toutes à une hauteur pendant une course FOREST.
 
 ## 3. Les essais
 

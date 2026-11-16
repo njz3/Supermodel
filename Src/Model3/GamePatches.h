@@ -46,7 +46,8 @@ inline std::vector<IEmulator::GamePatch> GamePatchesFor(const std::string &romSe
     patch.label = "FOREST, the hidden fifth course";
     patch.description = "A fifth panel in the practice's course selection: FOREST, a complete course of the game's that no menu "
                         "shows, with its rival on FOREST's own line. From the next course selection (the game's own program "
-                        "is given back when turned off). Its title at the race's start and its music stay MOUNTAIN's.";
+                        "is given back when turned off). Its weather falls as rain, the car's reflections as on the other courses. Its "
+                        "title at the race's start and its music stay MOUNTAIN's.";
     patches.push_back(patch);
   }
   return patches;

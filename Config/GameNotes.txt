@@ -214,9 +214,12 @@ instance) can cause problems.
 ## FOREST, the hidden course
 The ROMs hold a fifth course, FOREST, complete but in no menu. The game patch
 above (ForestCourse in the [ srally2 ] section) adds it as a fifth panel of
-the practice's course selection, its rival on FOREST's own line. The title at
-the race's start and the music remain MOUNTAIN's; the practice's time hardly
-runs out there.
+the practice's course selection, its rival on FOREST's own line. Its weather
+(falling particles, as SNOWY's snow) falls as rain there, but under the rocks
+of the gorge, and the car's
+reflections are made as faint as on the other courses. The title at the
+race's start and the music remain MOUNTAIN's; the practice's time hardly runs
+out there.
 
 ## Secrets
 - Sega Rally 1 cars (Toyota Celica GT-Four, Lancia Delta HF Integrale): at

@@ -57,6 +57,13 @@
  * Linked cabinets (the battle) choose among five too: the program clears five
  * counters for the cabinets' choices but masked the index to 0-3.
  *
+ * During FOREST's races: its weather (SNOWY's falling particles, which FOREST's
+ * textures have no snowflake for) falls as rain, a drop of the patch's drawn
+ * in a texture FOREST does not use, the particles sent there by a texture
+ * offset (a routine of the patch's around the game's call) and falling
+ * faster, but under the rocks of the gorge; the car's reflections (a texture FOREST gives them much more opaque
+ * than the other courses' do) are made as faint as on the others.
+ *
  * The title shown when the race starts remains MOUNTAIN's.
  */
 
@@ -198,6 +205,28 @@ namespace
     { 0x0F252C, 0x415F4445, 0x00000000, false },
     { 0x0F2530, 0x53455254, 0xFF4DFCBA, false },
     { 0x0F2534, 0x5F4F4C44, 0x00000000, false },
+    // FOREST's weather is the falling particles of SNOWY's (its own table, 0x12FF0C, type 2), whose snowflake texture
+    // (page 1, 256, 544) FOREST's bank does not have: a banner's corner there. They fall as rain on FOREST instead: a
+    // routine in place of the debug names RND_C_* draws them (the call at 0x24A10) with a texture offset to a drop of
+    // the patch's, set in the culling node template's word 2 (0x4A9888) around the call (the offset, variable: none
+    // but during FOREST's races), and their speed (0x0ED0E8, -0.0586 a frame) is a rain's then
+    { 0x0F25B4, 0x524E445F, 0x9421FFF0, false },  // stwu r1, -16(r1)
+    { 0x0F25B8, 0x435F5357, 0x7C0802A6, false },  // mflr r0
+    { 0x0F25BC, 0x45444953, 0x90010014, false },  // stw r0, 20(r1)
+    { 0x0F25C0, 0x48202020, 0x3D60004B, false },  // lis r11, 0x4B
+    { 0x0F25C4, 0x00000000, 0x38000000, false },  // li r0, 0
+    { 0x0F25C8, 0x524E445F, 0x60000000, true },   // ori r0, r0, offset
+    { 0x0F25CC, 0x435F4D4F, 0x900B9888, false },  // stw r0, -0x6778(r11): the template's word 2
+    { 0x0F25D0, 0x4E41434F, 0x4BF7B01D, true },   // bl 0x6D5EC (the game's: a model drawn); nop under the rocks
+    { 0x0F25D4, 0x20202020, 0x38000000, false },  // li r0, 0
+    { 0x0F25D8, 0x00000000, 0x3D60004B, false },  // lis r11, 0x4B
+    { 0x0F25DC, 0x524E445F, 0x900B9888, false },  // stw r0, -0x6778(r11): no offset
+    { 0x0F25E0, 0x435F4445, 0x80010014, false },  // lwz r0, 20(r1)
+    { 0x0F25E4, 0x53455254, 0x7C0803A6, false },  // mtlr r0
+    { 0x0F25E8, 0x20202020, 0x38210010, false },  // addi r1, r1, 16
+    { 0x0F25EC, 0x00000000, 0x4E800020, false },  // blr
+    { 0x024A10, 0x48048BDD, 0x480CDBA5, false },  // bl 0x6D5EC -> bl 0x0F25B4
+    { 0x0ED0E8, 0xBD700000, 0xBD700000, true },   // the particles' speed
   };
 
   // The menus' state (5 the carousel's intro, 6 the selection, 7 the choice made) and the game chosen (1 practice)
@@ -212,6 +241,55 @@ namespace
   // The texture they map instead of MOUNTAIN's photo (512, 1536) and title (768, 1792): page 1, x 1024, y 0 and 128
   constexpr unsigned kTexX = 1024, kPhotoY = 0, kTitleY = 128, kPage = 1;
   constexpr unsigned kPhotoW = 256, kPhotoH = 128, kTitleW = 256, kTitleH = 64;
+
+  // A race (the menus' state then), its course (1 FOREST)
+  constexpr uint32_t kRaceState = 17;
+  constexpr uint32_t kCourse = 0x22CF44;
+
+  // The rain: the routine's offset (ori r0, r0, 0x8203: 128, 96 from the snowflake's texture, to page 1, 384, 640, a
+  // texture FOREST does not use, nor its mipmaps), the drop drawn there, the particles' speed
+  constexpr uint32_t kOffsetOri = 0x0F25C8, kRainOffset = 0x60008203, kNoOffset = 0x60000000;
+  constexpr unsigned kDropX = 384, kDropY = 640, kDropSize = 32;
+  constexpr uint32_t kFallSpeed = 0x0ED0E8, kSnowFall = 0xBD700000, kRainFall = 0xBE800000;   // -0.0586, -0.25 m a frame
+
+  // No rain under the rocks: the gorge's overhang covers the road from about point 105 to 128 of FOREST's line (its
+  // weather table plans that, a value of 1 from sector 100 to 140, but FOREST's sector never advances: its particles
+  // fall everywhere alike). The routine's call is a nop while the car is near a point of that stretch, two points
+  // (33 m) more on each side
+  constexpr uint32_t kRoutineCall = 0x0F25D0, kCallDraw = 0x4BF7B01D, kNop = 0x60000000;
+  constexpr uint32_t kCarPosition = 0x22449C;   // the player's car: x, y, z
+  constexpr uint32_t kLine = 0x0DE258, kLinePoints = 255;
+  constexpr unsigned kShelterFirst = 103, kShelterLast = 130;
+
+  // The particles (300 of 0x18 bytes: x, y, z, their speeds), falling in a box 8 m high (y from -4 to 4, wrapped).
+  // SNOWY's start spread over its height; FOREST's all at one height, a single sheet falling: drops in bursts, then
+  // none. Spread here when found so
+  constexpr uint32_t kParticles = 0x22B2F4, kParticleSize = 0x18, kParticleCount = 300;
+
+  // The car's reflections, three layers over it (models of the game's own, the texture each course gives them):
+  // FOREST gives them a texture of 32x32 (page 1, 928, 832) much more opaque than the other courses', which covers the
+  // car with white streaks. Its alpha is divided by 8 during FOREST's races (only the reflections use it there): a
+  // faint sheen (by 3 they still showed, the owner found)
+  constexpr unsigned kReflectX = 928, kReflectY = 832, kReflectSize = 32, kReflectDivisor = 8;
+
+  // The drop: a narrow vertical ellipse, light blue-grey, its edges soft (RGBA4, the particles' texture format); the
+  // particles are small, a thinner streak vanishes but close to the camera
+  std::vector<uint16_t> DropTexels(void)
+  {
+    std::vector<uint16_t> texels(size_t(kDropSize) * kDropSize, 0);
+    for (unsigned y = 0; y < kDropSize; y++)
+    {
+      float dy = (float(y) + 0.5f - kDropSize / 2.0f) / 15.0f;
+      for (unsigned x = 0; x < kDropSize; x++)
+      {
+        float dx = (float(x) + 0.5f - kDropSize / 2.0f) / 5.0f;
+        float a = std::clamp(1.4f * (1.0f - dx * dx - dy * dy), 0.0f, 0.9f);
+        unsigned alpha = unsigned(a * 15.0f + 0.5f);
+        texels[size_t(y) * kDropSize + x] = uint16_t((0xD << 12) | (0xE << 8) | (0xF << 4) | alpha);
+      }
+    }
+    return texels;
+  }
 
   uint16_t Texel(float r, float g, float b)
   {
@@ -438,7 +516,6 @@ void CSrally2Forest::SetEnabled(bool enabled)
 void CSrally2Forest::WriteRoute(bool forest)
 {
   // The fixed CROM (the program) and the banked CROM's window 1 (FOREST's bank), both copies of the banked CROM
-  constexpr uint32_t kLine = 0x0DE258, kLinePoints = 255;
   constexpr uint32_t kRoutes[2] = { 0x137AD0, 0x139A10 };
   constexpr unsigned kRoutePoints = 500, kLapPoints = 426;
   constexpr uint32_t kWindows[2] = { 0x800000 + 1 * 0x800000, 0x800000 + 64 * 0x100000 + 1 * 0x800000 };
@@ -577,8 +654,8 @@ void CSrally2Forest::WriteModels(void)
 void CSrally2Forest::Frame(void)
 {
   // The texture shown no longer after a state loaded or a reset (texture RAM as they left it)
-  if (m_shown && !m_gpu.TextureOverlaysShown())
-    m_shown = false;
+  if (m_shown != Shown::None && !m_gpu.TextureOverlaysShown())
+    m_shown = Shown::None;
 
   // The program in RAM: the game's (copied from CROM), the patch's (or part of it: a state saved by an older one), or
   // not there yet (booting: each word either)
@@ -612,15 +689,93 @@ void CSrally2Forest::Frame(void)
     }
   }
 
-  // The panel's texture while the carousel is shown
-  bool show = patched && selecting && m_modelsWritten && !m_hiddenForSave;
-  if (show && !m_shown)
-    ShowPanel();
-  else if (!show && m_shown)
+  // During FOREST's races: the rain (the particles' texture offset and speed, none under the rocks) and the
+  // reflections' texture
+  bool forestRace = patched && Ram32(kMenuState) == kRaceState && Ram32(kCourse) == 1;
+  if (patched)
   {
-    m_gpu.HideTextureOverlays();
-    m_shown = false;
+    WriteRam32(kOffsetOri, forestRace ? kRainOffset : kNoOffset);
+    WriteRam32(kFallSpeed, forestRace ? kRainFall : kSnowFall);
+    WriteRam32(kRoutineCall, forestRace && Sheltered() ? kNop : kCallDraw);
   }
+  if (forestRace)
+    SpreadParticles();
+
+  // The textures shown: the panel's while the carousel is, the race's during FOREST's races
+  Shown want = m_hiddenForSave ? Shown::None
+             : patched && selecting && m_modelsWritten ? Shown::Panel
+             : forestRace ? Shown::Race : Shown::None;
+  if (want != m_shown)
+  {
+    if (m_shown != Shown::None)
+      m_gpu.HideTextureOverlays();
+    m_shown = Shown::None;
+    if (want == Shown::Panel)
+      ShowPanel();
+    else if (want == Shown::Race)
+      ShowRace();
+  }
+}
+
+// The particles' heights spread over their box when they are all at one (FOREST's start), the same each time
+void CSrally2Forest::SpreadParticles(void)
+{
+  uint32_t first = Ram32(kParticles + 4);
+  for (unsigned i = 1; i < kParticleCount; i++)
+  {
+    if (Ram32(kParticles + i * kParticleSize + 4) != first)
+      return;
+  }
+  uint32_t seed = 0x2F6B1A3Du;
+  for (unsigned i = 0; i < kParticleCount; i++)
+  {
+    seed = seed * 1664525u + 1013904223u;
+    float y = -4.0f + 8.0f * float(seed >> 8) / float(1u << 24);
+    uint32_t bits;
+    memcpy(&bits, &y, 4);
+    WriteRam32(kParticles + i * kParticleSize + 4, bits);
+  }
+}
+
+// The player's car under the rocks (or near): the point of FOREST's line nearest to it
+bool CSrally2Forest::Sheltered(void)
+{
+  auto real = [](uint32_t v) { float f; memcpy(&f, &v, 4); return f; };
+  if (m_line.empty())
+  {
+    for (unsigned i = 0; i < kLinePoints; i++)
+    {
+      uint32_t x, z;
+      memcpy(&x, m_crom + kLine + 12 * i, 4);
+      memcpy(&z, m_crom + kLine + 12 * i + 8, 4);
+      m_line.push_back(real(x));
+      m_line.push_back(real(z));
+    }
+  }
+  float x = real(Ram32(kCarPosition)), z = real(Ram32(kCarPosition + 8));
+  unsigned nearest = 0;
+  float best = -1.0f;
+  for (unsigned i = 0; i < kLinePoints; i++)
+  {
+    float dx = m_line[2 * i] - x, dz = m_line[2 * i + 1] - z, d = dx * dx + dz * dz;
+    if (best < 0 || d < best)
+    {
+      best = d;
+      nearest = i;
+    }
+  }
+  return nearest >= kShelterFirst && nearest <= kShelterLast;
+}
+
+void CSrally2Forest::ShowRace(void)
+{
+  std::vector<CReal3D::TextureOverlay> overlays = CReal3D::MakeTextureOverlays(kDropX, kDropY, kPage, kDropSize, kDropSize,
+                                                                               DropTexels(), CReal3D::TexelFormat::RGBA4);
+  std::vector<CReal3D::TextureOverlay> reflections = CReal3D::MakeAlphaScaleOverlays(kReflectX, kReflectY, kPage, kReflectSize,
+                                                                                     kReflectSize, kReflectDivisor);
+  overlays.insert(overlays.end(), reflections.begin(), reflections.end());
+  m_gpu.ShowTextureOverlays(std::move(overlays));
+  m_shown = Shown::Race;
 }
 
 void CSrally2Forest::ShowPanel(void)
@@ -630,7 +785,7 @@ void CSrally2Forest::ShowPanel(void)
                                                                             ToTexels(DrawTitle(), kTitleW, kTitleH));
   overlays.insert(overlays.end(), title.begin(), title.end());
   m_gpu.ShowTextureOverlays(std::move(overlays));
-  m_shown = true;
+  m_shown = Shown::Panel;
 }
 
 // A photo of the user's (a BMP file of 256x128, 24 or 32 bits a pixel)
@@ -673,10 +828,10 @@ bool CSrally2Forest::LoadPhoto(void)
 
 void CSrally2Forest::BeforeSaveState(void)
 {
-  if (m_shown)
+  if (m_shown != Shown::None)
   {
     m_gpu.HideTextureOverlays();
-    m_shown = false;
+    m_shown = Shown::None;
   }
   m_hiddenForSave = true;
 }
@@ -684,5 +839,5 @@ void CSrally2Forest::BeforeSaveState(void)
 void CSrally2Forest::AfterSaveState(void)
 {
   m_hiddenForSave = false;
-  // Shown again at the next frame if the carousel still is
+  // Shown again at the next frame if the carousel (or FOREST's race) still is
 }

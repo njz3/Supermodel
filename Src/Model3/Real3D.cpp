@@ -796,7 +796,14 @@ void CReal3D::ReadTexels(unsigned x, unsigned y, unsigned width, unsigned height
   }
 }
 
-// After the game wrote a rectangle: its texels under an overlay kept aside, the overlay's written back
+// An RGBA4 texel with its alpha divided (an alpha-scaling overlay's)
+static uint16_t ScaleAlpha(uint16_t texel, unsigned divisor)
+{
+  return uint16_t((texel & 0xFFF0) | ((texel & 0xF) / divisor));
+}
+
+// After the game wrote a rectangle: its texels under an overlay kept aside, the overlay's written back (an alpha-scaling
+// overlay's made again from them)
 void CReal3D::OverlayOver(unsigned x, unsigned y, unsigned width, unsigned height)
 {
   for (TextureOverlay &o : m_overlays)
@@ -810,31 +817,28 @@ void CReal3D::OverlayOver(unsigned x, unsigned y, unsigned width, unsigned heigh
         uint32_t destOffset = row * 2048 + col;
         size_t i = size_t(row - o.y) * o.width + (col - o.x);
         o.saved[i] = textureRAM[destOffset];
+        if (o.alphaDivisor)
+          o.texels[i] = ScaleAlpha(o.saved[i], o.alphaDivisor);
         textureRAM[destOffset] = o.texels[i];
       }
     }
   }
 }
 
-std::vector<CReal3D::TextureOverlay> CReal3D::MakeTextureOverlays(unsigned x, unsigned y, unsigned page, unsigned width,
-                                                                  unsigned height, const std::vector<uint16_t> &texels)
+// The rectangles of a texture's mipmaps, where UploadTexture puts them (texels left empty)
+static std::vector<CReal3D::TextureOverlay> MipmapRectangles(unsigned x, unsigned y, unsigned page, unsigned width, unsigned height)
 {
-  std::vector<TextureOverlay> overlays;
-  TextureOverlay base;
+  std::vector<CReal3D::TextureOverlay> overlays;
+  CReal3D::TextureOverlay base;
   base.level = 0;
   base.x = x;
   base.y = y + page * 1024;
   base.width = width;
   base.height = height;
-  base.texels = texels;
   overlays.push_back(base);
-
-  // The mipmaps where UploadTexture puts them, each the average of 2x2 texels of the level above (field by field: the
-  // three 5-bit colour fields, the top bit kept if most of the four have it)
   for (int i = 1; width >= 4 && height >= 4; i++)
   {
-    const TextureOverlay &above = overlays.back();
-    TextureOverlay mip;
+    CReal3D::TextureOverlay mip;
     mip.level = unsigned(i);
     mip.x = unsigned(mipXBase[i]) + x / unsigned(mipDivisor[i]);
     mip.y = unsigned(mipYBase[i]) + y / unsigned(mipDivisor[i]) + page * 1024;
@@ -842,13 +846,44 @@ std::vector<CReal3D::TextureOverlay> CReal3D::MakeTextureOverlays(unsigned x, un
     height /= 2;
     mip.width = width;
     mip.height = height;
-    mip.texels.resize(size_t(width) * height);
-    for (unsigned row = 0; row < height; row++)
+    overlays.push_back(mip);
+  }
+  return overlays;
+}
+
+std::vector<CReal3D::TextureOverlay> CReal3D::MakeTextureOverlays(unsigned x, unsigned y, unsigned page, unsigned width,
+                                                                  unsigned height, const std::vector<uint16_t> &texels,
+                                                                  TexelFormat format)
+{
+  std::vector<TextureOverlay> overlays = MipmapRectangles(x, y, page, width, height);
+  overlays[0].texels = texels;
+
+  // Each mipmap the average of 2x2 texels of the level above, field by field: T1RGB5's three 5-bit colour fields (the
+  // top bit kept if most of the four have it), RGBA4's four fields
+  for (size_t i = 1; i < overlays.size(); i++)
+  {
+    const TextureOverlay &above = overlays[i - 1];
+    TextureOverlay &mip = overlays[i];
+    mip.texels.resize(size_t(mip.width) * mip.height);
+    for (unsigned row = 0; row < mip.height; row++)
     {
-      for (unsigned col = 0; col < width; col++)
+      for (unsigned col = 0; col < mip.width; col++)
       {
         const uint16_t t[4] = { above.texels[(2 * row) * above.width + 2 * col], above.texels[(2 * row) * above.width + 2 * col + 1],
                                 above.texels[(2 * row + 1) * above.width + 2 * col], above.texels[(2 * row + 1) * above.width + 2 * col + 1] };
+        uint16_t &out = mip.texels[size_t(row) * mip.width + col];
+        if (format == TexelFormat::RGBA4)
+        {
+          out = 0;
+          for (int shift = 0; shift < 16; shift += 4)
+          {
+            unsigned sum = 0;
+            for (uint16_t v : t)
+              sum += (v >> shift) & 15;
+            out = uint16_t(out | (((sum + 2) / 4) << shift));
+          }
+          continue;
+        }
         unsigned r = 0, g = 0, b = 0, top = 0;
         for (uint16_t v : t)
         {
@@ -857,10 +892,21 @@ std::vector<CReal3D::TextureOverlay> CReal3D::MakeTextureOverlays(unsigned x, un
           b += v & 31;
           top += v >> 15;
         }
-        mip.texels[size_t(row) * width + col] = uint16_t(((top >= 2) << 15) | (((r + 2) / 4) << 10) | (((g + 2) / 4) << 5) | ((b + 2) / 4));
+        out = uint16_t(((top >= 2) << 15) | (((r + 2) / 4) << 10) | (((g + 2) / 4) << 5) | ((b + 2) / 4));
       }
     }
-    overlays.push_back(std::move(mip));
+  }
+  return overlays;
+}
+
+std::vector<CReal3D::TextureOverlay> CReal3D::MakeAlphaScaleOverlays(unsigned x, unsigned y, unsigned page, unsigned width,
+                                                                     unsigned height, unsigned divisor)
+{
+  std::vector<TextureOverlay> overlays = MipmapRectangles(x, y, page, width, height);
+  for (TextureOverlay &o : overlays)
+  {
+    o.alphaDivisor = std::max(1u, divisor);
+    o.texels.resize(size_t(o.width) * o.height);
   }
   return overlays;
 }
@@ -872,6 +918,11 @@ void CReal3D::ShowTextureOverlays(std::vector<TextureOverlay> overlays)
   {
     o.saved.resize(o.texels.size());
     ReadTexels(o.x, o.y, o.width, o.height, o.saved.data());
+    if (o.alphaDivisor)
+    {
+      for (size_t i = 0; i < o.texels.size(); i++)
+        o.texels[i] = ScaleAlpha(o.saved[i], o.alphaDivisor);
+    }
     WriteTexels(o.x, o.y, o.width, o.height, o.texels.data());
     SignalTextureUpload(o.level, o.x, o.y, o.width, o.height);
   }

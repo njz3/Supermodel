@@ -54,7 +54,8 @@ public:
   void SetEnabled(bool enabled);
 
   // After each frame of the main board, with the PowerPC stopped: the program patched (or given back) in RAM when
-  // the game is outside the course selection, the panel's textures shown during it
+  // the game is outside the course selection, the panel's textures shown during it, the rain's and the car's
+  // reflections' during FOREST's races
   void Frame(void);
 
   // Save states without the panel's textures (texture RAM as the game has it): hidden before, shown again after
@@ -67,6 +68,9 @@ private:
   void WriteModels(void);
   void WriteRoute(bool forest);
   void ShowPanel(void);
+  void ShowRace(void);
+  bool Sheltered(void);
+  void SpreadParticles(void);
   bool LoadPhoto(void);
 
   uint8_t *m_ram;
@@ -76,9 +80,11 @@ private:
   std::string m_photoFile;
   bool m_enabled = false;
   bool m_modelsWritten = false;
-  bool m_shown = false;
+  enum class Shown { None, Panel, Race };
+  Shown m_shown = Shown::None;      // the textures shown: the panel's (the carousel) or the race's (rain, reflections)
   bool m_hiddenForSave = false;
   std::vector<uint32_t> m_routeSaved;   // MOUNTAIN's route copies in FOREST's bank, as the ROMs have them
+  std::vector<float> m_line;        // FOREST's line, x and z of each point (the rocks' shelter)
   std::vector<uint16_t> m_photo;    // 256x128, texture RAM's format, the bottom row first (as the panel maps it)
 };
 

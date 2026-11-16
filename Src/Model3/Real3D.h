@@ -470,18 +470,37 @@ public:
     unsigned x = 0, y = 0, width = 0, height = 0;
     std::vector<uint16_t> texels;   // the emulator's, row after row
     std::vector<uint16_t> saved;    // the game's, while shown
+    unsigned alphaDivisor = 0;      // not 0: texels are the game's own (RGBA4) with their alpha divided by it, again
+                                    // each time the game writes them
+  };
+
+  enum class TexelFormat
+  {
+    T1RGB5,   // or any 16-bit format whose 5-bit fields can be averaged
+    RGBA4     // four 4-bit fields (polygons' texture format 7)
   };
 
   /*
-   * MakeTextureOverlays(x, y, page, width, height, texels):
+   * MakeTextureOverlays(x, y, page, width, height, texels, format):
    *
    * The overlays of a texture and of its mipmaps, as UploadTexture places a
    * texture uploaded with its mipmaps: x, y (0-1023) and page as the
-   * polygons' headers give them, texels in texture RAM's format (T1RGB5 or
-   * any 16-bit format whose 5-bit fields can be averaged), row after row.
+   * polygons' headers give them, texels in texture RAM's format, row after
+   * row (the mipmaps their averages, field by field, as format has them).
    */
   static std::vector<TextureOverlay> MakeTextureOverlays(unsigned x, unsigned y, unsigned page, unsigned width,
-                                                         unsigned height, const std::vector<uint16_t> &texels);
+                                                         unsigned height, const std::vector<uint16_t> &texels,
+                                                         TexelFormat format = TexelFormat::T1RGB5);
+
+  /*
+   * MakeAlphaScaleOverlays(x, y, page, width, height, divisor):
+   *
+   * The overlays of an RGBA4 texture of the game's and of its mipmaps (placed
+   * as MakeTextureOverlays places them) that show the game's own texels with
+   * their alpha divided by divisor: the texture made more transparent.
+   */
+  static std::vector<TextureOverlay> MakeAlphaScaleOverlays(unsigned x, unsigned y, unsigned page, unsigned width,
+                                                            unsigned height, unsigned divisor);
 
   /*
    * ShowTextureOverlays(overlays):
