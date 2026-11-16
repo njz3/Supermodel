@@ -241,6 +241,7 @@ namespace
     { 0x028CC8, 0x3D200013, 0x3D200014, false },  // lis r9, 0x13 -> 0x14: the staff roll's shots (5 a course)
     { 0x028CCC, 0x39294F90, 0x3929EA60, false },  // addi r9, r9, 0x4F90 -> -0x15A0 (0x13EA60)
     { 0x1368AC, 0x00000000, 0x0013ED50, false },  // the replay cameras of course index 4 (FOREST)
+    // (the practice's times follow)
     // The practice's time (mode 2; the championship's, mode 0, has FOREST's): 999 s for FOREST at the five
     // difficulties (0xE62C8 + ((difficulty x 8 + course) x 12) x 4), so its clock never ran. As the other courses: 60 s
     // at the start, then a credit at each of its checkpoints (sectors 0x2B, 0x8D and the lap's end, 0xE5828 + course x
@@ -298,6 +299,50 @@ namespace
     { 0x0E691C, 0x00000000, 0xFFFFFFFF, false },
   };
 
+  // FOREST as the championship's fifth stage (its own setting, with the course's patch only): the stages' list
+  // (0xED740: 3 2 5 4, G+0x4C) and number (4, G+0x38) at the championship's start (0x2C8A0); the stages' times (G+0x174,
+  // four words, a buffer after them) in five words of the patch's (0x13EE20), read and written through routines of
+  // its (0x13EE40: the five instructions that used G+0x174 + 4 x stage, the stage in rX = G + 4 x stage), cleared at
+  // the start; the final results and the name entry's times shown on five rows (the fifth's label: ResultsLabel).
+  // FOREST's championship times are the program's (13 s, then 28 and 32 at its checkpoints)
+  constexpr ProgramWord kChampionship[] =
+  {
+    { 0x02C8A0, 0x3D20000F, 0x3D200014, false },  // lis r9, 0xF -> 0x14: the stages' list
+    { 0x02C8A4, 0x3929D740, 0x3929EE00, false },  // addi r9, r9, -0x28C0 -> 0xEE00 (0x13EE00)
+    { 0x02C8AC, 0x38000004, 0x38000005, false },  // li r0, 4 -> 5: the number of stages
+    { 0x13EE00, 0x00000000, 0x00000003, false },  // the list: DESERT MOUNTAIN SNOWY RIVIERA FOREST
+    { 0x13EE04, 0x00000000, 0x00000002, false },
+    { 0x13EE08, 0x00000000, 0x00000005, false },
+    { 0x13EE0C, 0x00000000, 0x00000004, false },
+    { 0x13EE10, 0x00000000, 0x00000001, false },
+    { 0x13EE40, 0x00000000, 0x3CA9FFF1, false },  // routine A: addis r5, r9, 0xFFF1
+    { 0x13EE44, 0x00000000, 0x38A51F0C, false },  // addi r5, r5, 0x1F0C
+    { 0x13EE48, 0x00000000, 0x80A50000, false },  // lwz r5, 0(r5)
+    { 0x13EE4C, 0x00000000, 0x4E800020, false },  // blr
+    { 0x13EE50, 0x00000000, 0x3CBDFFF1, false },  // routine B: addis r5, r29, 0xFFF1
+    { 0x13EE54, 0x00000000, 0x38A51F0C, false },  // addi r5, r5, 0x1F0C
+    { 0x13EE58, 0x00000000, 0x80A50000, false },  // lwz r5, 0(r5)
+    { 0x13EE5C, 0x00000000, 0x4E800020, false },  // blr
+    { 0x13EE60, 0x00000000, 0x3D3FFFF1, false },  // routine C: addis r9, r31, 0xFFF1
+    { 0x13EE64, 0x00000000, 0x39291F0C, false },  // addi r9, r9, 0x1F0C
+    { 0x13EE68, 0x00000000, 0x81290000, false },  // lwz r9, 0(r9)
+    { 0x13EE6C, 0x00000000, 0x4E800020, false },  // blr
+    { 0x13EE70, 0x00000000, 0x3D29FFF1, false },  // routine D: addis r9, r9, 0xFFF1
+    { 0x13EE74, 0x00000000, 0x39291F0C, false },  // addi r9, r9, 0x1F0C
+    { 0x13EE78, 0x00000000, 0x90090000, false },  // stw r0, 0(r9)
+    { 0x13EE7C, 0x00000000, 0x4E800020, false },  // blr
+    { 0x029A58, 0x80A90174, 0x481153E9, false },  // lwz r5, 0x174(r9) -> bl A (a stage's time)
+    { 0x02ADA0, 0x80BD0174, 0x481140B1, false },  // lwz r5, 0x174(r29) -> bl B (the final results)
+    { 0x04AEF8, 0x80BD0174, 0x480F3F59, false },  // lwz r5, 0x174(r29) -> bl B (the name entry's)
+    { 0x02C044, 0x813F0174, 0x48112E1D, false },  // lwz r9, 0x174(r31) -> bl C (the stages' records)
+    { 0x03E448, 0x90090174, 0x48100A29, false },  // stw r0, 0x174(r9) -> bl D (a stage's time stored)
+    { 0x02CBB4, 0x3C600023, 0x3C600014, false },  // lis r3, 0x23 -> 0x14: the times cleared
+    { 0x02CBB8, 0x3863D088, 0x3863EE20, false },  // addi r3, r3, -0x2F78 -> 0xEE20 (0x13EE20)
+    { 0x02CBBC, 0x38800010, 0x38800014, false },  // li r4, 0x10 -> 0x14 (five)
+    { 0x02ADB0, 0x2C9E0003, 0x2C9E0004, false },  // cmpwi cr1, r30, 3 -> 4: five rows (the final results)
+    { 0x04AF1C, 0x2C9E0003, 0x2C9E0004, false },  // cmpwi cr1, r30, 3 -> 4: five rows (the name entry's)
+  };
+
   // The menus' state (5 the carousel's intro, 6 the selection, 7 the choice made) and the game chosen (1 practice)
   constexpr uint32_t kMenuState = 0x22435C;
   constexpr uint32_t kGameType = 0x22432C;
@@ -341,7 +386,7 @@ namespace
   // cameras beside FOREST's road at the lap's points MOUNTAIN's are (13 to 73 %), and its replay cameras (a header of
   // 12 bytes, records of 0x1C: first and last sector, mode, kind, x, y, z; all FF to end): one, following the car over
   // the whole lap (mode 3 at 0, 0, 0, as MOUNTAIN's last), FOREST's sector not advancing
-  constexpr uint32_t kEnding = 0x13EA40, kEndingSize = 0x340;
+  constexpr uint32_t kEnding = 0x13EA40, kEndingSize = 0x360;
   constexpr uint32_t kEndShots = kEnding + 0x40, kRollShots = kEnding + 0x180, kReplayCameras = kEnding + 0x310;
   constexpr uint32_t kEndTable[4] = { 0x134440, 0x134580, 0x1346C0, 0x134800 };
   constexpr uint32_t kRollTable[4] = { 0x134950, 0x134AE0, 0x134C70, 0x134E00 };
@@ -546,14 +591,22 @@ bool CSrally2Forest::Supports(const Game &game, const uint8_t *crom)
     if (value != word.original)
       return false;
   }
+  for (const ProgramWord &word : kChampionship)
+  {
+    uint32_t value;
+    memcpy(&value, crom + word.addr, 4);
+    if (value != word.original)
+      return false;
+  }
   return true;
 }
 
-CSrally2Forest::CSrally2Forest(uint8_t *ram, uint8_t *crom, uint8_t *vrom, CReal3D &gpu, const std::string &photoFile)
+CSrally2Forest::CSrally2Forest(uint8_t *ram, uint8_t *crom, uint8_t *vrom, CReal3D &gpu, CTileGen &tileGen, const std::string &photoFile)
   : m_ram(ram),
     m_crom(crom),
     m_vrom(vrom),
     m_gpu(gpu),
+    m_tileGen(tileGen),
     m_photoFile(photoFile)
 {
   // The photo: the file's if there, else the one built in
@@ -770,6 +823,25 @@ void CSrally2Forest::Frame(void)
     }
   }
 
+  // The championship's fifth stage: with the course's patch, between races (outside a race and the course selection)
+  {
+    bool want = patched && m_championship;
+    bool champOriginal = true, champPatched = true, champPresent = true;
+    for (const ProgramWord &word : kChampionship)
+    {
+      uint32_t value = Ram32(word.addr);
+      champOriginal &= value == word.original;
+      champPatched &= value == word.patched;
+      champPresent &= value == word.original || value == word.patched;
+    }
+    if (champPresent && !selecting && state != kRaceState && (want ? !champPatched : !champOriginal))
+    {
+      for (const ProgramWord &word : kChampionship)
+        WriteRam32(word.addr, want ? word.patched : word.original);
+    }
+    ResultsLabel();
+  }
+
   // The race's end's data with the program (cleared with it)
   if (patched && Ram32(kEnding) != kEndTable[0])
     WriteEnding(true);
@@ -964,6 +1036,7 @@ bool CSrally2Forest::LoadPhoto(void)
 
 void CSrally2Forest::BeforeSaveState(void)
 {
+  RestoreLabel(true);   // shown again after (the screen's tiles the game's again)
   if (m_shown != Shown::None)
   {
     m_gpu.HideTextureOverlays();
@@ -976,4 +1049,249 @@ void CSrally2Forest::AfterSaveState(void)
 {
   m_hiddenForSave = false;
   // Shown again at the next frame if the carousel (or FOREST's race) still is
+}
+
+// The final results' fifth row (the championship's fifth stage): the game draws the label after RIVIERA's, its
+// image 12 (DESERT's stage-clear message, yellow), as there is no FOREST in the green labels' set. FOREST instead,
+// made here from the labels on the screen (no graphics of the game's in the patch): their letters (8-bit tiles, a
+// gradient by row, an outline of colour 1) as connected parts, DESERT's D E S E R T and SNOWY's S N O WY; O from
+// SNOWY, R E S T from DESERT, F from DESERT's first E without its bottom bar. Its tiles go to patterns this screen
+// does not show (0x3114 on, DESERT's stage-clear message's: its colours the labels' palette's), given back when the
+// screen ends (or a state is saved)
+namespace
+{
+  constexpr uint32_t kNameTable = 0xF8000;          // layer A
+  constexpr unsigned kLabelX = 8, kLabelW = 20, kLabelH = 4, kRowY[5] = { 27, 31, 35, 39, 43 };
+  constexpr uint16_t kDesertLabel = 0x3000, kFifthLabel = 0x2F9A;  // their first tiles as drawn
+  constexpr unsigned kClearToX = 34;                // the fifth row's time from there
+  constexpr uint16_t kFirstPattern = 0x3114, kPatternEnd = 0x3200;
+
+  struct Pixels
+  {
+    int w = 0, h = 0;
+    std::vector<uint8_t> v;
+    uint8_t &at(int x, int y) { return v[size_t(y) * w + x]; }
+    uint8_t get(int x, int y) const { return x < 0 || y < 0 || x >= w || y >= h ? 0 : v[size_t(y) * w + x]; }
+  };
+
+  struct Letter
+  {
+    int xmin = 0, xmax = -1;
+    Pixels mask;   // the letter's colours, 0 elsewhere (no outline)
+  };
+}
+
+static uint32_t NameTableAddr(unsigned x, unsigned y)
+{
+  return kNameTable + (y * 64 + (x & ~1u)) * 2;
+}
+
+static uint16_t ReadName(const CTileGen &tg, unsigned x, unsigned y)
+{
+  uint32_t word = tg.ReadRAM32(NameTableAddr(x, y));
+  return uint16_t((x & 1) ? word : word >> 16);
+}
+
+static Pixels ReadLabel(const CTileGen &tg, unsigned y0)
+{
+  Pixels p;
+  p.w = kLabelW * 8;
+  p.h = kLabelH * 8;
+  p.v.assign(size_t(p.w) * p.h, 0);
+  for (unsigned ty = 0; ty < kLabelH; ty++)
+    for (unsigned tx = 0; tx < kLabelW; tx++)
+    {
+      uint32_t base = uint32_t(ReadName(tg, kLabelX + tx, y0 + ty) & 0x7FFF) * 64;
+      for (unsigned r = 0; r < 8; r++)
+        for (unsigned half = 0; half < 2; half++)
+        {
+          uint32_t w = tg.ReadRAM32(base + 8 * r + 4 * half);
+          for (unsigned k = 0; k < 4; k++)
+            p.at(int(tx * 8 + half * 4 + k), int(ty * 8 + r)) = uint8_t(w >> (24 - 8 * k));
+        }
+    }
+  return p;
+}
+
+// The letters (colours above 1, 4-connected), of 20 pixels at least, from the left
+static std::vector<Letter> Letters(const Pixels &p)
+{
+  std::vector<int> part(p.v.size(), 0);
+  std::vector<Letter> letters;
+  int count = 0;
+  for (int y = 0; y < p.h; y++)
+    for (int x = 0; x < p.w; x++)
+    {
+      if (p.get(x, y) <= 1 || part[size_t(y) * p.w + x])
+        continue;
+      count++;
+      std::vector<std::pair<int, int>> stack{ { x, y } }, pixels;
+      part[size_t(y) * p.w + x] = count;
+      while (!stack.empty())
+      {
+        auto [cx, cy] = stack.back();
+        stack.pop_back();
+        pixels.push_back({ cx, cy });
+        const int dx[4] = { 1, -1, 0, 0 }, dy[4] = { 0, 0, 1, -1 };
+        for (int k = 0; k < 4; k++)
+        {
+          int nx = cx + dx[k], ny = cy + dy[k];
+          if (p.get(nx, ny) > 1 && !part[size_t(ny) * p.w + nx])
+          {
+            part[size_t(ny) * p.w + nx] = count;
+            stack.push_back({ nx, ny });
+          }
+        }
+      }
+      if (pixels.size() < 20)
+        continue;
+      Letter l;
+      l.mask.w = p.w;
+      l.mask.h = p.h;
+      l.mask.v.assign(p.v.size(), 0);
+      l.xmin = p.w;
+      for (auto [px, py] : pixels)
+      {
+        l.mask.at(px, py) = p.get(px, py);
+        l.xmin = std::min(l.xmin, px);
+        l.xmax = std::max(l.xmax, px);
+      }
+      letters.push_back(std::move(l));
+    }
+  std::sort(letters.begin(), letters.end(), [](const Letter &a, const Letter &b) { return a.xmin < b.xmin; });
+  return letters;
+}
+
+// F from E: the bottom rows wider than the stem (the narrowest row) cut to the stem
+static Letter FromE(Letter e)
+{
+  auto extent = [&](int y, int &l, int &r) {
+    l = e.mask.w; r = -1;
+    for (int x = 0; x < e.mask.w; x++)
+      if (e.mask.get(x, y)) { l = std::min(l, x); r = std::max(r, x); }
+    return r >= l;
+  };
+  int stem = e.mask.w, top = -1, bottom = -1;
+  for (int y = 0; y < e.mask.h; y++)
+  {
+    int l, r;
+    if (!extent(y, l, r))
+      continue;
+    if (top < 0) top = y;
+    bottom = y;
+    stem = std::min(stem, r - l + 1);
+  }
+  for (int y = bottom; y >= top; y--)
+  {
+    int l, r;
+    if (!extent(y, l, r) || r - l + 1 <= stem + 2)
+      break;
+    for (int x = l + stem; x <= r; x++)
+      e.mask.at(x, y) = 0;
+  }
+  e.xmax = -1;
+  for (int y = 0; y < e.mask.h; y++)
+    for (int x = 0; x < e.mask.w; x++)
+      if (e.mask.get(x, y)) e.xmax = std::max(e.xmax, x);
+  return e;
+}
+
+void CSrally2Forest::ResultsLabel(void)
+{
+  // Shown: kept while the screen shows it (its first tile there), else given back
+  if (!m_labelSaved.empty())
+  {
+    if (ReadName(m_tileGen, kLabelX, kRowY[4]) == kFifthLabel || ReadName(m_tileGen, kLabelX, kRowY[0]) != kDesertLabel)
+      RestoreLabel(false);   // the game's name table already (cleared or drawn again): the patterns only
+    return;
+  }
+  if (!m_championship || ReadName(m_tileGen, kLabelX, kRowY[4]) != kFifthLabel || ReadName(m_tileGen, kLabelX, kRowY[0]) != kDesertLabel)
+    return;
+
+  std::vector<Letter> desert = Letters(ReadLabel(m_tileGen, kRowY[0]));
+  std::vector<Letter> snowy = Letters(ReadLabel(m_tileGen, kRowY[2]));
+  if (desert.size() != 6 || snowy.size() != 4)
+    return;   // not the labels expected: the game's left as it is
+  const Letter forest[6] = { FromE(desert[1]), snowy[2], desert[4], desert[1], desert[2], desert[5] };
+
+  // Laid out from the left, a pixel apart, each with an outline (colour 1) around it
+  Pixels label;
+  label.w = kLabelW * 8;
+  label.h = kLabelH * 8;
+  label.v.assign(size_t(label.w) * label.h, 0);
+  int cursor = 1;
+  for (const Letter &l : forest)
+  {
+    int shift = cursor - l.xmin;
+    for (int y = 0; y < label.h; y++)
+      for (int x = l.xmin; x <= l.xmax; x++)
+        if (uint8_t c = l.mask.get(x, y); c && x + shift < label.w)
+          label.at(x + shift, y) = c;
+    cursor += l.xmax - l.xmin + 2;
+  }
+  Pixels outlined = label;
+  for (int y = 0; y < label.h; y++)
+    for (int x = 0; x < label.w; x++)
+    {
+      if (label.get(x, y))
+        continue;
+      bool near = false;
+      for (int dy = -1; dy <= 1 && !near; dy++)
+        for (int dx = -1; dx <= 1 && !near; dx++)
+          near = label.get(x + dx, y + dy) > 1;
+      if (near)
+        outlined.at(x, y) = 1;
+    }
+
+  // Its tiles: the empty ones the labels' blank (their last column's), the others in the patterns borrowed
+  uint16_t blank = ReadName(m_tileGen, kLabelX + kLabelW - 1, kRowY[0]);
+  uint16_t next = kFirstPattern;
+  auto save = [&](uint32_t addr) { m_labelSaved.push_back({ addr, m_tileGen.ReadRAM32(addr) }); };
+  std::vector<uint16_t> codes;
+  for (unsigned ty = 0; ty < kLabelH; ty++)
+    for (unsigned tx = 0; tx < kLabelW; tx++)
+    {
+      bool empty = true;
+      for (unsigned r = 0; r < 8 && empty; r++)
+        for (unsigned k = 0; k < 8 && empty; k++)
+          empty = outlined.get(int(tx * 8 + k), int(ty * 8 + r)) == 0;
+      if (empty || next >= kPatternEnd)
+      {
+        codes.push_back(blank);
+        continue;
+      }
+      uint32_t base = uint32_t(next) * 64;
+      for (unsigned r = 0; r < 8; r++)
+        for (unsigned half = 0; half < 2; half++)
+        {
+          uint32_t w = 0;
+          for (unsigned k = 0; k < 4; k++)
+            w |= uint32_t(outlined.get(int(tx * 8 + half * 4 + k), int(ty * 8 + r))) << (24 - 8 * k);
+          save(base + 8 * r + 4 * half);
+          m_tileGen.WriteRAM32(base + 8 * r + 4 * half, w);
+        }
+      codes.push_back(next++);
+    }
+
+  // The fifth row: the label, nothing after it up to the time (the stage-clear message was wider)
+  for (unsigned ty = 0; ty < kLabelH; ty++)
+    for (unsigned x = kLabelX; x < kClearToX; x += 2)
+    {
+      uint32_t addr = NameTableAddr(x, kRowY[4] + ty);
+      auto code = [&](unsigned cx) { return cx < kLabelX + kLabelW ? codes[ty * kLabelW + (cx - kLabelX)] : uint16_t(0); };
+      save(addr);
+      m_tileGen.WriteRAM32(addr, (uint32_t(code(x)) << 16) | code(x + 1));
+    }
+}
+
+void CSrally2Forest::RestoreLabel(bool nameTable)
+{
+  // Back to front: the name table (unless the game has written it since: the label's old entries would come back
+  // over the next screen), then the patterns
+  for (auto it = m_labelSaved.rbegin(); it != m_labelSaved.rend(); ++it)
+  {
+    if (nameTable || it->first < kNameTable)
+      m_tileGen.WriteRAM32(it->first, it->second);
+  }
+  m_labelSaved.clear();
 }

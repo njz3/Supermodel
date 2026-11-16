@@ -50,6 +50,12 @@ inline std::vector<IEmulator::GamePatch> GamePatchesFor(const std::string &romSe
                         "its race's end plays (the game hung after CLEARED). Its title at the race's start and its music "
                         "stay MOUNTAIN's.";
     patches.push_back(patch);
+
+    patch.key = "ForestChampionship";   // CSrally2Forest::kChampionshipSetting
+    patch.label = "FOREST, the championship's fifth stage";
+    patch.description = "With the course above: the championship runs DESERT, MOUNTAIN, SNOWY, RIVIERA and then FOREST "
+                        "(its times the program's own), the final results on five rows. From the next championship.";
+    patches.push_back(patch);
   }
   return patches;
 }

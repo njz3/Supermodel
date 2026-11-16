@@ -31,6 +31,7 @@
 #define INCLUDED_SRALLY2FOREST_H
 
 #include "Model3/Real3D.h"
+#include "Model3/TileGen.h"
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -41,6 +42,7 @@ class CSrally2Forest
 {
 public:
   static constexpr const char *kSetting = "ForestCourse";
+  static constexpr const char *kChampionshipSetting = "ForestChampionship";
 
   // The game the patch was written for: srally2 (export, EPR-20632 to EPR-20635), its program as the patch expects it
   static bool Supports(const Game &game, const uint8_t *crom);
@@ -48,10 +50,14 @@ public:
   // ram: the PowerPC's (32-bit words in the host's order), crom: the program and banked ROMs (the same, fixed 8 MB
   // first), vrom: the video ROM (the same), photoFile: a photo for the
   // panel instead of the one built in (256x128 BMP), if there
-  CSrally2Forest(uint8_t *ram, uint8_t *crom, uint8_t *vrom, CReal3D &gpu, const std::string &photoFile);
+  CSrally2Forest(uint8_t *ram, uint8_t *crom, uint8_t *vrom, CReal3D &gpu, CTileGen &tileGen, const std::string &photoFile);
 
   bool Enabled(void) const { return m_enabled; }
   void SetEnabled(bool enabled);
+
+  // FOREST as the championship's fifth stage (with the course's patch only): from the next championship
+  bool Championship(void) const { return m_championship; }
+  void SetChampionship(bool championship) { m_championship = championship; }
 
   // After each frame of the main board, with the PowerPC stopped: the program patched (or given back) in RAM when
   // the game is outside the course selection, the panel's textures shown during it, the rain's and the car's
@@ -72,14 +78,20 @@ private:
   bool Sheltered(void);
   void SpreadParticles(void);
   void WriteEnding(bool write);
+  void ResultsLabel(void);
+  void RestoreLabel(bool nameTable);
   bool LoadPhoto(void);
 
   uint8_t *m_ram;
   uint8_t *m_crom;
   uint8_t *m_vrom;
   CReal3D &m_gpu;
+  CTileGen &m_tileGen;
   std::string m_photoFile;
   bool m_enabled = false;
+  bool m_championship = false;
+  // The final results' FOREST label (see ResultsLabel): the tile generator's words it replaced, {address, word}
+  std::vector<std::pair<uint32_t, uint32_t>> m_labelSaved;
   bool m_modelsWritten = false;
   enum class Shown { None, Panel, Race };
   Shown m_shown = Shown::None;      // the textures shown: the panel's (the carousel) or the race's (rain, reflections)

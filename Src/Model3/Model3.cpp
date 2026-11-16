@@ -2803,6 +2803,11 @@ std::vector<IEmulator::GamePatch> CModel3::GetGamePatches() const
       patch.enabled = m_forest->Enabled();
       patches.push_back(patch);
     }
+    else if (m_forest && patch.key == CSrally2Forest::kChampionshipSetting)
+    {
+      patch.enabled = m_forest->Championship();
+      patches.push_back(patch);
+    }
   }
   return patches;
 }
@@ -2812,6 +2817,11 @@ bool CModel3::SetGamePatch(const std::string &key, bool enable)
   if (m_forest && key == CSrally2Forest::kSetting)
   {
     m_forest->SetEnabled(enable);
+    return true;
+  }
+  if (m_forest && key == CSrally2Forest::kChampionshipSetting)
+  {
+    m_forest->SetChampionship(enable);
     return true;
   }
   return false;
@@ -2964,8 +2974,9 @@ Result CModel3::Init(const Game &game, const ROMSet &rom_set)
   m_forest.reset();
   if (CSrally2Forest::Supports(game, crom))
   {
-    m_forest = std::make_unique<CSrally2Forest>(ram, crom, vrom, GPU, FileSystemPath::GetWritePath(FileSystemPath::Config) + "srally2_forest.bmp");
+    m_forest = std::make_unique<CSrally2Forest>(ram, crom, vrom, GPU, TileGen, FileSystemPath::GetWritePath(FileSystemPath::Config) + "srally2_forest.bmp");
     m_forest->SetEnabled(m_config[CSrally2Forest::kSetting].ValueAsDefault<bool>(false));
+    m_forest->SetChampionship(m_config[CSrally2Forest::kChampionshipSetting].ValueAsDefault<bool>(false));
   }
 
   // Configure CPU and PCI bridge
