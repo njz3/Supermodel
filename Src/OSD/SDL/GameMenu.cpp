@@ -1653,6 +1653,90 @@ namespace GameMenu
     NextStart();
   }
 
+  // A binding as the About page shows it: each alternative with its device, "Alt + R", "Joystick 1: Button 3"
+  static std::string DescribeBinding(const std::string &mapping)
+  {
+    std::string text;
+    for (const std::string &token : SplitBinding(mapping))
+    {
+      std::string trimmed = Trim(token);
+      if (trimmed.empty() || trimmed == "NONE")
+        continue;
+      std::string device;
+      std::string first = trimmed.substr(0, trimmed.find('+'));
+      size_t joy = first.find("JOY");
+      if (first.rfind("MOUSE", 0) == 0 || first.rfind("!MOUSE", 0) == 0)
+        device = "Mouse: ";
+      else if (joy != std::string::npos && joy <= 1 && first.find('_') != std::string::npos)
+      {
+        std::string number = first.substr(joy + 3, first.find('_') - joy - 3);
+        device = number.empty() ? "Any joystick: " : "Joystick " + number + ": ";
+      }
+      text += (text.empty() ? "" : ", ") + device + Describe(trimmed);
+    }
+    return text.empty() ? "(none)" : text;
+  }
+
+  // The emulator's own keys (the inputs of the UI group: save states, pause...), as bound now
+  static void DrawEmulatorKeys()
+  {
+    // What some do beyond their names
+    static const struct { const char *id; const char *note; } kNotes[] = {
+      { "UIMenu",       "this menu (the game paused while it is open)" },
+      { "UIExit",       "quits Supermodel" },
+      { "UIReset",      "resets the game's board" },
+      { "UIPause",      "pauses or resumes the game" },
+      { "UISaveState",  "saves the game's state in the current slot" },
+      { "UIChangeSlot", "the next slot (0 to 9) for the save states" },
+      { "UILoadState",  "loads the current slot's state" },
+      { "UIClearNVRAM", "clears the game's NVRAM (its settings and records)" },
+      { "UIScreenShot", "a BMP file in the Screenshots folder" },
+      { "UISelectCrosshairs", "the light guns' crosshairs (games with light guns)" },
+      { "UIToggleFrameLimit", "the game held to its frame rate, or not (as fast as it can)" },
+      { "UIDumpInputState", "writes the inputs' states to the log" },
+      { "UIDumpTimings", "writes the frame timings to the log" },
+    };
+
+    Header("Emulator keys");
+    if (s_inputs == nullptr)
+    {
+      ImGui::TextDisabled("No inputs: the keys show once a game runs.");
+      return;
+    }
+    if (ImGui::BeginTable("EmulatorKeys", 3, ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV))
+    {
+      ImGui::TableSetupColumn("Action");
+      ImGui::TableSetupColumn("Keys");
+      ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthStretch);
+      ImGui::TableHeadersRow();
+      for (unsigned i = 0; i < s_inputs->Count(); i++)
+      {
+        std::shared_ptr<CInput> input = (*s_inputs)[i];
+        if (!input || !input->IsUIInput())
+          continue;
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        ImGui::TextUnformatted(input->label);
+        ImGui::TableNextColumn();
+        ImGui::TextUnformatted(DescribeBinding(input->GetMapping()).c_str());
+        ImGui::TableNextColumn();
+        for (const auto &note : kNotes)
+        {
+          if (std::strcmp(note.id, input->id) == 0)
+          {
+            ImGui::PushTextWrapPos(0.0f);
+            ImGui::TextDisabled("%s", note.note);
+            ImGui::PopTextWrapPos();
+          }
+        }
+      }
+      ImGui::EndTable();
+    }
+    Wrapped("Changed in the settings file, \"Input\" and the action's name: InputUIPause = KEY_ALT+KEY_P, "
+            "InputUISaveState = KEY_F5... (or with -config-inputs). In this menu: Escape closes it, Page Up and Page Down "
+            "scroll the game's notes; a gamepad's D-pad, A and B move, choose and go back, LB and RB change the page.");
+  }
+
   static void DrawAboutPage()
   {
     ImGui::Text("Supermodel FFB Edition %s", SupermodelVersion().c_str());
@@ -1667,6 +1751,7 @@ namespace GameMenu
     ImGui::BulletText("zlib, Jean-loup Gailly and Mark Adler");
     ImGui::BulletText("Musashi 68000 core, Karl Stenerud");
     ImGui::BulletText("MAME's work on the Model 1 and 2 boards (BSD-3-Clause)");
+    DrawEmulatorKeys();
     Header("Files");
     if (!s_logFile.empty())
       ImGui::TextDisabled("Log: %s", s_logFile.c_str());
