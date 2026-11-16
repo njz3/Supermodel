@@ -389,8 +389,12 @@ void CDriveBoard::RunFrame(void)
 
           int freq = (int)m_z80Clock * 1000000;
 
-          // reset timer
-          m_nmiTimerVal = freq / m_z80CTC.CalcFrequency(1, freq);
+          // The next NMI one period after this one was due: the cycles the last instruction ran past it count towards
+          // the next (reloading the full period made the NMIs one instruction late each, 499.84 Hz instead of 500)
+          int period = freq / m_z80CTC.CalcFrequency(1, freq);
+          m_nmiTimerVal += period;
+          if (m_nmiTimerVal <= 0)
+            m_nmiTimerVal = period;
       }
   }
 }
