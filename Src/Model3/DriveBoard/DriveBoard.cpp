@@ -58,6 +58,8 @@
 
 #include <cstdio>
 #include <algorithm>
+#include <string>
+#include <zlib.h>
 
 #define ROM_SIZE 0x9000
 #define RAM_SIZE 0x2000 // Z80 RAM
@@ -223,6 +225,26 @@ unsigned CDriveBoard::GetForceFeedbackStrength() const
 void CDriveBoard::SetForceFeedbackStrength(unsigned strength)
 {
   m_dip1 = (m_dip1 & 0xE3) | (((~(strength - 1)) & 7) << 2);
+}
+
+uint32_t CDriveBoard::ProgramCRC(void) const
+{
+  return m_rom ? uint32_t(crc32(0, m_rom, 0x10000)) : 0;
+}
+
+bool CDriveBoard::DIPSetting(int bank, UINT8 &value) const
+{
+  std::string text = m_config[bank == 1 ? "DriveBoardDIP1" : "DriveBoardDIP2"].ValueAsDefault<std::string>("");
+  if (text.size() != 8 || text.find_first_not_of("01") != std::string::npos)
+    return false;
+  bool reversed = DIPSwitchesReversed();
+  value = 0xFF;
+  for (int n = 1; n <= 8; n++)
+  {
+    if (text[n - 1] == '1')
+      value &= UINT8(~(1 << (reversed ? 8 - n : n - 1)));
+  }
+  return true;
 }
 
 CZ80* CDriveBoard::GetZ80(void)
@@ -470,6 +492,19 @@ void CDriveBoard::Reset()
 
     // Configure options (cannot be done in Init() because command line settings weren't yet parsed)
     SetForceFeedbackStrength(m_config["ForceFeedbackStrength"].ValueAsDefault<unsigned>(1));
+    // The DIP switches set in the game's settings (the in-game menu's Force Feedback page), over the board's own and
+    // ForceFeedbackStrength
+    UINT8 dip;
+    if (DIPSetting(1, dip))
+    {
+      m_dip1 = dip;
+      InfoLog("Drive board: DIP switches 1 set by DriveBoardDIP1 (the program reads %02X).", dip);
+    }
+    if (DIPSetting(2, dip))
+    {
+      m_dip2 = dip;
+      InfoLog("Drive board: DIP switches 2 set by DriveBoardDIP2 (the program reads %02X).", dip);
+    }
 
     // Enable only if attached -- **this is the only place this flag should ever be cleared**
     if (m_attached)

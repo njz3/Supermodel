@@ -3052,7 +3052,9 @@ Result CModel3::Init(const Game &game, const ROMSet &rom_set)
   // Drive board (if present)
   if (game.driveboard_type == Game::DRIVE_BOARD_WHEEL && rom_set.get_rom("driveboard_program").size)
   {
-    DriveBoard = new CWheelBoard(m_config);
+    CWheelBoard *wheelBoard = new CWheelBoard(m_config);
+    wheelBoard->SetEcaCommands(game.name == "eca" || game.parent == "eca");
+    DriveBoard = wheelBoard;
     if (DriveBoard->Init(driveROM) != Result::OKAY)
       return Result::FAIL;
   }

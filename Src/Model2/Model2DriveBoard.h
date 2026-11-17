@@ -82,6 +82,7 @@ public:
   Game::DriveBoardType GetType(void) const override { return Game::DRIVE_BOARD_WHEEL; }
   unsigned GetForceFeedbackStrength(void) const override;
   void SetForceFeedbackStrength(unsigned strength) override;
+  uint32_t ProgramCRC(void) const override { return m_romlessCrc != 0 ? m_romlessCrc : CDriveBoard::ProgramCRC(); }
 
   void SaveState(CBlockFile *SaveState) override;
   void LoadState(CBlockFile *SaveState) override;

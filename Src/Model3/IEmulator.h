@@ -33,6 +33,7 @@
 #include <vector>
 
 class CBlockFile;
+class CDriveBoard;
 struct Game;
 struct ROMSet;
 class IRender2D;
@@ -217,6 +218,18 @@ public:
     (void)key;
     (void)enable;
     return false;
+  }
+
+  /*
+   * GetDriveBoard(void):
+   *
+   * Returns:
+   *    The game's drive board (its DIP switches, in the in-game menu), or
+   *    nullptr when it has none.
+   */
+  virtual CDriveBoard *GetDriveBoard(void)
+  {
+    return nullptr;
   }
 
   /*

@@ -846,6 +846,46 @@ complet mais aucun menu n'y mène (Practice : index du carrousel → 3 2 4 5, Ch
   1500) ; hotd ne démarre pas (zip incomplet, comme avant). ECA charge EPR-20512 et la drive board répond CF CE CD CC ;
   daytona avec `Transparency` 0, 1, 2 donne trois images différentes.
 
+### 2.27 ECA : toutes les drive boards au choix, cartes Naomi comprises (17 novembre)
+
+Le propriétaire a essayé EPR-20512, EPR-20985 et EPR-19338A sur la borne : aucune ne donne un bon retour de force.
+La liste « Drive board program » d'ECA propose maintenant aussi EPR-19338 (Scud Race Plus), EPR-18261 (Le Mans 24,
+carte Model 2) et les cartes Naomi de F355 Challenge (EPR-21867) et de 18 Wheeler (EPR-23000). NASCAR a la carte de
+Sega Rally 2 (EPR-20512, renommée « Sega Rally 2, NASCAR »). Toutes sont trouvées par leur CRC dans les zips du
+dossier (scud.zip/scudplus, stcc.zip, f355.zip, 18wheelr.zip).
+
+- **Cartes Naomi émulées** (CWheelBoard, `m_naomiServo` par CRC) : même carte servo derrière, mais registres écrits
+  08-0F (bit 3 = A-RST) : ramenés à F8-FF. Elles calibrent en poussant le volant aux deux butées et s'arrêtent pour
+  de bon si le potentiomètre ne bouge pas : jusqu'à la fin de la calibration (octet d'état E916 en RAM : 30 puis 10),
+  le volant lu est celui que leur couple déplace. Leur gain FB (D0, C8, C0, B0 ; B8 pour 18 Wheeler) est pleine
+  échelle à D0. La CTC émulée leur donne bien 250 Hz.
+- **Vérifié** (mode agent, ECA, course volant gauche-droite) : EPR-19338 et EPR-18261 répondent et envoient du couple ;
+  F355 et 18 Wheeler se calibrent (« wheel calibrated (status 10) » dans le journal) puis lisent le volant, mais
+  **n'envoient aucun couple** : ECA ne leur envoie jamais FE (démarrage), et en dessous de F0 rien n'est obéi avant.
+  ECA leur envoie aussi F0, qui fait répondre l'écho : le jeu ne voit pas d'erreur.
+- **Les à-coups d'EPR-20512 (retour du propriétaire : « de gros coups pour recentrer, pas un effet ressort »)** : la
+  table d'ECA (0xF63B0, lue en RAM) envoie pour un couple t = 1, 2, 3, 4, 5… la magnitude 0, 1, 5, 9, 10… (|t| + 5
+  au-delà de 3), et le jeu limite t à ±8 par image : chaque retour par le centre passe de +9 à −9 en une image. En
+  course (mode agent, sinusoïde puis volant tenu, 3 210 images) : 87 sauts de 9 ou plus (12 de 14 ou plus) d'une image
+  à l'autre, 2 (0) une fois la magnitude ramenée à |t| ; saut moyen au passage du centre 11,0 → 6,7 ; couple maximal
+  23 → 18 (STEERING REACTION 4). Doubler ensuite le couple ramenait 92 sauts : pas de facteur. Réglage
+  `EcaLinearTorque` (vrai par défaut, ECA + EPR-20512 seulement, CWheelBoard::Write), case « Linear torque » dans la
+  page Force Feedback du menu Tab pour ECA. Le couple d'ECA est un couple d'auto-alignement (variable 0x958 de la
+  voiture × vitesse × réglage) plus un amortissement par la vitesse du volant et des chocs ; il s'inverse parfois quand
+  la voiture glisse, ce que la table ne change pas.
+- **DIP switches virtuels, par jeu** (demande du propriétaire) : `DriveBoardDIP1` / `DriveBoardDIP2`, 8 caractères
+  (interrupteurs 1 à 8, `1` ON), appliqués dans CDriveBoard::Reset après ForceFeedbackStrength, donc pour toutes les
+  drive boards Model 1/2/3, émulées ou simulées ; interrupteur n = bit n − 1, bit 8 − n sur la carte d'EPR-18261
+  (DIPSwitchesReversed) ; une ligne de journal donne l'octet lu. Menu Tab, page Force Feedback, partie « DIP switches » :
+  deux rangées de cases (l'état réel de la carte, ou celui réglé pour le jeu), un bouton pour revenir à ceux de la
+  carte, le CRC du programme et ce qu'il fait de chaque interrupteur (docs de BFF). IEmulator::GetDriveBoard (virtuel,
+  Model 1/2/3). Vérifié (journal) : eca C3/FE, lemans24 (18261, inversé) 1F, daytona F0, vr F7/F7, valeur invalide
+  ignorée. Piège : `config.Set("X", std::string(), "Section")` plante au démarrage (min/max construits depuis 0) :
+  `config.Set<std::string>("X", "", "Section", "", "")`.
+- **Les DIP de force d'EPR-20512 ne servent ni à Sega Rally 2 ni à ECA** : la rangée (ressort FC 0C-44, amortissement
+  FD 11-51) n'est lue qu'à `B0`/`B1`, et aucun des deux jeux ne l'envoie (démarrage de srally2 en mode agent : `C1`
+  puis `C7` seulement ; FC 0C quel que soit le réglage). Les deux jeux ont donc le même ressort de la carte, la rangée 0.
+
 ## 3. Les essais
 
 ### 3.1 Le banc

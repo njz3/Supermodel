@@ -44,6 +44,7 @@
 #include "Inputs/InputTypes.h"
 #include "Model3/GamePatches.h"
 #include "Model3/IEmulator.h"
+#include "Model3/DriveBoard/DriveBoard.h"
 #include "RomPatches.h"
 #include "Util/NewConfig.h"
 #include "Util/Format.h"
@@ -1779,6 +1780,99 @@ namespace GameMenu
   }
 
   // The force feedback (linuxloader's section) and the drive board's own settings, as on a cabinet
+  // What each drive board program does with its DIP switches (BackForceFeeder's docs of the programs), by its CRC32
+  static const char *DIPSwitchNotes(uint32_t crc)
+  {
+    switch (crc)
+    {
+    case 0xC9FAC464: // EPR-19338A
+    case 0xDBF88DE6: // EPR-19338
+      return "Scud Race's board. 1-3..5: the strength row (the servo board's spring and damping; EPR-19338: 1-3..6, 16 "
+             "rows). 1-6: the cabinet, ON deluxe (B0), OFF twin (B1), unless the game sends one. 1-2 ON: the game's "
+             "motor power (7x) ignored. 1-7 and 1-8 both ON: the self-test; one alone: a demo (no game). Bank 2: what "
+             "the displays show, and the self-test's tests.";
+    case 0xB139481D: // EPR-20985
+      return "Daytona USA 2's board. 1-3..5: not read. 1-6: the cabinet's tables, ON B0, OFF B1, unless the game sends "
+             "one. 1-2 ON: the game's motor power (7x) ignored. 1-7 and 1-8 both ON: the self-test; one alone: a demo "
+             "(no game). Bank 2: the displays.";
+    case 0xCF64350D: // EPR-20512
+      return "Sega Rally 2's board. 1-3..5: the strength row, the servo board's own centring spring and damping (FC 0C "
+             "to 44, FD 11 to 51), read only when the game sends B0 or B1: Sega Rally 2 does, ECA does not (row 0, the "
+             "weakest spring). 1-6: the cabinet, unused. 1-7 and 1-8 both ON: the self-test; 1-7 alone a torque demo, "
+             "1-8 alone random torques (no game). 2-1..2-6: what the displays show.";
+    case 0x0C7FAC58: // EPR-18261
+      return "Indy 500's board (Le Mans 24's TWIN-NORMAL). Switch n is bit 8 - n (measured). 1-1..1-3: added to every "
+             "power (0 to 7). 1-7, 1-8: both OFF the game. 2-1 ON: the springs also brake.";
+    case 0x65082B14: // EPR-21119
+      return "Star Wars Trilogy's board. 1-7 and 1-8 both ON: the self-test (read at reset only).";
+    case 0x546C5D1A: // EPR-16488A
+    case 0x9A33B437: // EPR-17891
+      return "Daytona USA's and Sega Rally's board. 1..3: added to every power. 4 ON: no calibration at power-up. 5 ON "
+             "(Sega Rally): the display shows the last byte received.";
+    case 0x45C02763: // EPR-15111
+      return "Virtua Racing's board: a bank per player. 1..3: the motor's weight. 4 ON: no calibration (and mandatory "
+             "for a missing seat).";
+    case 0x4F93A2A0: // EPR-21867
+    case 0x6143B911: // EPR-21867P
+    case 0xE3B162F7: // EPR-23000
+      return "F355 Challenge's and 18 Wheeler's board (Naomi). 1-7 ON alone: a spring demo; 1-7 and 1-8 both ON: the "
+             "self-test (no game). Bank 2: 2-1..2-4 the spring's shape, 2-5..2-7 its ceiling (all OFF: no spring). "
+             "F355: 1-8 ON alone, or with 1-1, sends the torque the other way.";
+    default:
+      return "Switch n taken as bit n - 1 of the byte the program reads, ON reading 0.";
+    }
+  }
+
+  // The drive board's two banks of DIP switches as the game's settings set them (DriveBoardDIP1/2: switches 1 to 8,
+  // '1' ON), else as the board has them now
+  static void DrawDIPSwitches(Util::Config::Node &config)
+  {
+    CDriveBoard *board = s_emulator ? s_emulator->GetDriveBoard() : nullptr;
+    if (board == nullptr || board->GetType() == Game::DRIVE_BOARD_SKI || board->GetType() == Game::DRIVE_BOARD_NONE)
+      return;
+    Header("DIP switches");
+    UINT8 live[2];
+    board->GetDIPSwitches(live[0], live[1]);
+    bool reversed = board->DIPSwitchesReversed();
+    bool anySet = false;
+    for (int bank = 1; bank <= 2; bank++)
+    {
+      const char *key = bank == 1 ? "DriveBoardDIP1" : "DriveBoardDIP2";
+      std::string text = config[key].ValueAsDefault<std::string>("");
+      bool set = text.size() == 8 && text.find_first_not_of("01") == std::string::npos;
+      anySet |= set;
+      std::string switches(8, '0');
+      for (int n = 1; n <= 8; n++)
+        switches[n - 1] = set ? text[n - 1] : (((live[bank - 1] >> (reversed ? 8 - n : n - 1)) & 1) == 0 ? '1' : '0');
+      ImGui::Text("Bank %d", bank);
+      for (int n = 1; n <= 8; n++)
+      {
+        ImGui::SameLine();
+        bool on = switches[n - 1] == '1';
+        std::string label = std::to_string(bank) + "-" + std::to_string(n) + "##dip";
+        if (ImGui::Checkbox(label.c_str(), &on))
+        {
+          switches[n - 1] = on ? '1' : '0';
+          config.Set(key, switches);
+        }
+      }
+      ImGui::SameLine();
+      ImGui::TextDisabled(set ? "(set for this game)" : "(the board's)");
+    }
+    Wrapped("Ticked: the switch ON. Set here, a bank replaces the board's own switches, the strength switches above "
+            "included.");
+    if (anySet && ImGui::Button("Back to the board's switches"))
+    {
+      config.Set("DriveBoardDIP1", std::string());
+      config.Set("DriveBoardDIP2", std::string());
+    }
+    NextStart();
+    char crc[16];
+    snprintf(crc, sizeof(crc), "%08X", board->ProgramCRC());
+    ImGui::TextDisabled("Program CRC32 %s", crc);
+    Wrapped(DIPSwitchNotes(board->ProgramCRC()));
+  }
+
   static void DrawForceFeedbackPage(Util::Config::Node &config)
   {
     if (s_inputs == nullptr)
@@ -1791,11 +1885,22 @@ namespace GameMenu
     Header("Drive board");
     SettingSlider(config, "ForceFeedbackStrength", "Strength switches", 1, 1, 8, "%d");
     Wrapped("The board's strength DIP switches, as an operator sets them: 1 all OFF (as the boards leave the factory), "
-            "8 the most. The board adds them to every force its program works out.");
+            "8 the most. What the program does with them depends on it: see the DIP switches below.");
+    if (config["DriveBoardDIP1"].ValueAsDefault<std::string>("").size() == 8)
+      ImGui::TextDisabled("Bank 1 is set below for this game: this slider does not count.");
     NextStart();
     SettingSlider(config, "PanelSpring", "Panel spring", 20, 0, 100, "%d %%", ChangeForceFeedback);
     Wrapped("Daytona USA, Sega Rally and Virtua Racing only: their panels have a light centring spring, which their "
             "drive boards make up for. In percent of Sega Rally's strongest torque.");
+    if (s_game.name == "eca" || s_game.parent == "eca")
+    {
+      SettingCheck(config, "EcaLinearTorque", "Linear torque (EPR-20512)", true);
+      Wrapped("ECA's torque table jumps from 1 to 9 as the torque grows from 2 to 4, a push for its motor to start: "
+              "each return through the centre is then a jolt. On, the torque the game works out is sent as it is (its "
+              "strongest is 18 instead of 23 at STEERING REACTION 4: raise the gain if it feels weak).");
+      NextStart();
+    }
+    DrawDIPSwitches(config);
   }
 
   static void DrawSoundPage(Util::Config::Node &config)

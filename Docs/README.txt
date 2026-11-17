@@ -345,7 +345,10 @@ ForceFeedbackInvert), what the game asks now (constant force, spring, friction,
 damper, vibration) and the limits per effect of the input system in use.  These
 apply when the menu closes: the effects stop where they played and start again
 as set.  Its 'Drive board' part has the board's strength switches
-(ForceFeedbackStrength, from the next start) and PanelSpring.
+(ForceFeedbackStrength, from the next start) and PanelSpring; its 'DIP
+switches' part the board's two banks of switches, one by one, for the game
+alone (DriveBoardDIP1, DriveBoardDIP2, from the next start), with what the
+board's program does with them.
 
 Its 'Sound' page has the sound and music volumes (SoundVolume, MusicVolume) and
 FlipStereo, applied at once, and, from the next start, the channels, the
@@ -886,11 +889,21 @@ by default.  The dedicated cabinet has Scud Race deluxe's drive board
 (838-12898), whose program for Scud Race is epr-19338a.bin; ECA was also sold
 as a conversion kit of Daytona USA 2, which changes only the chips of the
 Model 3 ROM board: a converted cabinet keeps Daytona 2's drive board program,
-epr-20985.bin.  Both play the game's bytes as their own effects.  Choose one in
-Game Options (Game page, "Drive board program"), or set ROM_driveboard_program
-= epr-20512.bin, epr-20985.bin or epr-19338a.bin in the [ eca ] section.  Put
-the file in eca.zip or beside it, or keep srally2.zip, daytona2.zip or scud.zip
-in the same folder (it is found there).
+epr-20985.bin.  Both play the game's bytes as their own effects.  Other
+programs can be tried: Scud Race Plus's epr-19338.bin, Le Mans 24's
+epr-18261.ic9 (a Model 2 board), and the Naomi drive boards of F355 Challenge
+(epr-21867.bin) and 18 Wheeler (epr-23000.ic8), which drive the same servo
+board with another protocol.  Choose one in Game Options (Game page, "Drive
+board program"), or set ROM_driveboard_program to its file name in the [ eca ]
+section.  Put the file in eca.zip or beside it, or keep the set that holds it
+(srally2.zip, daytona2.zip, scud.zip, f355.zip, 18wheelr.zip, ...) in the same
+folder (it is found there by its checksum).  With epr-20512.bin, the torque
+goes to the board as the game works it out: ECA's own table adds a step to it
+(1, then 5, then 9 as it starts to grow, a push for the cabinet's motor to
+start), which makes every return of the wheel through the centre a jolt.
+EcaLinearTorque = false (Game Options, Force Feedback page, "Linear torque")
+keeps the game's table; the torque is then stronger (23 against 18 at its
+strongest, STEERING REACTION at 4).
 
 
 Fighting Vipers 2
@@ -2136,6 +2149,37 @@ All settings are case sensitive.
                     centring effect while the board is running.  The other
                     panels have none.  Set in the settings menu's Force
                     feedback page (sm2-emu's wheel_panel_spring).
+
+    ----------------
+
+    Name:           DriveBoardDIP1, DriveBoardDIP2
+
+    Argument:       String of 8 characters, switches 1 to 8: '1' ON, '0'
+                    OFF (empty by default).
+
+    Description:    The drive board's two banks of DIP switches, emulated or
+                    simulated, Model 1, 2 and 3 alike: a bank set replaces the
+                    board's own switches, ForceFeedbackStrength included (e.g.
+                    DriveBoardDIP1 = 00111100, switches 1-3 to 1-6 ON).
+                    Empty, or anything but eight 0s and 1s: the board's own.
+                    Switch n is bit n - 1 of the byte the program reads, a
+                    switch ON reading 0; on EPR-18261's board it is bit 8 - n
+                    (measured).  Read when the board starts (a line of the log
+                    gives the byte).  Set for one game in the settings menu's
+                    Force feedback page, which shows what the game's board
+                    program does with each switch.
+
+    ----------------
+
+    Name:           EcaLinearTorque
+
+    Argument:       Boolean (true by default).
+
+    Description:    Emergency Call Ambulance with Sega Rally 2's drive board
+                    program (EPR-20512): the step ECA's table adds to small
+                    torques taken out of its commands (see 'Emergency Call
+                    Ambulance').  Set in the settings menu's Force feedback
+                    page.
 
     ----------------
 

@@ -158,7 +158,7 @@ public:
    * Returns:
    *    Pointer to CDriveBoard object.
    */
-  CDriveBoard *GetDriveBoard(void);
+  CDriveBoard *GetDriveBoard(void) override;
 
   /*
    * GetBillBoard(void):

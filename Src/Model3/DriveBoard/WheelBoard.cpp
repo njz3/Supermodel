@@ -214,6 +214,10 @@ void CWheelBoard::Reset(void)
   // Before CDriveBoard::Reset(), which sets the strength DIP switches
   uint32_t crc = m_romlessCrc != 0 ? m_romlessCrc : uint32_t(crc32(0, m_rom, 0x10000));
   m_twoPowerOutputs = crc == EPR18261_CRC32;
+  m_naomiServo = crc == EPR21867_CRC32 || crc == EPR21867P_CRC32 || crc == EPR23000_CRC32;
+  m_ecaLinear = m_ecaGame && crc == EPR20512_CRC32 && m_config["EcaLinearTorque"].ValueAsDefault<bool>(true);
+  m_calibWheel = 0x80 * 16;
+  m_naomiBooted = false;
 
   CDriveBoard::Reset();
 
@@ -292,12 +296,31 @@ UINT8 CWheelBoard::Read(void)
     return CDriveBoard::Read();
 }
 
+void CWheelBoard::SetEcaCommands(bool eca)
+{
+  m_ecaGame = eca;
+}
+
+// ECA's torque t (-30..30, at most 8 more or less than the last frame's) goes out through a table (0xF63B0): the
+// magnitude 0, 1, 5, 9 for |t| = 1 to 4, then |t| + 5, bit 6 the direction. The step of 9 at |t| = 4, made for a
+// motor that needs a push to move, makes every return through the centre a jolt of 18 (+4 to -4 in one frame): 87
+// changes of 9 or more in a minute of racing against 2 with the magnitude |t| itself (agent mode, EPR-20512)
+static UINT8 EcaLinearTorque(UINT8 data)
+{
+  int magnitude = data & 0x3F;
+  int t = magnitude == 0 ? 0 : magnitude == 1 ? 2 : magnitude <= 5 ? 3 : magnitude <= 9 ? 4 : magnitude - 5;
+  return UINT8((data & 0x40) | t);
+}
+
 void CWheelBoard::Write(UINT8 data)
 {
   if (IsDisabled())
   {
     return;
   }
+
+  if (m_ecaLinear && data < 0x80)
+    data = EcaLinearTorque(data);
 
   //if (data >= 0x01 && data <= 0x0F ||
   //  data >= 0x20 && data <= 0x2F ||
@@ -310,7 +333,7 @@ void CWheelBoard::Write(UINT8 data)
   else
   {
     CDriveBoard::Write(data);
-    if (data == 0xCB)
+    if (data == 0xCB && !m_naomiServo)
       m_initialized = false;
   }
 }
@@ -477,6 +500,26 @@ void CWheelBoard::RunFrame(void)
   else
   {
     CDriveBoard::RunFrame();
+
+    // A Naomi board calibrates the wheel by pushing it to both ends (4 s each, F355; two 8 s sweeps, 18 Wheeler) and
+    // stops for good when its potentiometer has not moved (error 22): until it reports itself calibrated, the wheel it
+    // reads is the one its torque moves, 1/16 of a count a frame per unit of torque (a push of 20 crosses half the
+    // travel in about a second), between the ends 10 and F0
+    // The end of the calibration: its status byte (E916; bit 7 booting, 6 the servo board not ready, 5 the wheel not
+    // calibrated, 3 a fatal error), 30 while it calibrates, then 10. Read in its RAM, since a game may have chosen
+    // another answer than the status (ECA sends F0, the echo); before the RAM is cleared at boot, E916 holds other bytes
+    if (m_naomiServo && !m_initialized)
+    {
+      m_calibWheel = std::clamp(m_calibWheel + m_constForce, 0x10 * 16, 0xF0 * 16);
+      UINT8 status = m_ram[0x916];
+      if ((status & 0xE0) == 0x20)
+        m_naomiBooted = true;
+      else if (m_naomiBooted && (status & 0xE0) == 0)
+      {
+        m_initialized = true;
+        InfoLog("Drive board: wheel calibrated (status %02X), the wheel read from now on.", status);
+      }
+    }
 
     // The frame's ~9 NMIs run in one go: the wheel only gets the last torque of the frame, so send that one only
     UpdateForceFeedback();
@@ -840,7 +883,8 @@ void CWheelBoard::IOWrite8(UINT32 portNum, UINT8 data)
     return;
   case 0x29: // Reply for PPC
     m_dataReceived = data;
-    if (data == 0xCC)
+    // The Model 3 boards answer CC once ready (the Naomi boards: RunFrame)
+    if (data == 0xCC && !m_naomiServo)
       m_initialized = true;
     return;
   case 0x2a: // Encoder motor data (x axis), or EPR-18261's motor power "up"
@@ -853,6 +897,10 @@ void CWheelBoard::IOWrite8(UINT32 portNum, UINT8 data)
   case 0x2d: // Clutch/lamp control (deluxe cabinets) ( or y axis)
     return;
   case 0x2e: // Encoder motor control, or EPR-18261's motor power "down"
+    // The Naomi boards write the register as 08-0F (bit 3 the servo board's A-RST, high: 07 then 0F is their reset
+    // pulse), the Model 3 ones as F8-FF: the same registers, by the low nibble
+    if (m_naomiServo)
+      data |= 0xF0;
     m_port46Out = data;
     if (m_twoPowerOutputs)
     {
@@ -880,8 +928,10 @@ void CWheelBoard::ProcessEncoderCmd(void)
         // Torque gain, 0x80 (none) to 0xFF (full) [guess, from the programs]: set by the game's 2x commands within
         // the curve its 7x command picked (Scud Race, Daytona 2), half after a power slide, 0xFF in Sega Rally 2.
         // 0x05, written only at start-up, is not a gain
+        // The Naomi boards' power levels (FA-FD) write D0, C8, C0, B0 (18 Wheeler B8): full at D0, so that they give
+        // the 100, 90, 80, 60 % their games' menus name
         if (m_port42Out & 0x80)
-          m_servoGain = m_port42Out & 0x7F;
+          m_servoGain = m_naomiServo ? UINT8(std::min((m_port42Out & 0x7F) * 0x7F / 0x50, 0x7F)) : UINT8(m_port42Out & 0x7F);
         break;
 
       case 0xFC:
@@ -1195,6 +1245,8 @@ uint8_t CWheelBoard::ReadADCChannel2() const
 {
   if (m_initialized)
     return (UINT8)m_inputs->steering->value;
+  else if (m_naomiServo)
+    return (UINT8)(m_calibWheel / 16); // the wheel its calibration pushes
   else
     return 0x80; // If not initialized, return 0x80 so that wheel centering test does not fail
 }
@@ -1250,6 +1302,11 @@ CWheelBoard::CWheelBoard(const Util::Config::Node &config)
   m_uncenterVal2 = 0;
 
   m_twoPowerOutputs = false;
+  m_ecaGame = false;
+  m_ecaLinear = false;
+  m_naomiServo = false;
+  m_naomiBooted = false;
+  m_calibWheel = 0x80 * 16;
   m_romlessCrc = 0;
   m_servoGain = 0x7F;
   m_constForce = 0;

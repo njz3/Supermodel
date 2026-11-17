@@ -95,7 +95,7 @@ class CModel2: public IEmulator, public II960Bus, public IMB86233Bus, public ISH
 {
 public:
   // The racing games' wheel drive board, if any (its effects sent again when the force feedback settings change)
-  CDriveBoard *GetDriveBoard(void) { return m_wheelBoard.get(); }
+  CDriveBoard *GetDriveBoard(void) override { return m_wheelBoard.get(); }
 
   // The i960's RAMs as it sees them (little-endian), for the telemetry: work RAM (0x500000, 1 MB) and the RAM at
   // 0x200000 (256 KB)

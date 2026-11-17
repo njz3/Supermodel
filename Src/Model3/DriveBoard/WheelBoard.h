@@ -169,6 +169,10 @@ public:
   unsigned GetForceFeedbackStrength(void) const;
   void SetForceFeedbackStrength(unsigned strength);
 
+  // EPR-18261's board: switch n is bit 8 - n (measured)
+  bool DIPSwitchesReversed(void) const override { return m_twoPowerOutputs; }
+  uint32_t ProgramCRC(void) const override { return m_romlessCrc != 0 ? m_romlessCrc : CDriveBoard::ProgramCRC(); }
+
   void ResendForceFeedback(void);
 
   /*
@@ -181,7 +185,21 @@ public:
    */
   void SimulateWithoutROM(uint32_t crc);
 
+  /*
+   * SetEcaCommands(eca):
+   *
+   * The game is Emergency Call Ambulance: with EPR-20512, and EcaLinearTorque
+   * on (the default), its torque commands lose the step its table adds (see
+   * EcaLinearTorque()). Call before Init().
+   */
+  void SetEcaCommands(bool eca);
+
   static constexpr uint32_t EPR18261_CRC32 = 0x0C7FAC58;
+  static constexpr uint32_t EPR20512_CRC32 = 0xCF64350D;
+  // Naomi drive boards (838-13843, the Model 3 servo board behind): F355 Challenge's (and its prototype's), 18 Wheeler's
+  static constexpr uint32_t EPR21867_CRC32 = 0x4F93A2A0;
+  static constexpr uint32_t EPR21867P_CRC32 = 0x6143B911;
+  static constexpr uint32_t EPR23000_CRC32 = 0xE3B162F7;
 
 protected:
   void Disable(void);
@@ -206,6 +224,11 @@ private:
   UINT8 m_uncenterVal2;   // Vibration, second byte: sub-registers FC 2 (low nibble) and 3 (high nibble)
 
   bool m_twoPowerOutputs; // EPR-18261: ports 2A and 2E are two motor powers, not a servo board register and value
+  bool m_ecaGame;         // SetEcaCommands: the game is ECA
+  bool m_ecaLinear;       // ECA with EPR-20512 and EcaLinearTorque: its commands made linear (Write)
+  bool m_naomiServo;      // EPR-21867, EPR-23000: servo registers written 08-0F, the wheel calibrated by its travel
+  int m_calibWheel;       // Naomi boards, until calibrated: the wheel's position as their pushes would move it (x16)
+  bool m_naomiBooted;     // Naomi boards: their status byte has shown the calibration under way (30), so its clearing is the end
   uint32_t m_romlessCrc;  // SimulateWithoutROM: the program simulated, its ROM missing; 0 the ROM is there
   UINT8 m_servoGain;      // Servo board torque gain (register FB), 0-127
 

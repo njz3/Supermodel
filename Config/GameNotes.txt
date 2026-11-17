@@ -121,9 +121,13 @@ ECA's drive board program has not been dumped. The game sends the wheel's
 torque directly, as Sega Rally 2 does, so Supermodel uses Sega Rally 2's
 program epr-20512.bin by default: in eca.zip, beside it, or in srally2.zip in
 the same folder. The torque is the game's own scale: raise the FFB strength
-if it feels weak. "Drive board program" (Game page, ROM files) chooses
-another one for the next start (Daytona 2's EPR-20985 on converted cabinets,
-Scud Race's EPR-19338A), which play the game's bytes as their own effects.
+if it feels weak. The step ECA's table adds to small torques (a jolt each
+time the wheel comes back through the centre) is taken out: "Linear torque"
+(Force Feedback page, EcaLinearTorque) puts it back. "Drive board program"
+(Game page, ROM files) chooses another one for the next start (Daytona 2's EPR-20985 on converted cabinets,
+Scud Race's EPR-19338A), which play the game's bytes as their own effects;
+also Scud Race Plus's EPR-19338, Le Mans 24's EPR-18261, F355 Challenge's
+EPR-21867 and 18 Wheeler's EPR-23000 (found in their ROM sets in the folder).
 
 ## Stretcher mode
 To play as the paramedics pushing a stretcher: at the transmission select,

@@ -116,6 +116,35 @@ public:
    */
   virtual void SetForceFeedbackStrength(unsigned strength);
 
+  /*
+   * DIPSwitchesReversed(void):
+   *
+   * Returns:
+   *    True if switch n of a bank is bit 8 - n of the byte the program reads
+   *    (EPR-18261's board, measured), false if it is bit n - 1 (the others,
+   *    as their programs' docs take it). A switch ON reads 0.
+   */
+  virtual bool DIPSwitchesReversed(void) const { return false; }
+
+  /*
+   * ProgramCRC(void):
+   *
+   * Returns:
+   *    The CRC32 of the board's program: its ROM's, or the one simulated
+   *    without it.
+   */
+  virtual uint32_t ProgramCRC(void) const;
+
+  /*
+   * DIPSetting(bank):
+   *
+   * The settings DriveBoardDIP1 and DriveBoardDIP2: 8 characters, switches 1
+   * to 8, '1' ON and '0' OFF; anything else (empty by default) leaves the
+   * board's own switches, ForceFeedbackStrength included. Returns true and
+   * the byte the program reads if the bank is set.
+   */
+  bool DIPSetting(int bank, UINT8 &value) const;
+
 
   /*
    * GetZ80(void):

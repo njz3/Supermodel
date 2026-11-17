@@ -7368,12 +7368,19 @@
            direct signed torque (00-3F one way, 40-7F the other, its magnitude in the 6 low bits), the protocol of Sega
            Rally 2's EPR-20512 (drive board 838-13366, before the same servo board), which relays it to the servo
            board (FE = 80 +- the magnitude) with the same start-up: the default. EPR-20985 and Scud Race's EPR-19338A
-           take the bytes for their effects. Found in the folder's other zips too (srally2.zip, daytona2.zip,
-           scud.zip) -->
+           take the bytes for their effects. The others to try: Scud Race Plus's EPR-19338, Le Mans 24's EPR-18261
+           (the Model 2 board of TWIN-NORMAL: two motor powers), and the Naomi boards of F355 Challenge (EPR-21867)
+           and 18 Wheeler (EPR-23000), the same servo board behind, another protocol (nothing below F0 obeyed before
+           an FE). Found in the folder's other zips too (srally2.zip, daytona2.zip, scud.zip, f355.zip,
+           18wheelr.zip, a Model 2 set with EPR-18261) -->
       <region name="driveboard_program" stride="1" chunk_size="1" required="false">
-        <file offset="0" name="epr-20512.bin" crc32="0xCF64350D" choice="EPR-20512 (Sega Rally 2)" />
+        <file offset="0" name="epr-20512.bin" crc32="0xCF64350D" choice="EPR-20512 (Sega Rally 2, NASCAR)" />
         <file offset="0" name="epr-20985.bin" crc32="0xB139481D" choice="EPR-20985 (Daytona USA 2)" />
         <file offset="0" name="epr-19338a.bin" crc32="0xC9FAC464" choice="EPR-19338A (Scud Race)" />
+        <file offset="0" name="epr-19338.bin" crc32="0xDBF88DE6" choice="EPR-19338 (Scud Race Plus)" />
+        <file offset="0" name="epr-18261.ic9" crc32="0x0C7FAC58" choice="EPR-18261 (Le Mans 24, Model 2)" />
+        <file offset="0" name="epr-21867.bin" crc32="0x4F93A2A0" choice="EPR-21867 (F355 Challenge)" />
+        <file offset="0" name="epr-23000.ic8" crc32="0xE3B162F7" choice="EPR-23000 (18 Wheeler)" />
       </region>
     </roms>
   </game>

@@ -1526,6 +1526,7 @@ static bool SaveMenuSettings(const std::string &game, bool forGame)
   values.push_back(boolean("BackgroundInput"));
   values.push_back(boolean("ForceFeedback"));
   values.push_back(boolean("SimulateDriveBoard"));
+  values.push_back(boolean("EcaLinearTorque"));
   values.push_back(number("PanelSpring"));
   values.push_back(number("ForceFeedbackStrength"));
   // The Sound, Emulation and network pages'
@@ -1535,7 +1536,7 @@ static bool SaveMenuSettings(const std::string &game, bool forGame)
   for (const char *key : { "FlipStereo", "EmulateSound", "EmulateDSB", "New3DEngine", "QuadRendering", "HighLevelGeometrizer",
                            "MultiThreaded", "GPUMultiThreaded", "Network", "SimulateNet" })
     values.push_back(boolean(key));
-  for (const char *key : { "BalanceLeftRight", "BalanceFrontRear", "AddressOut" })
+  for (const char *key : { "BalanceLeftRight", "BalanceFrontRear", "AddressOut", "DriveBoardDIP1", "DriveBoardDIP2" })
     values.push_back(text(key));
   values.emplace_back("ForceFeedbackDevice", s_runtime_config["ForceFeedbackDevice"].ValueAsDefault<std::string>(""));
   values.push_back(number("ForceFeedbackGain"));
@@ -2558,6 +2559,12 @@ Util::Config::Node DefaultConfig()
   // The light centring spring of the Daytona USA, Sega Rally and Virtua Racing panels (their boards drive a clutch), in
   // % of Sega Rally's strongest torque; the other panels have none
   config.Set("PanelSpring", 20u, "ForceFeedback", 0u, 100u);
+  // ECA with Sega Rally 2's drive board program: its torque commands without the step of its table (WheelBoard.cpp)
+  config.Set("EcaLinearTorque", true, "ForceFeedback");
+  // The drive board's DIP switches, per game (the in-game menu's Force Feedback page): switches 1 to 8, '1' ON, '0' OFF;
+  // empty, the board's own (CDriveBoard::DIPSetting)
+  config.Set<std::string>("DriveBoardDIP1", "", "ForceFeedback", "", "");
+  config.Set<std::string>("DriveBoardDIP2", "", "ForceFeedback", "", "");
   // The drive boards' strength DIP switches, 1 (all OFF, as the boards leave the factory) to 8
   config.Set("ForceFeedbackStrength", 1u, "ForceFeedback", 1u, 8u);
   // The joystick that plays the effects (a joystick's name; empty: the joysticks the inputs are bound to), their

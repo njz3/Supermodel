@@ -75,7 +75,7 @@ class CModel1: public IEmulator, public IBus, public IMB86233Bus
 {
 public:
   // Virtua Racing's drive board, if any (its effects sent again after a pause or a settings change)
-  CDriveBoard *GetDriveBoard(void) { return m_wheelBoard.get(); }
+  CDriveBoard *GetDriveBoard(void) override { return m_wheelBoard.get(); }
 
   // IEmulator
   void SaveState(CBlockFile *SaveState) override;
