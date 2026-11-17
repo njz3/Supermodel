@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Made by Scripts/RomPatches/unlocks.py from scud's ROMs: the patch's bytes only -->
+<patch name="video_tests" title="Hidden video test menu">
+  <description>
+    The test mode has a second TEST MENU, of the developers' video tests, that no menu leads to: OBJECT TEST
+    (a viewer of the game's 3D models, among them the tank, the rocket car and the bus of Scud Race Plus), RENDERER,
+    SCROLL, COLOR, FOG/LIGHT, VIEWPORT, LOS, TEXMAP OP, SCALING, POL UPDATE and RESOLUTION TEST. This patch puts it in
+    the place of BOUNDARY SCAN TEST (a test of the board's JTAG chain), as VIDEO TEST MENU.
+
+    In OBJECT TEST: Shift up/down change the model (with VR4: fast), accelerator/brake zoom, VR1/VR2 change the
+    rotation, Start resets, VR3 hides the text.
+
+    A patch of the program EPROMs (EPR-19688 to EPR-19691), made by Scripts/RomPatches/unlocks.py.
+  </description>
+  <file name="epr-19688.17" crc32="A4C85103">
+    <data offset="667D6">3B</data>
+    <data offset="67768">45540055</data>
+  </file>
+  <file name="epr-19689.18" crc32="CBCE6D62">
+    <data offset="67768">204F4E45</data>
+  </file>
+  <file name="epr-19690.19" crc32="25F007FE">
+    <data offset="67768">45444D20</data>
+  </file>
+  <file name="epr-19691.20" crc32="83523B89">
+    <data offset="67768">495654530000</data>
+  </file>
+</patch>

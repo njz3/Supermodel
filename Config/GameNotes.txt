@@ -52,7 +52,9 @@ Endurance modes add tyre wear and pit stops.
   VR1, VR4, VR2, VR4, VR1; shift back to 1st (or press VR2) and choose the
   course. A tuning screen (engine, steering, suspension) replaces the car
   select: the view buttons choose a slider, the wheel moves it. One wrong
-  gear or button cancels the sequence.
+  gear or button cancels the sequence. With the ROM patch "Hornet by the VIEW
+  buttons alone" (Game Options), VR1, VR4, VR2, VR4, VR1 at the course select
+  are enough: no shifter.
 
 [dayto2pe]
 - Reverse courses (not verified, sources disagree): hold Start while choosing
@@ -82,6 +84,12 @@ ASSIGNMENTS, or link the cabinets.
   brake, keep the revs in the lower yellow zone, then release the brake and
   floor it at the start.
 
+[scud]
+- Hidden video test menu: the ROM patch "Hidden video test menu" (Game
+  Options) puts the developers' video tests in the test menu, as VIDEO TEST
+  MENU (OBJECT TEST shows the game's 3D models, among them the tank, the
+  rocket car and the bus of Scud Race Plus).
+
 [scudplus, scudplusa]
 - Reverse courses: hold Start on the course select.
 - Super Beginner, the new oval course in a giant house, has joke cars: on
@@ -103,8 +111,19 @@ In COUNTRY SELECT MODE, Service changes the country and Test leaves.
 
 [eca]
 ## Region
-No region menu: the region is the ROM set's (eca Export, ecau USA, ecaj
-Japan).
+The region is the ROM set's (eca Export, ecau USA, ecaj Japan): the game's
+region menu is switched off. The ROM patch "Region menu" (Game Options) opens
+it: hold VIEW CHANGE and press Test (Universe, Japan, U.S.A., Export,
+Australia, Korea; check the coin settings after a change).
+
+## Force feedback
+ECA's drive board program has not been dumped. The game sends the wheel's
+torque directly, as Sega Rally 2 does, so Supermodel uses Sega Rally 2's
+program epr-20512.bin by default: in eca.zip, beside it, or in srally2.zip in
+the same folder. The torque is the game's own scale: raise the FFB strength
+if it feels weak. "Drive board program" (Game page, ROM files) chooses
+another one for the next start (Daytona 2's EPR-20985 on converted cabinets,
+Scud Race's EPR-19338A), which play the game's bytes as their own effects.
 
 ## Stretcher mode
 To play as the paramedics pushing a stretcher: at the transmission select,
@@ -225,10 +244,15 @@ out there. Its end (the staff roll, the ranking) plays as the other courses'
 ## Secrets
 - Sega Rally 1 cars (Toyota Celica GT-Four, Lancia Delta HF Integrale): at
   the car select, press View and pull the handbrake together. Only once the
-  machine has run more than 30 days and 100 games: not with a new NVRAM.
+  machine has run more than 30 days and 100 games: not with a new NVRAM,
+  unless the ROM patch "Secrets without their conditions" (Game Options) is
+  on.
 - Cone game (Riviera, same condition): on lap 1, knock down both red cones
   after the second hairpin. An opening appears on the left: drive through it
   on lap 2 for 30 seconds of knocking cones down, the race timer stopped.
+- After 120 days and 100 games (or with the same patch's option), the
+  attract's snowy part scrolls a hint across the top: the Celica or Delta
+  are chosen with VIEW CHANGE and the side brake.
 - Music off: after the name entry, hold Start until the race begins.
 - Simple display (time difference): after the name entry, hold View and the
   handbrake until the race begins.

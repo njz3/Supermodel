@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Made by Scripts/RomPatches/unlocks.py from daytona2's ROMs: the patch's bytes only -->
+<patch name="hornet" title="Hornet by the VIEW buttons alone">
+  <description>
+    The Hornet, the special car with a tuning screen, needs a long code with the shifter (in 1st before the
+    coin, 4th at the course select, back to 1st). With this patch, at the course select press VR1, VR4, VR2, VR4, VR1
+    (the game's own buttons, a wrong one starts again), then choose the course: the tuning screen (engine, steering,
+    suspension) replaces the car select. The shifter plays no part.
+
+    A patch of the program EPROMs (EPR-20861A to EPR-20864A), made by Scripts/RomPatches/unlocks.py.
+  </description>
+  <file name="epr-20861a.17" crc32="89BA8E78">
+    <data offset="18D1CC">500008</data>
+    <data offset="18D1D0">10</data>
+    <data offset="18D1D2">3EC730</data>
+    <data offset="18D1D6">E607002014</data>
+    <data offset="18D1DC">07</data>
+    <data offset="18D1DE">08</data>
+    <data offset="18D1E0">44</data>
+    <data offset="18D1E2">00</data>
+    <data offset="18D1E4">000000000000</data>
+    <data offset="18D1EB">0000</data>
+    <data offset="18D1F0">00</data>
+  </file>
+  <file name="epr-20862a.18" crc32="E1B2CA61">
+    <data offset="18D1CC">80408040C03CC55482</data>
+    <data offset="18D1D6">E738057C8240042C8038004800600060006000600060006000600060</data>
+  </file>
+  <file name="epr-20863a.19" crc32="1DEB4686">
+    <data offset="18D1CC">07</data>
+    <data offset="18D1CE">020002</data>
+    <data offset="18D1D2">781600</data>
+    <data offset="18D1D6">0B</data>
+    <data offset="18D1D8">AE3800</data>
+    <data offset="18D1DC">01</data>
+    <data offset="18D1DE">08</data>
+    <data offset="18D1E0">6F</data>
+    <data offset="18D1E2">00</data>
+    <data offset="18D1E4">000000</data>
+    <data offset="18D1E8">0000</data>
+    <data offset="18D1EC">00</data>
+    <data offset="18D1EE">00</data>
+    <data offset="18D1F0">00</data>
+  </file>
+  <file name="epr-20864a.20" crc32="5250F3A8">
+    <data offset="18D1CC">032C032C6038C680052CE03C837C8038833882</data>
+    <data offset="18D1E0">8F98</data>
+    <data offset="18D1E3">60006000600060006000600060</data>
+    <data offset="18D1F1">60</data>
+  </file>
+</patch>

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Made by Scripts/RomPatches/unlocks.py from eca's ROMs: the patch's bytes only -->
+<patch name="region_menu" title="Region menu (COUNTRY ASSIGNMENTS)">
+  <description>
+    The game has a region menu (Universe, Japan, U.S.A., Export, Australia, Korea) that its program never
+    opens: the function that decides it always says no. With this patch, hold VIEW CHANGE while pressing Test: the
+    test mode opens on COUNTRY ASSIGNMENTS (Service changes the country, Test leaves). Test alone opens the usual test
+    menu.
+
+    The region changes the game's texts and settings like the other versions (ecaj, ecau): a new region may reset the
+    coin settings (free play), check them in COIN ASSIGNMENTS.
+
+    A patch of the program EPROMs (EPR-22903 to EPR-22906), made by Scripts/RomPatches/unlocks.py.
+  </description>
+  <file name="epr-22903.17" crc32="53882217">
+    <data offset="14AEE4">A280</data>
+  </file>
+  <file name="epr-22904.18" crc32="0FF828A8">
+    <data offset="14AEE4">6D8882</data>
+  </file>
+  <file name="epr-22905.19" crc32="9755DD8C">
+    <data offset="14AEE6">01</data>
+  </file>
+  <file name="epr-22906.20" crc32="7F6426FC">
+    <data offset="14AEE6">6370</data>
+  </file>
+</patch>
