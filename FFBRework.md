@@ -830,6 +830,22 @@ complet mais aucun menu n'y mène (Practice : index du carrousel → 3 2 4 5, Ch
   mode agent : FINISH, CLEARED, le générique (STAFF...) sur les décors de FOREST, RANKING PRACTICE FOREST, GAME OVER,
   SEGA, l'attract ; les autres circuits lisent les mêmes pointeurs qu'avant.
 
+### 2.26 La fusion d'upstream 0b82a98 : transparence et tri en z du Model 1/2 (17 novembre)
+
+- **Fusionné** : upstream/master 0b82a98, six commits d'Ian : le tri en z du Model 2 (z du polygone lui-même plus le
+  décalage du mode, le minimum z de la partie visible d'un polygone qui traverse le plan de l'œil, la liste d'affichage
+  du 2B lue par la table de fonctions), le rendu Model 1/2 toujours dans son propre frame buffer, le réglage
+  `Transparency` (0 damier 1x1 d'origine, 1 moiré à la grille native, 2 mélange à 50 %, `-transparency=`), et dans
+  Games.xml un bloc de patchs FOREST commenté pour srally2 (inactif : notre ForestCourse et forest.xml restent).
+  Aucun conflit. Le commit de fusion est e557d71 : une autre session a commité pendant que la fusion attendait les
+  essais, son message parle d'eastereggs.md.
+- **Ajouté** : `Transparency` dans la page Emulation du menu Tab (« Translucent polygons », au prochain lancement) et
+  dans ses sauvegardes ; `--set Transparency=n` passe.
+- **Vérifié** (mode agent, release a52f112 contre la fusion) : 35 attracts Model 2 identiques aux images 1500 et 3000,
+  sauf segawski (6,9 % à 1500 : la gerbe et le ski triés autrement, le changement de tri voulu) et indy500 (0,16 % à
+  1500) ; hotd ne démarre pas (zip incomplet, comme avant). ECA charge EPR-20512 et la drive board répond CF CE CD CC ;
+  daytona avec `Transparency` 0, 1, 2 donne trois images différentes.
+
 ## 3. Les essais
 
 ### 3.1 Le banc

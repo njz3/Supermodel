@@ -1848,6 +1848,12 @@ namespace GameMenu
     Header("Model 1 and Model 2");
     SettingCheck(config, "HighLevelGeometrizer", "Simulate the geometrizer", true);
     Wrapped("Off: the video board's DSPs run their own programs (slower; the reference for comparisons).");
+    int transparency = std::clamp(config["Transparency"].ValueAsDefault<int>(0), 0, 2);
+    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 8);
+    if (ImGui::Combo("Translucent polygons", &transparency, "Original\0Moire\0Blend\0"))
+      config.Set("Transparency", transparency);
+    Wrapped("Original: every other pixel (a 1x1 checkerboard at any resolution); moire: every other pixel of the native "
+            "496x384 grid, scaled; blend: 50 % blended.");
     NextStart();
 
     Header("Threads");

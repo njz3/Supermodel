@@ -1530,7 +1530,7 @@ static bool SaveMenuSettings(const std::string &game, bool forGame)
   values.push_back(number("ForceFeedbackStrength"));
   // The Sound, Emulation and network pages'
   auto text = [](const char *key) { return std::make_pair(std::string(key), s_runtime_config[key].ValueAs<std::string>()); };
-  for (const char *key : { "SoundVolume", "MusicVolume", "NbSoundChannels", "PowerPCFrequency", "PortIn", "PortOut" })
+  for (const char *key : { "SoundVolume", "MusicVolume", "NbSoundChannels", "PowerPCFrequency", "Transparency", "PortIn", "PortOut" })
     values.push_back(number(key));
   for (const char *key : { "FlipStereo", "EmulateSound", "EmulateDSB", "New3DEngine", "QuadRendering", "HighLevelGeometrizer",
                            "MultiThreaded", "GPUMultiThreaded", "Network", "SimulateNet" })
