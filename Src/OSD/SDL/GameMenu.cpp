@@ -46,6 +46,7 @@
 #include "Model3/IEmulator.h"
 #include "RomPatches.h"
 #include "Util/NewConfig.h"
+#include "Util/Format.h"
 #include "../Pkgs/imgui/imgui.h"
 #include "../Pkgs/imgui/imgui_impl_sdl2.h"
 #include "../Pkgs/imgui/imgui_impl_opengl3.h"
@@ -910,6 +911,45 @@ namespace GameMenu
     ImGui::Spacing();
   }
 
+  // The regions whose file is one of several (Games.xml's choice="title": ECA's drive board program), saved at once in
+  // the game's section (ROM_<region> = the file's name), loaded from the game's next start
+  static void DrawRomChoices(Util::Config::Node &config)
+  {
+    if (s_game.rom_choices.empty())
+      return;
+    ImGui::SeparatorText("ROM files");
+    ImGui::PushTextWrapPos(0.0f);
+    for (const Game::RomChoice &choice : s_game.rom_choices)
+    {
+      ImGui::PushID(choice.region.c_str());
+      std::string key = Game::ROMChoiceKey(choice.region);
+      std::string value = Util::ToLower(Setting(config, key));
+      auto current = std::find_if(choice.files.begin(), choice.files.end(), [&](const auto &file) { return file.first == value; });
+      if (current == choice.files.end())
+        current = choice.files.begin();
+      std::string label = choice.region == "driveboard_program" ? "Drive board program" : choice.region;
+      ImGui::SetNextItemWidth(ImGui::GetFontSize() * 13);
+      if (ImGui::BeginCombo(label.c_str(), current->second.c_str()))
+      {
+        for (const auto &file : choice.files)
+        {
+          if (ImGui::Selectable(file.second.c_str(), &file == &*current))
+            SetRomPatchSetting(config, key, file.first);
+          ImGui::SetItemTooltip("%s", file.first.c_str());
+        }
+        ImGui::EndCombo();
+      }
+      ImGui::Indent();
+      ImGui::TextDisabled("%s, from the game's next start (%s = %s, in its section). Looked for in its ROM set, the files "
+                          "beside it, and the folder's other ROM sets; the first found when the chosen one is missing.",
+                          current->first.c_str(), key.c_str(), current->first.c_str());
+      ImGui::Unindent();
+      ImGui::PopID();
+    }
+    ImGui::PopTextWrapPos();
+    ImGui::Spacing();
+  }
+
   static void DrawGamePage(Util::Config::Node &config)
   {
     if (ImGui::BeginTable("Description", 2, ImGuiTableFlags_SizingFixedFit))
@@ -964,6 +1004,7 @@ namespace GameMenu
       ImGui::Spacing();
     }
 
+    DrawRomChoices(config);
     DrawRomPatches(config);
     if (s_notes.empty())
     {

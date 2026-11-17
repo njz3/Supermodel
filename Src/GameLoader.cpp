@@ -187,6 +187,7 @@ GameLoader::File::ptr_t GameLoader::File::Create(const GameLoader &loader, const
   file->filename = Util::ToLower(file_node["name"].ValueAs<std::string>());
   file->has_crc32 = file_node["crc32"].Exists();
   file->crc32 = file->has_crc32 ? file_node["crc32"].ValueAs<uint32_t>() : 0;
+  file->choice = file_node["choice"].ValueAsDefault<std::string>(std::string());
   return file;
 }
 
@@ -671,6 +672,27 @@ bool GameLoader::ParseXML(const Util::Config::Node &xml)
   if (MergeChildrenWithParents())
     return true;
 
+  // The regions whose file is one of several (choice="title"), for the settings
+  for (auto &v: m_game_info_by_game)
+  {
+    const auto &by_game = IsChildSet(v.second) ? m_regions_by_merged_game : m_regions_by_game;
+    auto regions = by_game.find(v.first);
+    if (regions == by_game.end())
+      continue;
+    for (auto &r: regions->second)
+    {
+      Game::RomChoice choice;
+      choice.region = r.first;
+      for (auto &file: r.second->files)
+      {
+        if (!file->choice.empty())
+          choice.files.emplace_back(file->filename, file->choice);
+      }
+      if (!choice.files.empty())
+        v.second.rom_choices.push_back(choice);
+    }
+  }
+
   return error;
 }
 
@@ -1062,6 +1084,49 @@ static bool ApplyLayout(ROM *rom, const std::string &byte_layout, size_t stride,
   return false; // no error
 }
 
+// A region whose files include alternatives (choice="title"): only one of them, the one the game's setting names
+// (Game::ROMChoiceKey), else the first found; the region as it is when none is found (its loading fails)
+GameLoader::Region::ptr_t GameLoader::ChosenFiles(const std::string &game_name, const Region::ptr_t &region, const ZipArchive &zip) const
+{
+  std::vector<File::ptr_t> alternatives;
+  for (auto &file: region->files)
+  {
+    if (!file->choice.empty())
+      alternatives.push_back(file);
+  }
+  if (alternatives.empty())
+    return region;
+  std::string key = Game::ROMChoiceKey(region->region_name);
+  std::string wanted = m_game_setting ? Util::ToLower(m_game_setting(game_name, key)) : std::string();
+  File::ptr_t chosen;
+  if (!wanted.empty())
+  {
+    auto it = std::find_if(alternatives.begin(), alternatives.end(), [&](const File::ptr_t &file) { return file->filename == wanted; });
+    if (it == alternatives.end())
+      ErrorLog("%s = %s: not one of the files of '%s' in '%s'.", key.c_str(), wanted.c_str(), region->region_name.c_str(), game_name.c_str());
+    else if (!FileExistsInZipArchive(*it, zip))
+      ErrorLog("%s = %s: '%s' not found (in the ROM sets of the folder, or beside them).", key.c_str(), wanted.c_str(), (*it)->filename.c_str());
+    else
+      chosen = *it;
+  }
+  for (size_t i = 0; !chosen && i < alternatives.size(); i++)
+  {
+    if (FileExistsInZipArchive(alternatives[i], zip))
+      chosen = alternatives[i];
+  }
+  if (!chosen)
+    return region;
+  InfoLog("%s: '%s' (%s).", region->region_name.c_str(), chosen->filename.c_str(), chosen->choice.c_str());
+  auto copy = std::make_shared<Region>(*region);
+  copy->files.clear();
+  for (auto &file: region->files)
+  {
+    if (file->choice.empty() || file == chosen)
+      copy->files.push_back(file);
+  }
+  return copy;
+}
+
 bool GameLoader::LoadRegion(ROM *rom, const GameLoader::Region::ptr_t &region, const ZipArchive &zip) const
 {
   bool error = false;
@@ -1131,7 +1196,7 @@ bool GameLoader::LoadROMs(ROMSet *rom_set, const std::string &game_name, const Z
   bool error = false;
   for (auto &v: regions_by_name)
   {
-    auto &region = v.second;
+    auto region = ChosenFiles(game_name, v.second, zip);
     uint32_t region_size = 0;
     bool error_loading_region = false;
 
@@ -1304,6 +1369,7 @@ void GameLoader::AddLooseFiles(ZipArchive *zip, const std::string &game_name, co
     }
   };
 
+  std::vector<File::ptr_t> elsewhere;
   for (auto &v: regions->second)
   {
     if (v.second->required)
@@ -1323,7 +1389,13 @@ void GameLoader::AddLooseFiles(ZipArchive *zip, const std::string &game_name, co
         }
       }
       if (!found)
+      {
+        // Else in another zip archive of the folder, by its CRC32 (a drive board's program another game's set holds:
+        // ECA's, Sega Rally 2's EPR-20512)
+        if (file->has_crc32)
+          elsewhere.push_back(file);
         continue;
+      }
       ZippedFile &zipped = zip->files_by_crc[found->crc];
       zipped.zf = nullptr;
       zipped.zipfilename = found->path;
@@ -1333,6 +1405,55 @@ void GameLoader::AddLooseFiles(ZipArchive *zip, const std::string &game_name, co
       zipped.loose_path = found->path;
       InfoLog("'%s' read from the file beside the ROM set, '%s'.", file->filename.c_str(), found->path.c_str());
     }
+  }
+  if (!elsewhere.empty())
+    AddFilesFromOtherZips(zip, elsewhere, folder);
+}
+
+// Files of optional regions in the other zip archives of the folder (found by their CRC32, whatever their names there),
+// in one pass over the archives: those holding one kept open with the game's, the files read from them
+void GameLoader::AddFilesFromOtherZips(ZipArchive *zip, std::vector<File::ptr_t> files, const std::string &folder) const
+{
+  std::error_code ec;
+  for (std::filesystem::directory_iterator d(folder.empty() ? "." : folder, ec), end; !files.empty() && !ec && d != end; d.increment(ec))
+  {
+    if (!d->is_regular_file(ec) || Util::ToLower(d->path().extension().string()) != ".zip")
+      continue;
+    std::string path = d->path().string();
+    if (std::find(zip->zipfilenames.begin(), zip->zipfilenames.end(), path) != zip->zipfilenames.end())
+      continue;
+    unzFile zf = unzOpen(path.c_str());
+    if (zf == nullptr)
+      continue;
+    bool used = false;
+    for (int err = unzGoToFirstFile(zf); err == UNZ_OK && !files.empty(); err = unzGoToNextFile(zf))
+    {
+      unz_file_info info;
+      char name[256];
+      if (UNZ_OK != unzGetCurrentFileInfo(zf, &info, name, sizeof(name), NULL, 0, NULL, 0))
+        continue;
+      auto it = std::find_if(files.begin(), files.end(), [&](const File::ptr_t &file) { return file->crc32 == info.crc; });
+      if (it == files.end())
+        continue;
+      if (zip->files_by_crc.count(info.crc))
+      {
+        files.erase(it);
+        continue;
+      }
+      ZippedFile &zipped = zip->files_by_crc[info.crc];
+      zipped.zf = zf;
+      zipped.zipfilename = path;
+      zipped.filename = name;
+      zipped.uncompressed_size = info.uncompressed_size;
+      zipped.crc32 = info.crc;
+      InfoLog("'%s' read from another ROM set, '%s' ('%s').", (*it)->filename.c_str(), path.c_str(), name);
+      files.erase(it);
+      used = true;
+    }
+    if (used)
+      zip->zfs.push_back(zf);
+    else
+      unzClose(zf);
   }
 }
 

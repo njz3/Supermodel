@@ -7361,9 +7361,19 @@
         <file offset="0x800000" name="mpr-22888.23" crc32="0x018FCF22" />
         <file offset="0xC00000" name="mpr-22890.25" crc32="0xB638BD7C" />
       </region>
-      <!-- Spindizzi notes : apparently it uses the same rom from scud race-->
+      <!-- No dump of ECA's drive board program; one of three, ROM_driveboard_program = its name (Game Options). The
+           dedicated cabinet (a Dirt Devils cabinet) has drive board 838-12898 "SPG DX", Scud Race deluxe's, before
+           the servo board 838-12912-01; ECA was also sold as a conversion kit of Daytona USA 2 (only the Model 3 ROM
+           board's chips change), whose cabinet keeps Daytona 2's drive board and its EPR-20985. But the game sends a
+           direct signed torque (00-3F one way, 40-7F the other, its magnitude in the 6 low bits), the protocol of Sega
+           Rally 2's EPR-20512 (drive board 838-13366, before the same servo board), which relays it to the servo
+           board (FE = 80 +- the magnitude) with the same start-up: the default. EPR-20985 and Scud Race's EPR-19338A
+           take the bytes for their effects. Found in the folder's other zips too (srally2.zip, daytona2.zip,
+           scud.zip) -->
       <region name="driveboard_program" stride="1" chunk_size="1" required="false">
-        <file offset="0" name="epr-19338a.bin" crc32="0xC9FAC464" />
+        <file offset="0" name="epr-20512.bin" crc32="0xCF64350D" choice="EPR-20512 (Sega Rally 2)" />
+        <file offset="0" name="epr-20985.bin" crc32="0xB139481D" choice="EPR-20985 (Daytona USA 2)" />
+        <file offset="0" name="epr-19338a.bin" crc32="0xC9FAC464" choice="EPR-19338A (Scud Race)" />
       </region>
     </roms>
   </game>

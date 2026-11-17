@@ -24,6 +24,8 @@
 #include <string>
 #include <memory>
 #include <cstdint>
+#include <utility>
+#include <vector>
 
 struct Game
 {
@@ -157,6 +159,19 @@ struct Game
     DRIVE_BOARD_MOTION    // Model 2 motion slider (Manx TT DX)
   };
   DriveBoardType driveboard_type = DriveBoardType::DRIVE_BOARD_NONE;
+
+  // ROM regions whose file is one of several (Games.xml: <file ... choice="title" />, the first the default), chosen
+  // by the setting ROMChoiceKey(region) = the file's name: for each such region, its files' names and titles
+  struct RomChoice
+  {
+    std::string region;
+    std::vector<std::pair<std::string, std::string>> files;  // name, title
+  };
+  std::vector<RomChoice> rom_choices;
+  static std::string ROMChoiceKey(const std::string &region)
+  {
+    return "ROM_" + region;
+  }
 };
 
 #endif  // INCLUDED_GAME_H

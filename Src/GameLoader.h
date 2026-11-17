@@ -41,6 +41,7 @@ private:
     uint32_t offset = 0;
     uint32_t crc32 = 0;
     bool has_crc32 = false;
+    std::string choice;   // one of the region's alternative files (choice="title"): only the chosen one loads
     static ptr_t Create(const GameLoader &loader, const Util::Config::Node &file_node);
     bool Matches(const std::string &filename, uint32_t crc32) const;
     bool operator==(const File &rhs) const;
@@ -106,6 +107,7 @@ private:
 
   bool LoadZipArchive(ZipArchive *zip, const std::string &zipfilename) const;
   void AddLooseFiles(ZipArchive *zip, const std::string &game_name, const std::string &folder) const;
+  void AddFilesFromOtherZips(ZipArchive *zip, std::vector<File::ptr_t> files, const std::string &folder) const;
   const ZippedFile *LookupFile(const File::ptr_t &file, const ZipArchive &zip) const;
   bool FileExistsInZipArchive(const File::ptr_t &file, const ZipArchive &zip) const;
   bool LoadZippedFile(std::shared_ptr<uint8_t> *buffer, uint32_t *file_size, const GameLoader::File::ptr_t &file, const ZipArchive &zip) const;
@@ -123,12 +125,15 @@ private:
     const std::map<std::string, RegionsByName_t> &regions_by_game) const;
   bool ComputeRegionSize(uint32_t *region_size, const Region::ptr_t &region, const ZipArchive &zip) const;
   void ChooseGameInZipArchive(std::string *chosen_game, bool *missing_parent_roms, const ZipArchive &zip, const std::string &zipfilename, const std::string &requested_game) const;
+  Region::ptr_t ChosenFiles(const std::string &game_name, const Region::ptr_t &region, const ZipArchive &zip) const;
   bool LoadRegion(ROM *buffer, const GameLoader::Region::ptr_t &region, const ZipArchive &zip) const;
   bool LoadROMs(ROMSet *rom_set, const std::string &game_name, const ZipArchive &zip) const;
 
   // ROM patches (see SetRomPatcher): the game being loaded's
   std::function<std::shared_ptr<RomPatches::Patcher>(const std::string &game)> m_rom_patcher_for;
   mutable std::shared_ptr<RomPatches::Patcher> m_rom_patcher;
+  // A game's setting (see SetGameSetting)
+  std::function<std::string(const std::string &game, const std::string &key)> m_game_setting;
 
 public:
   GameLoader(const std::string &xml_file);
@@ -143,6 +148,12 @@ public:
   void SetRomPatcher(std::function<std::shared_ptr<RomPatches::Patcher>(const std::string &game)> patcherFor)
   {
     m_rom_patcher_for = std::move(patcherFor);
+  }
+  // A game's setting as its settings files have it (empty: not set), for the regions whose file is one of several
+  // (Game::rom_choices, chosen by Game::ROMChoiceKey(region)). Not set: their first file found
+  void SetGameSetting(std::function<std::string(const std::string &game, const std::string &key)> setting)
+  {
+    m_game_setting = std::move(setting);
   }
   // The last Load's (nullptr: none)
   std::shared_ptr<RomPatches::Patcher> RomPatcher() const

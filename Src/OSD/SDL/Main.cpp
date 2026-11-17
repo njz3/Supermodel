@@ -248,6 +248,10 @@ bool DumpPatchedROMs(const std::string &zip, const std::string &game, std::strin
       patcher->SetDumpFolder(folder);
     return patcher;
   });
+  loader.SetGameSetting([&](const std::string &gameName, const std::string &key)
+  {
+    return EarlyGameSetting(fileConfig, cmdLine, gameName, key);
+  });
   Game loaded;
   ROMSet romSet;
   bool error = loader.Load(&loaded, &romSet, zip, game);
@@ -3078,6 +3082,16 @@ static bool ApplySetOption(Util::Config::Node *config, const std::string &assign
   };
   std::string key = normalize(dot == std::string::npos ? name : name.substr(dot + 1));
 
+  // A game's ROM patches (Patch_<patch>, Patch_<patch>_<option>) and the file of a region with several (ROM_<region>):
+  // their names as given, read as the game's ROMs load
+  std::string raw = Util::TrimWhiteSpace(dot == std::string::npos ? name : name.substr(dot + 1));
+  std::string rawLower = Util::ToLower(raw);
+  if (rawLower.rfind("patch_", 0) == 0 || rawLower.rfind("rom_", 0) == 0)
+  {
+    config->Set(raw, value);
+    return true;
+  }
+
   if (key == "displaymode")
   {
     std::string mode = Util::ToLower(Util::TrimWhiteSpace(value));
@@ -3602,6 +3616,11 @@ int main(int argc, char **argv)
       // The game's ROM patches turned on (Assets/Patches/<ROM set>, Patch_<patch> = true), applied as its ROMs load
       s_commandLineConfig = cmd_line.config;
       loader.SetRomPatcher([&](const std::string &gameName) { return MakeRomPatcher(fileConfig, cmd_line.config, gameName); });
+      // The file of a region with several (ROM_<region>: ECA's drive board program)
+      loader.SetGameSetting([&](const std::string &gameName, const std::string &key)
+      {
+        return EarlyGameSetting(fileConfig, cmd_line.config, gameName, key);
+      });
       if (loader.Load(&game, &rom_set, *cmd_line.rom_files.begin(), cmd_line.game))
         return 1;
       s_romZip = *cmd_line.rom_files.begin();

@@ -879,6 +879,19 @@ Supermodel presently only emulates a sequential shifter but cabinets with a 4-
 way H-type shifter exist and the shift sequence on this units is: 3, 3, 4, 4, 3
 or 1, 1, 2, 2, 1.
 
+Force feedback: ECA's drive board program has not been dumped.  The game sends
+the wheel's torque directly (a signed value in each byte), as Sega Rally 2 does
+to its drive board, so Supermodel uses Sega Rally 2's program, epr-20512.bin,
+by default.  The dedicated cabinet has Scud Race deluxe's drive board
+(838-12898), whose program for Scud Race is epr-19338a.bin; ECA was also sold
+as a conversion kit of Daytona USA 2, which changes only the chips of the
+Model 3 ROM board: a converted cabinet keeps Daytona 2's drive board program,
+epr-20985.bin.  Both play the game's bytes as their own effects.  Choose one in
+Game Options (Game page, "Drive board program"), or set ROM_driveboard_program
+= epr-20512.bin, epr-20985.bin or epr-19338a.bin in the [ eca ] section.  Put
+the file in eca.zip or beside it, or keep srally2.zip, daytona2.zip or scud.zip
+in the same folder (it is found there).
+
 
 Fighting Vipers 2
 -----------------
