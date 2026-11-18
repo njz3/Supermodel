@@ -117,17 +117,15 @@ it: hold VIEW CHANGE and press Test (Universe, Japan, U.S.A., Export,
 Australia, Korea; check the coin settings after a change).
 
 ## Force feedback
-ECA's drive board program has not been dumped. The game sends the wheel's
-torque directly, as Sega Rally 2 does, so Supermodel uses Sega Rally 2's
-program epr-20512.bin by default: in eca.zip, beside it, or in srally2.zip in
-the same folder. The torque is the game's own scale: raise the FFB strength
-if it feels weak. The step ECA's table adds to small torques (a jolt each
-time the wheel comes back through the centre) is taken out: "Linear torque"
-(Force Feedback page, EcaLinearTorque) puts it back. "Drive board program"
-(Game page, ROM files) chooses another one for the next start (Daytona 2's EPR-20985 on converted cabinets,
-Scud Race's EPR-19338A), which play the game's bytes as their own effects;
-also Scud Race Plus's EPR-19338, Le Mans 24's EPR-18261, F355 Challenge's
-EPR-21867 and 18 Wheeler's EPR-23000 (found in their ROM sets in the folder).
+ECA's sets have no drive board program. The game sends the wheel's torque
+directly, as Sega Rally 2 does, so Supermodel uses Sega Rally 2's program
+epr-20512.bin: in eca.zip, beside it, or in srally2.zip in the same folder
+(the other drive boards, tried on a cabinet, were not playable). The torque is
+the game's own scale: raise the FFB strength if it feels weak. The step ECA's
+table adds to small torques (a jolt each time the wheel comes back through the
+centre) is taken out. With a large steering angle the front tyres grip and
+slide in turn, and the torque knocks with the wheel held: "Centring spring"
+(Game page, EcaSpring, 30 %) plays a spring under it.
 
 ## Stretcher mode
 To play as the paramedics pushing a stretcher: at the transmission select,

@@ -951,6 +951,33 @@ namespace GameMenu
     ImGui::Spacing();
   }
 
+  // Emergency Call Ambulance's force feedback: its torque is mostly the front tyres' aligning moment, which with a large
+  // steering angle flips every third of a second (grip, slide), knocks with the wheel held; a centring spring under it
+  // (WheelBoard.cpp), saved at once in ECA's section when the slider is let go
+  static void DrawEcaSpring(Util::Config::Node &config)
+  {
+    if (s_game.name != "eca" && s_game.parent != "eca")
+      return;
+    ImGui::SeparatorText("Force feedback");
+    int value = std::clamp(config["EcaSpring"].ValueAsDefault<int>(30), 0, 100);
+    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 13);
+    if (ImGui::SliderInt("Centring spring", &value, 0, 100, "%d %%"))
+    {
+      config.Set("EcaSpring", unsigned(value));
+      s_changes |= ChangeForceFeedback;
+    }
+    if (ImGui::IsItemDeactivatedAfterEdit())
+      s_patchChanges.emplace_back("EcaSpring", std::to_string(value));
+    ImGui::Indent();
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextDisabled("Played under the game's torque during the race: with a large steering angle the front tyres grip "
+                        "and slide in turn, and the torque knocks with the wheel held (0: the drive board's alone, 9 %%). "
+                        "Applies when the menu closes; saved at once in the [ %s ] section (EcaSpring).", s_game.name.c_str());
+    ImGui::PopTextWrapPos();
+    ImGui::Unindent();
+    ImGui::Spacing();
+  }
+
   static void DrawGamePage(Util::Config::Node &config)
   {
     if (ImGui::BeginTable("Description", 2, ImGuiTableFlags_SizingFixedFit))
@@ -1005,6 +1032,7 @@ namespace GameMenu
       ImGui::Spacing();
     }
 
+    DrawEcaSpring(config);
     DrawRomChoices(config);
     DrawRomPatches(config);
     if (s_notes.empty())
@@ -1886,19 +1914,6 @@ namespace GameMenu
     SettingSlider(config, "PanelSpring", "Panel spring", 20, 0, 100, "%d %%", ChangeForceFeedback);
     Wrapped("Daytona USA, Sega Rally and Virtua Racing only: their panels have a light centring spring, which their "
             "drive boards make up for. In percent of Sega Rally's strongest torque.");
-    if (s_game.name == "eca" || s_game.parent == "eca")
-    {
-      SettingCheck(config, "EcaLinearTorque", "Linear torque (EPR-20512)", true);
-      Wrapped("ECA's torque table jumps from 1 to 9 as the torque grows from 2 to 4, a push for its motor to start: "
-              "each return through the centre is then a jolt. On, the torque the game works out is sent as it is (its "
-              "strongest is 18 instead of 23 at STEERING REACTION 4: raise the gain if it feels weak).");
-      NextStart();
-      SettingSlider(config, "EcaSpring", "Centring spring (EPR-20512)", 40, 0, 100, "%d %%", ChangeForceFeedback);
-      Wrapped("ECA's torque is mostly the front tyres' aligning moment: with a large steering angle they grip and slide "
-              "in turn and the torque flips every third of a second, knocks with the wheel held. Daytona 2's board, the "
-              "dedicated cabinet's, adds its own centring spring, which hides them; with Sega Rally 2's, this spring is "
-              "played under the game's torque during the race (0: only the board's, 9 %).");
-    }
     DrawDIPSwitches(config);
   }
 

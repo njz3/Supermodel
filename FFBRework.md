@@ -910,6 +910,17 @@ dossier (scud.zip/scudplus, stcc.zip, f355.zip, 18wheelr.zip).
 - **« Strength switches » retiré du menu** (demande du propriétaire) : les DIP de la banque 1 le remplacent.
   `ForceFeedbackStrength` reste lu (réglage d'upstream, fichiers existants) quand la banque 1 n'est pas réglée pour le
   jeu ; il n'est plus enregistré par le menu.
+- **EPR-20512 seule pour ECA** (demande du propriétaire, après ses essais sur la borne : les autres sont injouables ;
+  l'EPROM de la borne de son ami n'a pas pu être lue, ses effets ressemblent à ceux de l'EPR-20512) : Games.xml n'a plus
+  qu'elle dans `driveboard_program`, sans `choice` ; le menu n'a donc plus « Drive board program ». Un
+  `ROM_driveboard_program` resté dans un fichier est ignoré (vérifié : epr-19338a.bin demandé, 20512 lue depuis
+  srally2.zip). L'émulation des cartes Naomi (m_naomiServo) reste dans CWheelBoard, sans jeu qui s'en sert.
+- **Essai au volant (Racecab1, 1d5df85)** : ressort à 40 % « beaucoup mieux, on ne sent pratiquement plus les à-coups
+  à 3 Hz ». Puis, à la demande du propriétaire : **EcaSpring à 30 %** par défaut, réglé dans la page Game du menu Tab
+  pour ECA seulement (« Force feedback », « Centring spring »), enregistré aussitôt dans la section [ eca ] au lâcher du
+  curseur (comme les patches) ; il n'est plus dans la page Force Feedback ni dans les Save. **EcaLinearTorque retiré** :
+  la magnitude ramenée à |t| est toujours appliquée pour ECA (m_eca20512) ; le propriétaire ne sentait pas de différence
+  volant tenu, et la mesure donnait 87 → 2 sauts de 9 ou plus.
 
 ## 3. Les essais
 

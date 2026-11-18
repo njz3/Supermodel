@@ -215,7 +215,6 @@ void CWheelBoard::Reset(void)
   uint32_t crc = m_romlessCrc != 0 ? m_romlessCrc : uint32_t(crc32(0, m_rom, 0x10000));
   m_twoPowerOutputs = crc == EPR18261_CRC32;
   m_naomiServo = crc == EPR21867_CRC32 || crc == EPR21867P_CRC32 || crc == EPR23000_CRC32;
-  m_ecaLinear = m_ecaGame && crc == EPR20512_CRC32 && m_config["EcaLinearTorque"].ValueAsDefault<bool>(true);
   m_eca20512 = m_ecaGame && crc == EPR20512_CRC32;
   m_boardSpring = 0;
   m_calibWheel = 0x80 * 16;
@@ -316,15 +315,15 @@ static UINT8 EcaLinearTorque(UINT8 data)
 
 // ECA's torque is mostly the front tyres' aligning moment (the car's 0x958) times the speed: with a large steering
 // angle the tyres grip and slide in turn and it flips between about +85 and -27 (the slide value) every 20 frames or
-// so, knocks of a few hertz with the wheel held (agent mode, wheel held at 0.25). Daytona 2's board, which the
-// dedicated cabinet has, makes its own centring spring from the wheel's position and adds the game's bytes on top,
-// which hides them. With EPR-20512 (ECA's game in race sets its servo spring only to the weakest, FC 0C = 9 %),
-// EcaSpring (percent, 0 none) is a centring spring under the torque while the board's spring is on
+// so, knocks of a few hertz with the wheel held (agent mode, wheel held at 0.25). With EPR-20512, ECA's only drive
+// board program (Games.xml; its race sets the servo spring only to the weakest, FC 0C = 9 %),
+// EcaSpring (percent, 0 none; a setting of ECA's section, its Game page) is a centring spring under the torque while
+// the board's spring is on
 UINT8 CWheelBoard::WithEcaSpring(UINT8 boardSpring) const
 {
   if (!m_eca20512 || boardSpring == 0)
     return boardSpring;
-  unsigned percent = std::min(m_config["EcaSpring"].ValueAsDefault<unsigned>(40), 100u);
+  unsigned percent = std::min(m_config["EcaSpring"].ValueAsDefault<unsigned>(30), 100u);
   return UINT8(std::max<unsigned>(boardSpring, percent * 0xFF / 100));
 }
 
@@ -335,7 +334,7 @@ void CWheelBoard::Write(UINT8 data)
     return;
   }
 
-  if (m_ecaLinear && data < 0x80)
+  if (m_eca20512 && data < 0x80)
     data = EcaLinearTorque(data);
 
   //if (data >= 0x01 && data <= 0x0F ||
@@ -1323,7 +1322,6 @@ CWheelBoard::CWheelBoard(const Util::Config::Node &config)
 
   m_twoPowerOutputs = false;
   m_ecaGame = false;
-  m_ecaLinear = false;
   m_eca20512 = false;
   m_boardSpring = 0;
   m_naomiServo = false;

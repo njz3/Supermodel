@@ -188,9 +188,9 @@ public:
   /*
    * SetEcaCommands(eca):
    *
-   * The game is Emergency Call Ambulance: with EPR-20512, and EcaLinearTorque
-   * on (the default), its torque commands lose the step its table adds (see
-   * EcaLinearTorque()). Call before Init().
+   * The game is Emergency Call Ambulance: with EPR-20512, its torque commands
+   * lose the step its table adds (see EcaLinearTorque()), and EcaSpring plays
+   * a centring spring under them. Call before Init().
    */
   void SetEcaCommands(bool eca);
 
@@ -225,8 +225,7 @@ private:
 
   bool m_twoPowerOutputs; // EPR-18261: ports 2A and 2E are two motor powers, not a servo board register and value
   bool m_ecaGame;         // SetEcaCommands: the game is ECA
-  bool m_ecaLinear;       // ECA with EPR-20512 and EcaLinearTorque: its commands made linear (Write)
-  bool m_eca20512;        // ECA with EPR-20512: EcaSpring adds a centring spring under its torque (EcaSpring())
+  bool m_eca20512;        // ECA with EPR-20512: its commands made linear (Write), EcaSpring under its torque (WithEcaSpring())
   UINT8 m_boardSpring;    // The spring the board's program last set (servo register FC 4), 0 off
   bool m_naomiServo;      // EPR-21867, EPR-23000: servo registers written 08-0F, the wheel calibrated by its travel
   int m_calibWheel;       // Naomi boards, until calibrated: the wheel's position as their pushes would move it (x16)

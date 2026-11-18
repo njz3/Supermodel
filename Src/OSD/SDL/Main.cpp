@@ -1526,8 +1526,6 @@ static bool SaveMenuSettings(const std::string &game, bool forGame)
   values.push_back(boolean("BackgroundInput"));
   values.push_back(boolean("ForceFeedback"));
   values.push_back(boolean("SimulateDriveBoard"));
-  values.push_back(boolean("EcaLinearTorque"));
-  values.push_back(number("EcaSpring"));
   values.push_back(number("PanelSpring"));
   // The Sound, Emulation and network pages'
   auto text = [](const char *key) { return std::make_pair(std::string(key), s_runtime_config[key].ValueAs<std::string>()); };
@@ -2559,10 +2557,9 @@ Util::Config::Node DefaultConfig()
   // The light centring spring of the Daytona USA, Sega Rally and Virtua Racing panels (their boards drive a clutch), in
   // % of Sega Rally's strongest torque; the other panels have none
   config.Set("PanelSpring", 20u, "ForceFeedback", 0u, 100u);
-  // ECA with Sega Rally 2's drive board program: its torque commands without the step of its table (WheelBoard.cpp)
-  config.Set("EcaLinearTorque", true, "ForceFeedback");
-  // ECA with Sega Rally 2's drive board program: a centring spring under its torque, in % (0 none; WheelBoard.cpp)
-  config.Set("EcaSpring", 40u, "ForceFeedback", 0u, 100u);
+  // ECA (Sega Rally 2's drive board program): a centring spring under its torque, in % (0 none; WheelBoard.cpp), set
+  // in ECA's section by its Game page
+  config.Set("EcaSpring", 30u, "ForceFeedback", 0u, 100u);
   // The drive board's DIP switches, per game (the in-game menu's Force Feedback page): switches 1 to 8, '1' ON, '0' OFF;
   // empty, the board's own (CDriveBoard::DIPSetting)
   config.Set<std::string>("DriveBoardDIP1", "", "ForceFeedback", "", "");

@@ -344,8 +344,7 @@ from vJoy), their strength and direction (ForceFeedbackGain,
 ForceFeedbackInvert), what the game asks now (constant force, spring, friction,
 damper, vibration) and the limits per effect of the input system in use.  These
 apply when the menu closes: the effects stop where they played and start again
-as set.  Its 'Drive board' part has PanelSpring (and for Emergency Call
-Ambulance EcaLinearTorque and EcaSpring); its 'DIP
+as set.  Its 'Drive board' part has PanelSpring; its 'DIP
 switches' part the board's two banks of switches, one by one, for the game
 alone (DriveBoardDIP1, DriveBoardDIP2, from the next start), with what the
 board's program does with them.
@@ -882,34 +881,23 @@ Supermodel presently only emulates a sequential shifter but cabinets with a 4-
 way H-type shifter exist and the shift sequence on this units is: 3, 3, 4, 4, 3
 or 1, 1, 2, 2, 1.
 
-Force feedback: ECA's drive board program has not been dumped.  The game sends
-the wheel's torque directly (a signed value in each byte), as Sega Rally 2 does
-to its drive board, so Supermodel uses Sega Rally 2's program, epr-20512.bin,
-by default.  The dedicated cabinet has Scud Race deluxe's drive board
-(838-12898), whose program for Scud Race is epr-19338a.bin; ECA was also sold
-as a conversion kit of Daytona USA 2, which changes only the chips of the
-Model 3 ROM board: a converted cabinet keeps Daytona 2's drive board program,
-epr-20985.bin.  Both play the game's bytes as their own effects.  Other
-programs can be tried: Scud Race Plus's epr-19338.bin, Le Mans 24's
-epr-18261.ic9 (a Model 2 board), and the Naomi drive boards of F355 Challenge
-(epr-21867.bin) and 18 Wheeler (epr-23000.ic8), which drive the same servo
-board with another protocol.  Choose one in Game Options (Game page, "Drive
-board program"), or set ROM_driveboard_program to its file name in the [ eca ]
-section.  Put the file in eca.zip or beside it, or keep the set that holds it
-(srally2.zip, daytona2.zip, scud.zip, f355.zip, 18wheelr.zip, ...) in the same
-folder (it is found there by its checksum).  With epr-20512.bin, the torque
-goes to the board as the game works it out: ECA's own table adds a step to it
-(1, then 5, then 9 as it starts to grow, a push for the cabinet's motor to
-start), which makes every return of the wheel through the centre a jolt.
-EcaLinearTorque = false (Game Options, Force Feedback page, "Linear torque")
-keeps the game's table; the torque is then stronger (23 against 18 at its
-strongest, STEERING REACTION at 4).  ECA's torque is mostly the front tyres'
-aligning moment: with a large steering angle they grip and slide in turn, and
-the torque flips every third of a second or so, knocks with the wheel held.
-Daytona 2's board, which the dedicated cabinet has, adds its own centring
-spring, which hides them; with epr-20512.bin, EcaSpring (40 % by default, Game
-Options, Force Feedback page, "Centring spring") plays a centring spring under
-the game's torque during the race.
+Force feedback: ECA's sets have no drive board program.  The game sends the
+wheel's torque directly (a signed value in each byte), as Sega Rally 2 does to
+its drive board, so Supermodel uses Sega Rally 2's program, epr-20512.bin: put
+it in eca.zip or beside it, or keep srally2.zip in the same folder (it is found
+there by its checksum).  The other drive board programs (Daytona USA 2's, which
+the manual's "DRIVE BD DUT" suggests, Scud Race's, Le Mans 24's, the Naomi
+boards') were tried on a cabinet and are not offered: none was playable.  The
+torque goes to the board as the game works it out: ECA's own table adds a step
+to it (1, then 5, then 9 as it starts to grow, a push for the cabinet's motor
+to start), which makes every return of the wheel through the centre a jolt:
+Supermodel takes the step out (the strongest torque is then 18 against 23,
+STEERING REACTION at 4).  ECA's torque is mostly the front tyres' aligning
+moment: with a large steering angle they grip and slide in turn, and the
+torque flips every third of a second or so, knocks with the wheel held.
+EcaSpring (30 % by default; Game Options, Game page, "Centring spring", saved
+in ECA's section) plays a centring spring under the game's torque during the
+race.
 
 
 Fighting Vipers 2
@@ -2179,30 +2167,19 @@ All settings are case sensitive.
 
     ----------------
 
-    Name:           EcaLinearTorque
-
-    Argument:       Boolean (true by default).
-
-    Description:    Emergency Call Ambulance with Sega Rally 2's drive board
-                    program (EPR-20512): the step ECA's table adds to small
-                    torques taken out of its commands (see 'Emergency Call
-                    Ambulance').  Set in the settings menu's Force feedback
-                    page.
-
-    ----------------
-
     Name:           EcaSpring
 
-    Argument:       Integer, 0 to 100 (percent; 40 by default).
+    Argument:       Integer, 0 to 100 (percent; 30 by default).
 
-    Description:    Emergency Call Ambulance with Sega Rally 2's drive board
-                    program (EPR-20512): a centring spring played under the
-                    game's torque while the board's own spring is on (the
+    Description:    Emergency Call Ambulance only (its drive board program,
+                    Sega Rally 2's EPR-20512): a centring spring played under
+                    the game's torque while the board's own spring is on (the
                     race; the board's is 9 %, and the stronger of the two
-                    plays), as Daytona 2's board, the dedicated cabinet's,
-                    makes one of its own.  0: the board's alone.  Set in the
-                    settings menu's Force feedback page; changed there, it
-                    applies when the menu closes.
+                    plays), against the knocks of the game's torque with the
+                    wheel held.  0: the board's alone.  Set in the settings
+                    menu's Game page for ECA, saved at once in its section
+                    ([ eca ]); changed there, it applies when the menu
+                    closes.
 
     ----------------
 
