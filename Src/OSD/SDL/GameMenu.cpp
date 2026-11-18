@@ -1859,8 +1859,8 @@ namespace GameMenu
       ImGui::SameLine();
       ImGui::TextDisabled(set ? "(set for this game)" : "(the board's)");
     }
-    Wrapped("Ticked: the switch ON. Set here, a bank replaces the board's own switches, the strength switches above "
-            "included.");
+    Wrapped("Ticked: the switch ON. Set here, a bank replaces the board's own switches (with bank 1, the strength "
+            "switches of a configuration file's ForceFeedbackStrength).");
     if (anySet && ImGui::Button("Back to the board's switches"))
     {
       config.Set("DriveBoardDIP1", std::string());
@@ -1883,12 +1883,6 @@ namespace GameMenu
     DrawForceFeedback(config, *s_inputs->GetInputSystem());
 
     Header("Drive board");
-    SettingSlider(config, "ForceFeedbackStrength", "Strength switches", 1, 1, 8, "%d");
-    Wrapped("The board's strength DIP switches, as an operator sets them: 1 all OFF (as the boards leave the factory), "
-            "8 the most. What the program does with them depends on it: see the DIP switches below.");
-    if (config["DriveBoardDIP1"].ValueAsDefault<std::string>("").size() == 8)
-      ImGui::TextDisabled("Bank 1 is set below for this game: this slider does not count.");
-    NextStart();
     SettingSlider(config, "PanelSpring", "Panel spring", 20, 0, 100, "%d %%", ChangeForceFeedback);
     Wrapped("Daytona USA, Sega Rally and Virtua Racing only: their panels have a light centring spring, which their "
             "drive boards make up for. In percent of Sega Rally's strongest torque.");
@@ -1899,6 +1893,11 @@ namespace GameMenu
               "each return through the centre is then a jolt. On, the torque the game works out is sent as it is (its "
               "strongest is 18 instead of 23 at STEERING REACTION 4: raise the gain if it feels weak).");
       NextStart();
+      SettingSlider(config, "EcaSpring", "Centring spring (EPR-20512)", 40, 0, 100, "%d %%", ChangeForceFeedback);
+      Wrapped("ECA's torque is mostly the front tyres' aligning moment: with a large steering angle they grip and slide "
+              "in turn and the torque flips every third of a second, knocks with the wheel held. Daytona 2's board, the "
+              "dedicated cabinet's, adds its own centring spring, which hides them; with Sega Rally 2's, this spring is "
+              "played under the game's torque during the race (0: only the board's, 9 %).");
     }
     DrawDIPSwitches(config);
   }

@@ -226,6 +226,8 @@ private:
   bool m_twoPowerOutputs; // EPR-18261: ports 2A and 2E are two motor powers, not a servo board register and value
   bool m_ecaGame;         // SetEcaCommands: the game is ECA
   bool m_ecaLinear;       // ECA with EPR-20512 and EcaLinearTorque: its commands made linear (Write)
+  bool m_eca20512;        // ECA with EPR-20512: EcaSpring adds a centring spring under its torque (EcaSpring())
+  UINT8 m_boardSpring;    // The spring the board's program last set (servo register FC 4), 0 off
   bool m_naomiServo;      // EPR-21867, EPR-23000: servo registers written 08-0F, the wheel calibrated by its travel
   int m_calibWheel;       // Naomi boards, until calibrated: the wheel's position as their pushes would move it (x16)
   bool m_naomiBooted;     // Naomi boards: their status byte has shown the calibration under way (30), so its clearing is the end
@@ -286,6 +288,7 @@ private:
   void SimulateFrame(void);
 
   void ProcessEncoderCmd(void);
+  UINT8 WithEcaSpring(UINT8 boardSpring) const;
 
   void ProcessMotorPowers(void);
 

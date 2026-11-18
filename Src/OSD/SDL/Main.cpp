@@ -1527,8 +1527,8 @@ static bool SaveMenuSettings(const std::string &game, bool forGame)
   values.push_back(boolean("ForceFeedback"));
   values.push_back(boolean("SimulateDriveBoard"));
   values.push_back(boolean("EcaLinearTorque"));
+  values.push_back(number("EcaSpring"));
   values.push_back(number("PanelSpring"));
-  values.push_back(number("ForceFeedbackStrength"));
   // The Sound, Emulation and network pages'
   auto text = [](const char *key) { return std::make_pair(std::string(key), s_runtime_config[key].ValueAs<std::string>()); };
   for (const char *key : { "SoundVolume", "MusicVolume", "NbSoundChannels", "PowerPCFrequency", "Transparency", "PortIn", "PortOut" })
@@ -2561,11 +2561,14 @@ Util::Config::Node DefaultConfig()
   config.Set("PanelSpring", 20u, "ForceFeedback", 0u, 100u);
   // ECA with Sega Rally 2's drive board program: its torque commands without the step of its table (WheelBoard.cpp)
   config.Set("EcaLinearTorque", true, "ForceFeedback");
+  // ECA with Sega Rally 2's drive board program: a centring spring under its torque, in % (0 none; WheelBoard.cpp)
+  config.Set("EcaSpring", 40u, "ForceFeedback", 0u, 100u);
   // The drive board's DIP switches, per game (the in-game menu's Force Feedback page): switches 1 to 8, '1' ON, '0' OFF;
   // empty, the board's own (CDriveBoard::DIPSetting)
   config.Set<std::string>("DriveBoardDIP1", "", "ForceFeedback", "", "");
   config.Set<std::string>("DriveBoardDIP2", "", "ForceFeedback", "", "");
-  // The drive boards' strength DIP switches, 1 (all OFF, as the boards leave the factory) to 8
+  // The drive boards' strength DIP switches, 1 (all OFF, as the boards leave the factory) to 8. Upstream's setting, kept
+  // for the files that have it; DriveBoardDIP1 (the in-game menu's DIP switches) replaces it when set
   config.Set("ForceFeedbackStrength", 1u, "ForceFeedback", 1u, 8u);
   // The joystick that plays the effects (a joystick's name; empty: the joysticks the inputs are bound to), their
   // strength in % and the constant force inverted. Set in the in-game menu's Controls page, or with --set

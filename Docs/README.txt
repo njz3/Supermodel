@@ -344,8 +344,8 @@ from vJoy), their strength and direction (ForceFeedbackGain,
 ForceFeedbackInvert), what the game asks now (constant force, spring, friction,
 damper, vibration) and the limits per effect of the input system in use.  These
 apply when the menu closes: the effects stop where they played and start again
-as set.  Its 'Drive board' part has the board's strength switches
-(ForceFeedbackStrength, from the next start) and PanelSpring; its 'DIP
+as set.  Its 'Drive board' part has PanelSpring (and for Emergency Call
+Ambulance EcaLinearTorque and EcaSpring); its 'DIP
 switches' part the board's two banks of switches, one by one, for the game
 alone (DriveBoardDIP1, DriveBoardDIP2, from the next start), with what the
 board's program does with them.
@@ -903,7 +903,13 @@ goes to the board as the game works it out: ECA's own table adds a step to it
 start), which makes every return of the wheel through the centre a jolt.
 EcaLinearTorque = false (Game Options, Force Feedback page, "Linear torque")
 keeps the game's table; the torque is then stronger (23 against 18 at its
-strongest, STEERING REACTION at 4).
+strongest, STEERING REACTION at 4).  ECA's torque is mostly the front tyres'
+aligning moment: with a large steering angle they grip and slide in turn, and
+the torque flips every third of a second or so, knocks with the wheel held.
+Daytona 2's board, which the dedicated cabinet has, adds its own centring
+spring, which hides them; with epr-20512.bin, EcaSpring (40 % by default, Game
+Options, Force Feedback page, "Centring spring") plays a centring spring under
+the game's torque during the race.
 
 
 Fighting Vipers 2
@@ -2133,8 +2139,10 @@ All settings are case sensitive.
                     (Model 3's servo boards' programs: bits 2-4 of DIP 1;
                     EPR-18261: 0 to 7; Daytona USA and Virtua Racing: 0 to 28
                     of 63; Sega Rally: 0 to 7).  Read when the board starts.
-                    It was 5 by default before November 2026.  Set in the
-                    settings menu's Force feedback page.
+                    It was 5 by default before November 2026.  The settings
+                    menu no longer has it: its DIP switches (DriveBoardDIP1)
+                    set the whole bank, these switches included, and replace
+                    this setting for the game.
 
     ----------------
 
@@ -2180,6 +2188,21 @@ All settings are case sensitive.
                     torques taken out of its commands (see 'Emergency Call
                     Ambulance').  Set in the settings menu's Force feedback
                     page.
+
+    ----------------
+
+    Name:           EcaSpring
+
+    Argument:       Integer, 0 to 100 (percent; 40 by default).
+
+    Description:    Emergency Call Ambulance with Sega Rally 2's drive board
+                    program (EPR-20512): a centring spring played under the
+                    game's torque while the board's own spring is on (the
+                    race; the board's is 9 %, and the stronger of the two
+                    plays), as Daytona 2's board, the dedicated cabinet's,
+                    makes one of its own.  0: the board's alone.  Set in the
+                    settings menu's Force feedback page; changed there, it
+                    applies when the menu closes.
 
     ----------------
 

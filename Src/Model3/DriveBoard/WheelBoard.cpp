@@ -216,6 +216,8 @@ void CWheelBoard::Reset(void)
   m_twoPowerOutputs = crc == EPR18261_CRC32;
   m_naomiServo = crc == EPR21867_CRC32 || crc == EPR21867P_CRC32 || crc == EPR23000_CRC32;
   m_ecaLinear = m_ecaGame && crc == EPR20512_CRC32 && m_config["EcaLinearTorque"].ValueAsDefault<bool>(true);
+  m_eca20512 = m_ecaGame && crc == EPR20512_CRC32;
+  m_boardSpring = 0;
   m_calibWheel = 0x80 * 16;
   m_naomiBooted = false;
 
@@ -310,6 +312,20 @@ static UINT8 EcaLinearTorque(UINT8 data)
   int magnitude = data & 0x3F;
   int t = magnitude == 0 ? 0 : magnitude == 1 ? 2 : magnitude <= 5 ? 3 : magnitude <= 9 ? 4 : magnitude - 5;
   return UINT8((data & 0x40) | t);
+}
+
+// ECA's torque is mostly the front tyres' aligning moment (the car's 0x958) times the speed: with a large steering
+// angle the tyres grip and slide in turn and it flips between about +85 and -27 (the slide value) every 20 frames or
+// so, knocks of a few hertz with the wheel held (agent mode, wheel held at 0.25). Daytona 2's board, which the
+// dedicated cabinet has, makes its own centring spring from the wheel's position and adds the game's bytes on top,
+// which hides them. With EPR-20512 (ECA's game in race sets its servo spring only to the weakest, FC 0C = 9 %),
+// EcaSpring (percent, 0 none) is a centring spring under the torque while the board's spring is on
+UINT8 CWheelBoard::WithEcaSpring(UINT8 boardSpring) const
+{
+  if (!m_eca20512 || boardSpring == 0)
+    return boardSpring;
+  unsigned percent = std::min(m_config["EcaSpring"].ValueAsDefault<unsigned>(40), 100u);
+  return UINT8(std::max<unsigned>(boardSpring, percent * 0xFF / 100));
 }
 
 void CWheelBoard::Write(UINT8 data)
@@ -943,6 +959,7 @@ void CWheelBoard::ProcessEncoderCmd(void)
           if (m_port42Out&0x80)
           {
             // Disable centering
+            m_boardSpring = 0;
             SendSelfCenter(0);
           }
           else
@@ -952,7 +969,8 @@ void CWheelBoard::ProcessEncoderCmd(void)
             // DirectInput spring grows with the angle over the wheel's whole travel. 47 % at 5, 75 % at 8, full from
             // 11: full from 8 made the wheel oscillate on a cabinet
             UINT8 strength = (UINT8)std::min(((m_port42Out&0x78)>>3) * 0x18, 0xFF);
-            SendSelfCenter(strength);
+            m_boardSpring = strength;
+            SendSelfCenter(WithEcaSpring(strength));
           }
         }
         else
@@ -1014,6 +1032,7 @@ void CWheelBoard::ProcessEncoderCmd(void)
 
       case 0xFF:
         // Motor idle, whatever the value: FF FF, and FF 80 after the attract mode's centring of the wheel
+        m_boardSpring = 0;
         SendStopAll();
         break;
 
@@ -1091,7 +1110,8 @@ void CWheelBoard::ResendForceFeedback(void)
 
   // A state loaded, or the joystick that plays the effects changed: the wheel still plays the effects of before, and a
   // game may set its spring once (Sega Rally 2), so the board's effects are played again from scratch
-  UINT8 selfCenter = m_lastSelfCenter;
+  // ECA's spring read again: the Tab menu may have changed it (the menu pauses the game, which resends on resuming)
+  UINT8 selfCenter = m_eca20512 && m_boardSpring != 0 ? WithEcaSpring(m_boardSpring) : m_lastSelfCenter;
   UINT8 friction = m_lastFriction;
   UINT8 damper = m_lastDamper;
   INT8 constForce = m_constForce;
@@ -1304,6 +1324,8 @@ CWheelBoard::CWheelBoard(const Util::Config::Node &config)
   m_twoPowerOutputs = false;
   m_ecaGame = false;
   m_ecaLinear = false;
+  m_eca20512 = false;
+  m_boardSpring = 0;
   m_naomiServo = false;
   m_naomiBooted = false;
   m_calibWheel = 0x80 * 16;

@@ -886,6 +886,31 @@ dossier (scud.zip/scudplus, stcc.zip, f355.zip, 18wheelr.zip).
   FD 11-51) n'est lue qu'à `B0`/`B1`, et aucun des deux jeux ne l'envoie (démarrage de srally2 en mode agent : `C1`
   puis `C7` seulement ; FC 0C quel que soit le réglage). Les deux jeux ont donc le même ressort de la carte, la rangée 0.
 
+### 2.28 ECA : les à-coups volant tenu, le ressort EcaSpring ; « Strength switches » retiré du menu (18 novembre)
+
+- **Essai du propriétaire** : EPR-20985 avec la banque 1 tout OFF « fait n'importe quoi » ; EPR-20512 avec Linear
+  torque bien mieux, mais volant tenu vers 45° des coups de quelques Hz au lieu d'un ressort.
+- **Mesure** (mode agent, `Steering` fixé à 0,25, l'équivalent d'un axe vJoy immobile ; `eca/ecahold.py`) : le couple
+  envoyé par le jeu lui-même oscille (+15 → −8 → +12 → 0 → −13 → +15, période ~20 images, 3 Hz). À 0,1 il reste
+  stable (5-6).
+- **Le calcul d'ECA** (0x23FA8, voiture = 0x2AC160 + 0x1000 × [0x1F0398]) : t = réglage STEERING REACTION ×
+  (car+0x958 × 0,01 × min((car+0x82C + car+0x868) × 0,5 / 60, 1) + 0,5 × vibrations de route) + amortissement par la
+  vitesse du volant (0x23594, car+0x5E8) + chocs de suspension (|Δ car+0x370| × 3/5, 0x2374C) + coup de collision
+  (car+0x95C, 10 images, 0x238BC) + coup au changement de rapport (car+0x610, 3 images, 0x23E98) ; borné, ±8 par image.
+  Les vibrations de route (0x23AF4) sont des sinus de la distance parcourue, selon la surface de chaque roue avant.
+- **La cause** : car+0x958, le couple d'auto-alignement des roues avant, passe de +85..90 (adhérence) à −27,0 tout rond
+  (glissade) toutes les ~20 images : à grand angle, les pneus accrochent et décrochent. C'est la physique du jeu. La
+  carte de Daytona 2 de la borne dédiée fait son propre ressort de position à 500 Hz, qui le masque ; chez nous, ce
+  ressort de l'EPR-20985 passe par une force constante à 60 Hz, ce qui explique sans doute son mauvais rendu (non mesuré).
+- **EcaSpring** (40 % par défaut, 0-100, ECA + EPR-20512 seulement) : CWheelBoard::WithEcaSpring prend le plus fort du
+  ressort de la carte (FC 4 ; en course ECA n'envoie que FC 0C = 9 %) et de EcaSpring, tant que la carte a son ressort
+  en marche (m_boardSpring, remis à 0 par FC 84 et FF). ResendForceFeedback le relit : un changement dans le menu
+  s'applique à sa fermeture. Mode agent : `selfcenter 0.400` en course (0.094 avec EcaSpring=0), aucun arrêt ensuite.
+  Menu Tab, page Force Feedback, « Centring spring (EPR-20512) » sous « Linear torque ».
+- **« Strength switches » retiré du menu** (demande du propriétaire) : les DIP de la banque 1 le remplacent.
+  `ForceFeedbackStrength` reste lu (réglage d'upstream, fichiers existants) quand la banque 1 n'est pas réglée pour le
+  jeu ; il n'est plus enregistré par le menu.
+
 ## 3. Les essais
 
 ### 3.1 Le banc
