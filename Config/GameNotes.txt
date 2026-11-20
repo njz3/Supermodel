@@ -121,8 +121,8 @@ ECA's sets have no drive board program. Its cabinet's board runs Sega Rally
 2's program epr-20512.bin (seen on a photo of an original cabinet's board,
 838-12898, whatever the manual's "DRIVE BD DUT" suggests): in eca.zip, beside
 it, or in srally2.zip in
-the same folder. The game sends the wheel's torque directly, as Sega Rally 2
-does. The torque is
+the same folder; without it, the board is simulated (its few tables rebuilt).
+The game sends the wheel's torque directly, as Sega Rally 2 does. The torque is
 the game's own scale: raise the FFB strength if it feels weak. ECA's table
 adds a step to small torques, as on a cabinet (a small knock through the
 centre). With a large steering angle the front tyres grip and

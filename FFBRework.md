@@ -932,6 +932,27 @@ dossier (scud.zip/scudplus, stcc.zip, f355.zip, 18wheelr.zip).
   08-0F, gain D0, calibration par E916, notes DIP de 21867/23000) : plus aucun jeu ne s'en sert. Reste propre à ECA :
   EcaSpring (30 %).
 
+### 2.29 EPR-20512 simulée sans sa ROM : Sega Rally 2 et ECA (20 novembre)
+
+- **Demande du propriétaire** : sans l'EPR-20512, ou avec SimulateDriveBoard, la simulation de l'EPR-20512 pour ECA
+  comme pour Sega Rally 2. Avec la ROM et SimulateDriveBoard, c'était déjà le cas (CSegaRally2Program, choisie par le
+  CRC) ; sans la ROM, Model3.cpp mettait une carte factice, donc aucun retour de force.
+- **Ce que la simulation lit dans la ROM** (trace des adresses, SR2 et ECA, attract, départ, course, menu de test) :
+  la rangée de paramètres 12C2 (table servo, FD, FC), la table servo 14C2 (une case), la courbe FB 2AE2 (+15), les
+  tables de couple 2A62/2AA2. Lus aussi par d'autres commandes de l'EPR-20512 : les autres rangées (B0/B1, DIP), toute
+  la table servo (volant hors du centre avant le premier couple), les secousses C2 (3295) et C6 (33C6).
+- **BuildRomlessServoImage** (ServoProgramSim.cpp) : une image de 64 Ko à 80, avec ces tables reconstruites d'après ce
+  qu'elles font, pas copiées : rangées FC 0C + 8 par rangée, FD 11 21 21 31 31 41 51 51 (les écritures de registres le
+  montrent) ; table servo 80, poussée de 1 à moins de 8 du centre ; FE = 80 ± n ; courbe FB 87 + 8 n ; C2 et C6 vides
+  (aucun des deux jeux ne les envoie : rien n'est joué). CWheelBoard::SimulateWithoutROM(EPR20512_CRC32) la passe à
+  la simulation (m_romlessImage) ; Model3.cpp le fait pour les familles srally2 et eca quand `driveboard_program`
+  manque, avec une ligne de journal.
+- **Vérifié** (mode agent, dossier de ROM sans l'EPR-20512 : eca.zip seul, srally2.zip sans le fichier ;
+  `sr2sim/trace.py`) : journal « simulated without it », départ CF CE CD CC, mêmes écritures FF/F9/FB/FC/FD/FE par phase
+  qu'en émulé et qu'en simulé avec la ROM ; course d'ECA : dernier FE de chaque image identique à la simulation avec ROM
+  sur 1 915 images sur 1 920. Deux passages identiques divergent aussi entre eux (minutage des commandes) : on compare
+  par phase.
+
 ## 3. Les essais
 
 ### 3.1 Le banc

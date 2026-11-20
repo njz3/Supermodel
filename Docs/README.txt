@@ -721,7 +721,8 @@ STANDARD (TEST, GAME SYSTEM): a blank NVRAM in Supermodel gets the game's own
 factory settings, which are not STANDARD, so nothing needs changing.
 
 Drive board ROMs are optional: without one, the game runs without its drive
-board, or for the Model 1 and Model 2 programs with the board simulated (see
+board, or with the board simulated for the Model 1 and Model 2 programs and for
+Sega Rally 2's EPR-20512 (Sega Rally 2, Emergency Call Ambulance; see
 '-simulate-driveboard').  They can be in the game's ZIP file or beside it in the
 ROM folder (see 'Running Games').  They first appear in the MAME 0.143u6 ROM
 catalog and at the time of this writing, have not yet widely proliferated.
@@ -731,12 +732,15 @@ catalog and at the time of this writing, have not yet widely proliferated.
     Daytona USA 2   epr-20985.bin           64 KB       B139481D
     Scud Race       epr-19338a.bin          64 KB       C9FAC464
     Sega Rally 2    epr-20512.bin           64 KB       CF64350D
+    Emergency Call  epr-20512.bin           64 KB       CF64350D
+    Ambulance
 
 The sizes and checksums must match those listed above.  The file names may be
 different but will almost certainly contain the same identifying numbers.
 Ensure that the appropriate drive board ROM files are present in the
 corresponding games' ZIP archives or beside them, otherwise Supermodel will
-proceed without force feedback (a line in the log says so).
+proceed without force feedback (a line in the log says so), but for Sega Rally
+2 and Emergency Call Ambulance, whose EPR-20512 is then simulated.
 
 Force feedback will only work with the DirectInput (the default on Windows) and
 XInput input systems.  XInput is intended only for XBox 360 controllers, which
@@ -1763,12 +1767,11 @@ not.  All options are case sensitive.
                     logic instead, for the steering wheel and joystick drive
                     boards:
 
-                        EPR-19338A  Scud Race, Dirt Devils, Emergency Call
-                                    Ambulance, Le Mans 24 (CABINET TYPE
-                                    TWIN-LEMANS)
+                        EPR-19338A  Scud Race, Dirt Devils, Le Mans 24
+                                    (CABINET TYPE TWIN-LEMANS)
                         EPR-19338   Scud Race Plus
                         EPR-20985   Daytona USA 2
-                        EPR-20512   Sega Rally 2
+                        EPR-20512   Sega Rally 2, Emergency Call Ambulance
                         EPR-18261   Le Mans 24 (CABINET TYPE TWIN-NORMAL),
                                     the Model 2 drive board of Indy 500,
                                     Sega Touring Car Championship, Over Rev
@@ -1780,7 +1783,11 @@ not.  All options are case sensitive.
 
                     The billboard is still emulated.  The Model 3 programs
                     read their tables from the drive board's ROM, which they
-                    need either way.  The Model 1 and Model 2 programs do not:
+                    need, but EPR-20512: without it (ECA's sets never have
+                    it), the few tables it reads with Sega Rally 2 and ECA are
+                    rebuilt from what they do, and it is simulated whatever
+                    this option says (C2 and C6, shakes neither game sends,
+                    play nothing).  The Model 1 and Model 2 programs do not:
                     without the ROM (MAME's sets have none of them but stcc's
                     EPR-18261; Virtua Racing's EPR-15111 is in no MAME set),
                     they are simulated whatever this option says.  A

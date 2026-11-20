@@ -259,7 +259,14 @@ void CWheelBoard::Reset(void)
     m_servoSim = MakeServoProgram(crc);
     if (m_servoSim)
     {
-      m_servoSim->Reset(m_rom, m_dip1, m_dip2);
+      // Its ROM missing (SimulateWithoutROM): the tables it reads rebuilt from what they do
+      if (m_romlessCrc != 0 && m_romlessImage.empty())
+      {
+        m_romlessImage.assign(0x10000, 0);
+        if (!BuildRomlessServoImage(m_romlessCrc, m_romlessImage.data()))
+          m_romlessImage.clear();
+      }
+      m_servoSim->Reset(m_romlessImage.empty() ? m_rom : m_romlessImage.data(), m_dip1, m_dip2);
       m_servoNextNmi = m_servoSim->FirstNmiCycles();
     }
   }

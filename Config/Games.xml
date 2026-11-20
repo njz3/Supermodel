@@ -7370,7 +7370,7 @@
            which EPR-20512 relays to the servo board 838-12912-01 (FE = 80 +- the magnitude), with the same start-up.
            Daytona 2's EPR-20985, Scud Race's EPR-19338A/19338, Le Mans 24's EPR-18261 and the Naomi boards of F355
            Challenge and 18 Wheeler were tried on a cabinet (November 2026): unplayable, so not offered. Found in
-           the folder's other zips too (srally2.zip) -->
+           the folder's other zips too (srally2.zip); missing, it is simulated, its few tables rebuilt -->
       <region name="driveboard_program" stride="1" chunk_size="1" required="false">
         <file offset="0" name="epr-20512.bin" crc32="0xCF64350D" />
       </region>

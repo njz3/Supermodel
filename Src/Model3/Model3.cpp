@@ -3049,11 +3049,22 @@ Result CModel3::Init(const Game &game, const ROMSet &rom_set)
   }
   SoundBoard.AttachDSB(DSB);
 
-  // Drive board (if present)
-  if (game.driveboard_type == Game::DRIVE_BOARD_WHEEL && rom_set.get_rom("driveboard_program").size)
+  // Drive board (if present). Sega Rally 2's and ECA's boards run EPR-20512 (an original ECA cabinet's, photographed):
+  // their sets without it, it is simulated, the tables it reads rebuilt (CWheelBoard::SimulateWithoutROM)
+  const std::string &family = game.parent.empty() ? game.name : game.parent;
+  bool driveRomMissing = rom_set.get_rom("driveboard_program").size == 0;
+  uint32_t romlessDriveProgram = game.driveboard_type == Game::DRIVE_BOARD_WHEEL && driveRomMissing &&
+                                 (family == "srally2" || family == "eca") ? CWheelBoard::EPR20512_CRC32 : 0;
+  if (game.driveboard_type == Game::DRIVE_BOARD_WHEEL && (!driveRomMissing || romlessDriveProgram != 0))
   {
     CWheelBoard *wheelBoard = new CWheelBoard(m_config);
-    wheelBoard->SetEcaCommands(game.name == "eca" || game.parent == "eca");
+    wheelBoard->SetEcaCommands(family == "eca");
+    if (romlessDriveProgram != 0)
+    {
+      InfoLog("Drive board: epr-20512.bin not found, its program simulated without it.");
+      memset(driveROM, 0, 64 * 1024);
+      wheelBoard->SimulateWithoutROM(romlessDriveProgram);
+    }
     DriveBoard = wheelBoard;
     if (DriveBoard->Init(driveROM) != Result::OKAY)
       return Result::FAIL;

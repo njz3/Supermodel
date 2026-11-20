@@ -27,7 +27,8 @@
  * same servo board register writes (a register on port 2E, its value on port
  * 2A, one pair an NMI) and the same replies to the main board. CWheelBoard
  * turns the pairs into force feedback as it does the emulated program's. The
- * programs' tables are read from their ROM, which is needed either way.
+ * programs' tables are read from their ROM, which is needed, but for EPR-20512:
+ * without it, its few tables are rebuilt (BuildRomlessServoImage).
  */
 
 #ifndef INCLUDED_SERVOPROGRAMSIM_H
@@ -72,6 +73,10 @@ public:
 
 // The simulation of the program with this CRC32, or none (that program is emulated)
 std::unique_ptr<IServoProgram> MakeServoProgram(uint32_t crc32);
+
+// The program's ROM missing: the tables its simulation reads rebuilt from what they do, into `rom` (64 KB), if that
+// program can do without (EPR-20512 so far)
+bool BuildRomlessServoImage(uint32_t crc32, UINT8 *rom);
 
 /*
  * A joystick board's program (Star Wars Trilogy's EPR-21119): two servo boards, their values on ports 2A and 2D,

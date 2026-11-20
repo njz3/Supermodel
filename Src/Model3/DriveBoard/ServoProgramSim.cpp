@@ -3454,6 +3454,49 @@ std::unique_ptr<IServoProgram> MakeServoProgram(uint32_t crc32)
   }
 }
 
+/*
+ * EPR-20512 without its ROM (Sega Rally 2's and Emergency Call Ambulance's sets may lack it): the few tables its
+ * simulation reads with these two games (traced: attract, start, race, test menu), rebuilt from what they do, not
+ * copied, the rest neutral:
+ * - the parameter rows (B0 = B1, 20 apart by the DIP switches' strength row): the servo table, then FD and FC, the
+ *   servo board's damping and spring, as the register writes show them (FC 0C + 8 a row; FD 11, 21, 21, 31, 31, 41,
+ *   51, 51);
+ * - the servo table, the torque by position before the game's first torque: 80, a push of 1 within 8 of the centre;
+ * - the torque tables: FE = 80 + n (00-3F) and 80 - n (40-7F), the game's torque relayed;
+ * - the FB curve: 87 + 8 n, full (FF) at its end, the gain C7 sets;
+ * - the shakes C2 and C6 (neither game sends them): empty, so nothing is played.
+ */
+bool BuildRomlessServoImage(uint32_t crc32, UINT8 *rom)
+{
+  if (crc32 != 0xCF64350D)
+    return false;
+  memset(rom, 0x80, 0x10000);
+  static const UINT8 kFd[8] = { 0x11, 0x21, 0x21, 0x31, 0x31, 0x41, 0x51, 0x51 };
+  for (int row = 0; row < 8; row++)
+  {
+    uint16_t e = uint16_t(kEpr20512.rowB0 + 0x20 * row);
+    rom[e] = UINT8(kEpr20512.servoTab & 0xFF);
+    rom[e + 1] = UINT8(kEpr20512.servoTab >> 8);
+    rom[e + 2] = kFd[row];
+    rom[e + 3] = UINT8(0x0C + 8 * row);
+  }
+  for (int i = 0; i < 8; i++)
+  {
+    rom[kEpr20512.servoTab + 0x78 + i] = 0x81;  // the wheel just left of the centre: pushed right
+    rom[kEpr20512.servoTab + 0x80 + i] = 0x7F;  // just right of it: pushed left
+  }
+  for (int n = 0; n < 0x40; n++)
+  {
+    rom[0x2A62 + n] = UINT8(0x80 + n);
+    rom[0x2AA2 + n] = UINT8(0x80 - n);
+  }
+  for (int n = 0; n < 16; n++)
+    rom[kEpr20512.fbCurve + n] = UINT8(0x87 + 8 * n);
+  rom[kEpr20512.shakeC2] = 0;
+  rom[kEpr20512.shakeC6] = 0;
+  return true;
+}
+
 std::unique_ptr<IJoystickProgram> MakeJoystickProgram(uint32_t crc32)
 {
   switch (crc32)

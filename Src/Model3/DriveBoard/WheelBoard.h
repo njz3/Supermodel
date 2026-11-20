@@ -34,6 +34,7 @@
 #include "Util/NewConfig.h"
 #include "Game.h"
 #include <mutex>
+#include <vector>
 
 /*
  * CWheelBoard
@@ -179,9 +180,11 @@ public:
    * SimulateWithoutROM(crc):
    *
    * The board's program is known (its CRC32) but its ROM is missing: it is
-   * simulated, whatever SimulateDriveBoard says. Only EPR-18261 for now (the
-   * Model 2 Indy 500 boards: MAME's sets lack it but for stcc). Call before
-   * Reset(); Init() still needs a ROM buffer (0x10000 bytes, any content).
+   * simulated, whatever SimulateDriveBoard says: EPR-18261 (the Model 2 Indy
+   * 500 boards: MAME's sets lack it but for stcc) and EPR-20512 (Sega Rally 2's
+   * and ECA's sets, the tables its simulation reads rebuilt: ServoProgramSim's
+   * BuildRomlessServoImage). Call before Reset(); Init() still needs a ROM
+   * buffer (0x10000 bytes, any content).
    */
   void SimulateWithoutROM(uint32_t crc);
 
@@ -258,6 +261,7 @@ private:
   IndyBoard m_indy;
   // The other programs simulated (the Model 3 drive boards, ServoProgramSim)
   std::unique_ptr<IServoProgram> m_servoSim;
+  std::vector<UINT8> m_romlessImage;  // SimulateWithoutROM: the tables the simulation reads, rebuilt (64 KB), or empty
   double m_servoNmiAcc;   // The Z80's cycles run (simulated), and the next NMI's
   double m_servoNextNmi;
   UINT8 m_simCommand, m_simLoggedCommand, m_simLastReply;  // For the agent's journal, as the Z80's
