@@ -188,18 +188,13 @@ public:
   /*
    * SetEcaCommands(eca):
    *
-   * The game is Emergency Call Ambulance: with EPR-20512, its torque commands
-   * lose the step its table adds (see EcaLinearTorque()), and EcaSpring plays
-   * a centring spring under them. Call before Init().
+   * The game is Emergency Call Ambulance: with EPR-20512, EcaSpring plays a
+   * centring spring under its torque (WithEcaSpring()). Call before Init().
    */
   void SetEcaCommands(bool eca);
 
   static constexpr uint32_t EPR18261_CRC32 = 0x0C7FAC58;
   static constexpr uint32_t EPR20512_CRC32 = 0xCF64350D;
-  // Naomi drive boards (838-13843, the Model 3 servo board behind): F355 Challenge's (and its prototype's), 18 Wheeler's
-  static constexpr uint32_t EPR21867_CRC32 = 0x4F93A2A0;
-  static constexpr uint32_t EPR21867P_CRC32 = 0x6143B911;
-  static constexpr uint32_t EPR23000_CRC32 = 0xE3B162F7;
 
 protected:
   void Disable(void);
@@ -225,11 +220,8 @@ private:
 
   bool m_twoPowerOutputs; // EPR-18261: ports 2A and 2E are two motor powers, not a servo board register and value
   bool m_ecaGame;         // SetEcaCommands: the game is ECA
-  bool m_eca20512;        // ECA with EPR-20512: its commands made linear (Write), EcaSpring under its torque (WithEcaSpring())
+  bool m_eca20512;        // ECA with EPR-20512: EcaSpring under its torque (WithEcaSpring())
   UINT8 m_boardSpring;    // The spring the board's program last set (servo register FC 4), 0 off
-  bool m_naomiServo;      // EPR-21867, EPR-23000: servo registers written 08-0F, the wheel calibrated by its travel
-  int m_calibWheel;       // Naomi boards, until calibrated: the wheel's position as their pushes would move it (x16)
-  bool m_naomiBooted;     // Naomi boards: their status byte has shown the calibration under way (30), so its clearing is the end
   uint32_t m_romlessCrc;  // SimulateWithoutROM: the program simulated, its ROM missing; 0 the ROM is there
   UINT8 m_servoGain;      // Servo board torque gain (register FB), 0-127
 

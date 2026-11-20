@@ -926,6 +926,11 @@ dossier (scud.zip/scudplus, stcc.zip, f355.zip, 18wheelr.zip).
   afficheurs 7 segments. Le numéro du manuel (838-12898) est donc juste ; c'est son nom « DRIVE BD DUT » (code de
   Daytona USA 2), et ma déduction « SPG DX » / EPR-20985, qui étaient trompeurs. Games.xml, README et GameNotes le
   disent.
+- **Retirés ensuite (demande du propriétaire, la vraie carte étant connue)** : la correction « linear torque »
+  (EcaLinearTorque() dans CWheelBoard::Write) : les octets d'ECA vont à l'EPR-20512 tels qu'une borne les reçoit, la
+  marche de la table comprise ; et l'émulation des cartes Naomi (m_naomiServo, m_calibWheel, m_naomiBooted, registres
+  08-0F, gain D0, calibration par E916, notes DIP de 21867/23000) : plus aucun jeu ne s'en sert. Reste propre à ECA :
+  EcaSpring (30 %).
 
 ## 3. Les essais
 

@@ -890,14 +890,12 @@ directly (a signed value in each byte), as Sega Rally 2 does.  Put it in
 eca.zip or beside it, or keep srally2.zip in the same folder (it is found there
 by its checksum).  The other drive board programs (Daytona USA 2's, Scud
 Race's, Le Mans 24's, the Naomi boards') were tried on a cabinet and are not
-offered: none was playable.  The
-torque goes to the board as the game works it out: ECA's own table adds a step
-to it (1, then 5, then 9 as it starts to grow, a push for the cabinet's motor
-to start), which makes every return of the wheel through the centre a jolt:
-Supermodel takes the step out (the strongest torque is then 18 against 23,
-STEERING REACTION at 4).  ECA's torque is mostly the front tyres' aligning
-moment: with a large steering angle they grip and slide in turn, and the
-torque flips every third of a second or so, knocks with the wheel held.
+offered: none was playable.  The game's bytes go to the board as a cabinet's
+board gets them, the step of ECA's table included (1, then 5, then 9 as the
+torque starts to grow, a push for the cabinet's motor to start, felt as a
+small knock through the centre).  ECA's torque is mostly the front tyres'
+aligning moment: with a large steering angle they grip and slide in turn, and
+the torque flips every third of a second or so, knocks with the wheel held.
 EcaSpring (30 % by default; Game Options, Game page, "Centring spring", saved
 in ECA's section) plays a centring spring under the game's torque during the
 race.

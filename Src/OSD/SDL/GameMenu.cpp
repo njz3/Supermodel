@@ -1840,12 +1840,6 @@ namespace GameMenu
     case 0x45C02763: // EPR-15111
       return "Virtua Racing's board: a bank per player. 1..3: the motor's weight. 4 ON: no calibration (and mandatory "
              "for a missing seat).";
-    case 0x4F93A2A0: // EPR-21867
-    case 0x6143B911: // EPR-21867P
-    case 0xE3B162F7: // EPR-23000
-      return "F355 Challenge's and 18 Wheeler's board (Naomi). 1-7 ON alone: a spring demo; 1-7 and 1-8 both ON: the "
-             "self-test (no game). Bank 2: 2-1..2-4 the spring's shape, 2-5..2-7 its ceiling (all OFF: no spring). "
-             "F355: 1-8 ON alone, or with 1-1, sends the torque the other way.";
     default:
       return "Switch n taken as bit n - 1 of the byte the program reads, ON reading 0.";
     }
