@@ -117,10 +117,12 @@ it: hold VIEW CHANGE and press Test (Universe, Japan, U.S.A., Export,
 Australia, Korea; check the coin settings after a change).
 
 ## Force feedback
-ECA's sets have no drive board program. The game sends the wheel's torque
-directly, as Sega Rally 2 does, so Supermodel uses Sega Rally 2's program
-epr-20512.bin: in eca.zip, beside it, or in srally2.zip in the same folder
-(the other drive boards, tried on a cabinet, were not playable). The torque is
+ECA's sets have no drive board program. Its cabinet's board runs Sega Rally
+2's program epr-20512.bin (seen on a photo of an original cabinet's board,
+838-12898, whatever the manual's "DRIVE BD DUT" suggests): in eca.zip, beside
+it, or in srally2.zip in
+the same folder. The game sends the wheel's torque directly, as Sega Rally 2
+does. The torque is
 the game's own scale: raise the FFB strength if it feels weak. The step ECA's
 table adds to small torques (a jolt each time the wheel comes back through the
 centre) is taken out. With a large steering angle the front tyres grip and

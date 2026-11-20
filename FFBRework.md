@@ -921,6 +921,11 @@ dossier (scud.zip/scudplus, stcc.zip, f355.zip, 18wheelr.zip).
   curseur (comme les patches) ; il n'est plus dans la page Force Feedback ni dans les Save. **EcaLinearTorque retiré** :
   la magnitude ramenée à |t| est toujours appliquée pour ECA (m_eca20512) ; le propriétaire ne sentait pas de différence
   volant tenu, et la mesure donnait 87 → 2 sauts de 9 ou plus.
+- **Confirmé (20 novembre)** : le propriétaire d'une borne ECA dédiée d'origine a envoyé la photo de sa drive board :
+  étiquette 838-12898 (S/N 809270), circuit PEP04-0001-02, EPROM étiquetée EPR-20512, deux bancs de DIP et deux
+  afficheurs 7 segments. Le numéro du manuel (838-12898) est donc juste ; c'est son nom « DRIVE BD DUT » (code de
+  Daytona USA 2), et ma déduction « SPG DX » / EPR-20985, qui étaient trompeurs. Games.xml, README et GameNotes le
+  disent.
 
 ## 3. Les essais
 

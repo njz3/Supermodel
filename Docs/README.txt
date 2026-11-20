@@ -881,13 +881,16 @@ Supermodel presently only emulates a sequential shifter but cabinets with a 4-
 way H-type shifter exist and the shift sequence on this units is: 3, 3, 4, 4, 3
 or 1, 1, 2, 2, 1.
 
-Force feedback: ECA's sets have no drive board program.  The game sends the
-wheel's torque directly (a signed value in each byte), as Sega Rally 2 does to
-its drive board, so Supermodel uses Sega Rally 2's program, epr-20512.bin: put
-it in eca.zip or beside it, or keep srally2.zip in the same folder (it is found
-there by its checksum).  The other drive board programs (Daytona USA 2's, which
-the manual's "DRIVE BD DUT" suggests, Scud Race's, Le Mans 24's, the Naomi
-boards') were tried on a cabinet and are not offered: none was playable.  The
+Force feedback: ECA's sets have no drive board program.  Its cabinet's drive
+board runs Sega Rally 2's program, epr-20512.bin (a photo of an original
+dedicated cabinet's board, 838-12898, shows its EPROM labelled EPR-20512; the
+manual's parts list calls it "DRIVE BD DUT", Daytona USA 2's code, which is
+misleading): the game sends the wheel's torque
+directly (a signed value in each byte), as Sega Rally 2 does.  Put it in
+eca.zip or beside it, or keep srally2.zip in the same folder (it is found there
+by its checksum).  The other drive board programs (Daytona USA 2's, Scud
+Race's, Le Mans 24's, the Naomi boards') were tried on a cabinet and are not
+offered: none was playable.  The
 torque goes to the board as the game works it out: ECA's own table adds a step
 to it (1, then 5, then 9 as it starts to grow, a push for the cabinet's motor
 to start), which makes every return of the wheel through the centre a jolt:

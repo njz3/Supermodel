@@ -7361,11 +7361,13 @@
         <file offset="0x800000" name="mpr-22888.23" crc32="0x018FCF22" />
         <file offset="0xC00000" name="mpr-22890.25" crc32="0xB638BD7C" />
       </region>
-      <!-- ECA's drive board program: Sega Rally 2's EPR-20512 (drive board 838-13366, before the servo board
-           838-12912-01), not in ECA's sets. The game sends a direct signed torque (00-3F one way, 40-7F the other,
-           its magnitude in the 6 low bits), which EPR-20512 relays to the servo board (FE = 80 +- the magnitude),
-           with the same start-up. The manual's drive board is 838-12898 "DRIVE BD DUT" (DUT: Daytona USA 2);
-           a real ECA cabinet's EPROM could not be read; on a cabinet, EPR-20512 gives by far the best effects.
+      <!-- ECA's drive board program, always Sega Rally 2's EPR-20512 (not in ECA's sets; no other is offered).
+           Proof: a photo of the drive board of an original, dedicated ECA cabinet, sent by its owner (November
+           2026): board 838-12898 (PCB PEP04-0001-02), its program EPROM labelled EPR-20512. The manual's part
+           number is right, but its name for it, "DRIVE BD DUT" (DUT: Daytona USA 2's code), is misleading: the
+           board carries Sega Rally 2's program, not Daytona 2's EPR-20985.
+           The game sends a direct signed torque (00-3F one way, 40-7F the other, its magnitude in the 6 low bits),
+           which EPR-20512 relays to the servo board 838-12912-01 (FE = 80 +- the magnitude), with the same start-up.
            Daytona 2's EPR-20985, Scud Race's EPR-19338A/19338, Le Mans 24's EPR-18261 and the Naomi boards of F355
            Challenge and 18 Wheeler were tried on a cabinet (November 2026): unplayable, so not offered. Found in
            the folder's other zips too (srally2.zip) -->
